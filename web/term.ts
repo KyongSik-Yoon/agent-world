@@ -492,6 +492,8 @@ export class TermOverlay {
   /** 보내고 아직 답을 받지 못한 입력의 수. */
   private sending = 0;
   onError: ((message: string) => void) | undefined;
+  /** 보고 있던 pane 이 herdr 에서 사라져 창을 닫을 때 알린다. */
+  onGone: ((title: string) => void) | undefined;
   /** 열리고 닫힐 때 알린다 — 열려 있는 동안에는 뒤의 월드가 가려진다. */
   onToggle: ((open: boolean) => void) | undefined;
 
@@ -583,7 +585,11 @@ export class TermOverlay {
       this.flush();
       if (text) this.send({ text });
     });
-    this.screen.onGone = () => this.close();
+    this.screen.onGone = () => {
+      // 치고 있던 창이 말없이 사라지면 고장으로 보인다 — 왜 닫혔는지 알린다.
+      this.onGone?.(this.title.textContent ?? "");
+      this.close();
+    };
     // 탭을 보고 있지 않은 동안에는 읽지 않는다 — 열어 둔 채 잊어도 herdr 를 계속 읽지 않게.
     document.addEventListener("visibilitychange", () => {
       if (this.root.hidden) return;

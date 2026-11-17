@@ -41,6 +41,7 @@ const hud = new Hud({
 
 const terminal = new TermOverlay();
 terminal.onError = (message) => hud.toast("입력을 보내지 못했습니다", message, "var(--blocked)");
+terminal.onGone = (title) => hud.toast("터미널을 닫았습니다", `${title} — 이 pane 이 herdr 에서 닫혔습니다.`, "var(--idle)");
 terminal.onToggle = (open) => {
   scene.setCovered(open);
   hud.setCovered(open);
