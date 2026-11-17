@@ -137,6 +137,9 @@ export async function herdrScreen(paneId: string): Promise<string> {
 // 만들 때는 늘 focus:false 다 — 월드에서 한 일이 사용자의 herdr 화면을 끌고 다니지 않게.
 // close_group·force·trust_repository 는 부르는 쪽이 명시했을 때만 싣는다.
 
+/** 새 pane 의 셸이 준비되기를 기다려 주는 시간. */
+const SHELL_READY_MS = 8000;
+
 export type TermSource = "visible" | "recent";
 
 /** 색상(SGR) 이 살아 있는 화면. `recent` 는 스크롤백까지 읽되 사용자의 스크롤 위치는 건드리지 않는다. */
@@ -211,7 +214,17 @@ export async function herdrSplit(paneId: string, direction: "right" | "down"): P
 
 /** 셸 pane 에서 에이전트를 띄운다. herdr 는 명령을 넣자마자 돌아오고, 준비됐는지는 스냅샷으로 따라간다. */
 export async function herdrStartAgent(paneId: string, kind: string, name: string, args: string[]): Promise<void> {
-  await herdrRpc("agent.start", { pane_id: paneId, kind, name, ...(args.length ? { args } : {}) }, 35_000);
+  // 방금 만든 pane 은 셸이 프롬프트에 닿기 전이라 herdr 가 "바쁘다"고 거절한다. 잠깐씩 다시 시도한다.
+  const deadline = Date.now() + SHELL_READY_MS;
+  for (;;) {
+    try {
+      await herdrRpc("agent.start", { pane_id: paneId, kind, name, ...(args.length ? { args } : {}) }, 35_000);
+      return;
+    } catch (e) {
+      if (!(e instanceof HerdrError) || e.code !== "agent_pane_busy" || Date.now() > deadline) throw e;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
 }
 
 export type Kind = "workspace" | "tab" | "pane" | "agent";

@@ -18,6 +18,7 @@
       <div id="chips" role="group" aria-label="상태별 에이전트 수"></div>
       <div class="spacer"></div>
       <span id="conn" class="conn" data-state="wait">연결 중…</span>
+      <button id="btn-build" class="btn" type="button" title="새 스페이스(집)를 만들고 에이전트를 들입니다 (B)" hidden>＋ 집 짓기</button>
       <button id="btn-next" class="btn accent" type="button" title="확인할 에이전트로 차례로 이동 (N)">
         다음 확인 <b id="next-count">0</b>
       </button>
@@ -34,7 +35,9 @@
     <aside id="detail" class="glass" aria-label="에이전트 상태" hidden></aside>
 
     <div id="toasts" aria-live="polite"></div>
-    <div id="help">드래그 회전 · 휠 확대 · 우클릭 드래그 이동 · <kbd>N</kbd> 다음 확인 · <kbd>Enter</kbd> herdr 로 이동 · <kbd>Esc</kbd> 닫기</div>
+    <div id="help">
+      드래그 회전 · 휠 확대 · <kbd>N</kbd> 다음 확인 · <kbd>C</kbd> 말 걸기 · <kbd>`</kbd> 터미널 · <kbd>D</kbd> 확인 완료 · <kbd>B</kbd> 집 짓기 · <kbd>Enter</kbd> herdr 로 · <kbd>Esc</kbd> 닫기
+    </div>
 
     <script type="module" src="./main.ts"></script>
   </body>

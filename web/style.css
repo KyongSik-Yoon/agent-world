@@ -939,3 +939,556 @@ kbd {
     animation: none !important;
   }
 }
+
+/* ── 터미널 미러 ─────────────────────────────────────────────────── */
+
+:root {
+  --term-bg: #0d1017;
+  --term-fg: #d5dbea;
+}
+
+.term {
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: var(--term-bg);
+  color: var(--term-fg);
+  font: 12px/1.22 var(--mono);
+  font-variant-ligatures: none;
+  white-space: pre;
+  scrollbar-width: thin;
+  user-select: text;
+}
+
+.term .tl {
+  min-height: 1.22em;
+}
+
+.term.preview .tl.rule {
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0.5;
+}
+
+.term .w1,
+.term .w2 {
+  display: inline-block;
+  width: 1ch;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.term .w2 {
+  width: 2ch;
+}
+
+.term.preview {
+  max-height: 320px;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 10px;
+  cursor: zoom-in;
+}
+
+#term-overlay {
+  position: fixed;
+  inset: 18px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--term-bg);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+#term-overlay[hidden] {
+  display: none;
+}
+
+#term-overlay header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 16px;
+  background: var(--panel-solid);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+
+#term-overlay .names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+}
+
+#term-overlay .names b {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#term-overlay .names span,
+#term-overlay .hint {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+#term-overlay .body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  cursor: text;
+}
+
+#term-overlay .term {
+  height: 100%;
+  padding: 12px 14px;
+}
+
+#term-overlay:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#term-overlay .ime {
+  position: absolute;
+  left: 14px;
+  bottom: 10px;
+  width: 2px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  opacity: 0;
+  resize: none;
+}
+
+/* ── 상태 창: 확인 필요 카드, 도크 ───────────────────────────────── */
+
+.ask {
+  margin-top: 10px !important;
+  padding: 10px;
+  border: 1.5px solid color-mix(in srgb, var(--blocked) 55%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--blocked) 7%, transparent);
+}
+
+.ask h3 {
+  color: var(--blocked) !important;
+}
+
+.ask .hint {
+  margin: 6px 0 0;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.pending {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.pending pre {
+  margin: 4px 0 0;
+  padding: 8px;
+  max-height: 180px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--soft);
+  font: 11px/1.4 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pending p {
+  margin: 4px 0;
+  font-weight: 600;
+}
+
+.pending ol {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink-2);
+}
+
+.d-body h3 button + button {
+  margin-left: 10px;
+}
+
+.actions.minor {
+  margin-top: 6px;
+}
+
+.actions.minor .btn {
+  padding: 5px 8px;
+  font-size: 11.5px;
+}
+
+.btn.danger {
+  color: var(--blocked);
+}
+
+.btn.danger.solid {
+  border-color: var(--blocked);
+  background: var(--blocked);
+  color: #fff;
+}
+
+.status-line .link {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: 600 11px var(--font);
+  cursor: pointer;
+}
+
+.d-dock {
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.d-dock[hidden] {
+  display: none;
+}
+
+.quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 7px;
+}
+
+.quick button {
+  min-width: 28px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--ink-2);
+  font: 600 11px var(--mono);
+  cursor: pointer;
+}
+
+.quick button:hover {
+  background: var(--soft-2);
+  color: var(--ink);
+}
+
+.quick button.wide {
+  margin-left: auto;
+  font-family: var(--font);
+}
+
+.compose {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.compose textarea,
+.field input[type="text"],
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-solid);
+  color: var(--ink);
+  font: 13px/1.4 var(--font);
+  resize: vertical;
+}
+
+.compose textarea {
+  flex: 1;
+  min-height: 42px;
+  max-height: 220px;
+}
+
+.compose textarea:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.compose .btn {
+  flex: none;
+  padding: 9px 12px;
+}
+
+.dock-note {
+  margin-top: 6px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.dock-note[data-tone="ok"] {
+  color: var(--done);
+}
+
+.dock-note[data-tone="err"] {
+  color: var(--blocked);
+}
+
+/* ── 집 패널 ─────────────────────────────────────────────────────── */
+
+.house-tile,
+.shell-tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #1b2030;
+  color: #7ef0b6;
+  font: 700 10px var(--mono);
+}
+
+.house-tile,
+.shell-tile.big {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+
+.house-tile {
+  background: var(--soft-2);
+  font-size: 22px;
+}
+
+.prow {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 1px 9px;
+  align-items: center;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-left: 3px solid var(--idle);
+  border-radius: 9px;
+  background: var(--soft);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.prow:hover {
+  border-color: var(--line);
+  background: var(--soft-2);
+}
+
+.prow[data-status="working"] {
+  border-left-color: var(--working);
+}
+
+.prow[data-status="done"] {
+  border-left-color: var(--done);
+}
+
+.prow[data-status="blocked"] {
+  border-left-color: var(--blocked);
+}
+
+.prow > :first-child {
+  grid-row: span 2;
+}
+
+.prow .title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prow .sub {
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-tag {
+  pointer-events: auto;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: #1b2030;
+  color: #7ef0b6;
+  font: 700 10px var(--mono);
+  box-shadow: 0 2px 8px rgba(10, 20, 50, 0.25);
+  cursor: pointer;
+}
+
+.shell-tag:hover {
+  outline: 2px solid var(--accent);
+}
+
+/* ── 대화상자 ────────────────────────────────────────────────────── */
+
+dialog.dlg {
+  width: min(520px, 92vw);
+  max-height: 88vh;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel-solid);
+  color: var(--ink);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+dialog.dlg::backdrop {
+  background: rgba(10, 14, 30, 0.42);
+  backdrop-filter: blur(3px);
+}
+
+dialog.dlg form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+}
+
+dialog.dlg h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+
+dialog.dlg p {
+  margin: 0;
+}
+
+dialog.dlg hr {
+  width: 100%;
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > span {
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.field small {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.field :disabled {
+  opacity: 0.5;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12.5px;
+}
+
+.check.sub {
+  margin-left: 22px;
+}
+
+.check[hidden],
+.sub-fields[hidden] {
+  display: none;
+}
+
+.sub-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--soft);
+}
+
+.dlg-steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.dlg-steps:empty {
+  display: none;
+}
+
+.dlg-steps li.ok {
+  color: var(--done);
+}
+
+.dlg-steps li.fail {
+  color: var(--blocked);
+}
+
+.dlg-error {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--blocked) 12%, transparent);
+  color: var(--blocked);
+  font-size: 12px;
+}
+
+.dlg-error[hidden] {
+  display: none;
+}
+
+.dlg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dlg-actions .btn {
+  padding: 8px 16px;
+}
+
+.doomed {
+  margin: 0;
+  padding-left: 20px;
+  max-height: 160px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.doomed li[data-status="working"],
+.doomed li[data-status="blocked"],
+dialog.dlg .warn {
+  color: var(--blocked);
+}
+
+.toast.undo button {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--accent);
+  font: 600 11px var(--font);
+  cursor: pointer;
+}

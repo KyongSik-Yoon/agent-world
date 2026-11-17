@@ -25,6 +25,9 @@ const EXTERNAL_WORKING_MS = 10 * 60_000;
 /** 턴이 닫힌 뒤 이만큼은 "방금 끝남"으로 보여 준다. */
 const EXTERNAL_DONE_MS = 10 * 60_000;
 
+/** pane 이 닫히면서 로그에 마지막 몇 줄이 더 적히는 것을 "다시 움직였다"로 보지 않기 위한 여유. */
+const RETIRED_GRACE_MS = 15_000;
+
 /** 스냅샷 사이가 이보다 벌어지면 "지켜보던 중"이 아니었다고 본다. */
 const WATCH_GAP_MS = 5_000;
 
@@ -65,6 +68,8 @@ export class World {
   /** 이번 스냅샷에서 읽은 로그들 — 끝나면 나머지는 놓아준다. */
   private used = new Set<string>();
   private readonly seen = new SeenStore();
+  /** herdr pane 안에서 돌던 세션을 마지막으로 본 시각. pane 을 닫은 세션이 "herdr 밖 세션"으로 되살아나지 않게 한다. */
+  private readonly lastInHerdr = new Map<string, number>();
   /** 완료 상태인 pane 의 herdr 상태 변경 번호 — 확인 기록을 남길 때 쓴다. */
   private doneSeq = new Map<string, number>();
 
@@ -322,7 +327,17 @@ export class World {
     }
 
     this.discover();
-    const outside = this.external.filter((f) => !inHerdr.has(`${f.harness.vendor}:${f.sessionId}`));
+    const now = Date.now();
+    for (const key of inHerdr) this.lastInHerdr.set(key, now);
+    for (const [key, at] of this.lastInHerdr) if (now - at > EXTERNAL_KEEP_MS) this.lastInHerdr.delete(key);
+    const outside = this.external.filter((f) => {
+      const key = `${f.harness.vendor}:${f.sessionId}`;
+      if (inHerdr.has(key)) return false;
+      // herdr 에서 pane 이 닫힌 뒤로 로그가 움직이지 않았으면 끝난 세션이다. 다른 곳에서 이어 받아
+      // 로그가 다시 움직일 때만 herdr 밖 세션으로 보여 준다.
+      const left = this.lastInHerdr.get(key);
+      return left === undefined || f.mtimeMs > left + RETIRED_GRACE_MS;
+    });
     const extViews = await Promise.all(outside.map((f) => this.externalView(f)));
     for (const view of extViews) {
       if (!view) continue;

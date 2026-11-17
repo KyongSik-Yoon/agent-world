@@ -86,6 +86,11 @@ export function restSpot(plot: Plot, k: number): THREE.Vector3 {
   return at(plot, 1.7 - Math.floor(k / 4) * 1.25, sideSign * (2.45 + Math.floor((k % 4) / 2) * 1.05));
 }
 
+/** 셸 pane 의 단말기가 서는 자리 — 마당 앞쪽 가장자리에 나란히. */
+export function shellSpot(plot: Plot, k: number): THREE.Vector3 {
+  return at(plot, -2.3, 3.0 + k * 0.95);
+}
+
 /** 대문 앞(광장 쪽). 확인이 필요한 에이전트가 나와 서는 곳. */
 export function gateSpot(plot: Plot, k: number): THREE.Vector3 {
   return at(plot, -3.6, (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * 1.2);

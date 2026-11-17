@@ -82,8 +82,14 @@ export function bubbleText(a: AgentView, full = true): string | null {
       const line = full ? firstLine(a.lastReply) : "";
       return `✅ ${line || "다 했어요!"}`;
     }
-    case "blocked":
-      return "🙋 확인이 필요해요";
+    case "blocked": {
+      // 무엇을 기다리는지 로그에서 읽혔으면 그것을 말한다.
+      const p = a.pending;
+      if (!p) return "🙋 확인이 필요해요";
+      const what = (p.questions?.[0]?.question || p.detail).split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? "";
+      const line = what.length > 60 ? `${what.slice(0, 59)}…` : what;
+      return p.asksUser ? `🙋 ${line || "질문이 있어요"}` : `🔐 ${p.tool}${line ? ` · ${line}` : ""}`;
+    }
     default:
       return null;
   }

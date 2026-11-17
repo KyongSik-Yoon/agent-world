@@ -1,16 +1,18 @@
 // 3D 장면: 렌더러·카메라·조작, 스냅샷을 배우들로 옮기는 일, 고르기.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
+import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 
 import type { AgentView, WorldSnapshot } from "../../shared/types.ts";
 import { Actor } from "./actor.ts";
 import { Environment, type Theme } from "./environment.ts";
-import { buildLayout, type Layout } from "./layout.ts";
+import { buildLayout, shellSpot, type Layout } from "./layout.ts";
 
 export interface SceneCallbacks {
   onSelect(id: string | null): void;
   onHover(id: string | null): void;
+  /** 집 문패를 눌렀다. */
+  onPlot(workspaceId: string): void;
 }
 
 const FOG: Record<Theme, string> = { day: "#CBE7F6", night: "#161B33" };
@@ -28,6 +30,9 @@ export class WorldScene {
   private readonly clock = new THREE.Clock();
   private layout: Layout = buildLayout([]);
   private layoutKey = "";
+  /** 에이전트 없는 셸 pane 들 — 집 앞의 작은 단말기로 세운다. */
+  private readonly shells = new Map<string, THREE.Group>();
+  private shellKey = "";
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
   /** 카메라가 부드럽게 옮겨 갈 목표. 사용자가 직접 움직이면 지운다. */
@@ -50,7 +55,7 @@ export class WorldScene {
     container.append(this.labels.domElement);
 
     this.scene.fog = new THREE.Fog(FOG.day, 70, 210);
-    this.env = new Environment((workspaceId) => this.flyToPlot(workspaceId));
+    this.env = new Environment((workspaceId) => this.callbacks.onPlot(workspaceId));
     this.scene.add(this.env.group);
 
     this.camera.position.set(0, 34, 44);
@@ -127,10 +132,60 @@ export class WorldScene {
     }
     for (const id of [...this.actors.keys()]) if (!seen.has(id)) this.removeActor(id);
 
+    this.syncShells(snapshot);
     this.place(snapshot.agents);
     const blocked = snapshot.agents.filter((a) => a.status === "blocked").length;
     const done = snapshot.agents.filter((a) => a.status === "done").length;
     this.env.setSignal(blocked, done);
+  }
+
+  /** 셸 pane 마다 집 앞에 단말기를 하나 세운다. 누르면 그 셸의 터미널을 본다. */
+  private syncShells(snapshot: WorldSnapshot): void {
+    const shells = snapshot.panes.filter((p) => !p.agentId && this.layout.plots.has(p.workspaceId));
+    const key = `${this.layoutKey}#${shells.map((p) => p.id).join("|")}`;
+    if (key === this.shellKey) return;
+    this.shellKey = key;
+    for (const group of this.shells.values()) {
+      this.scene.remove(group);
+      group.traverse((o) => {
+        if (o instanceof CSS2DObject) o.element.remove();
+        if (o instanceof THREE.Mesh) {
+          o.geometry.dispose();
+          (o.material as THREE.Material).dispose();
+        }
+      });
+    }
+    this.shells.clear();
+    const perPlot = new Map<string, number>();
+    for (const pane of shells) {
+      const plot = this.layout.plots.get(pane.workspaceId)!;
+      const k = perPlot.get(pane.workspaceId) ?? 0;
+      perPlot.set(pane.workspaceId, k + 1);
+      const group = new THREE.Group();
+      group.position.copy(shellSpot(plot, k));
+      group.rotation.y = plot.facing;
+      const stand = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.5, 0.42), new THREE.MeshStandardMaterial({ color: "#3a4256", roughness: 0.7 }));
+      stand.position.y = 0.25;
+      stand.castShadow = true;
+      const screen = new THREE.Mesh(
+        new THREE.BoxGeometry(0.7, 0.46, 0.06),
+        new THREE.MeshStandardMaterial({ color: "#10141f", emissive: "#3ddc97", emissiveIntensity: 0.55, roughness: 0.4 }),
+      );
+      screen.position.set(0, 0.76, 0);
+      screen.rotation.x = -0.22;
+      screen.castShadow = true;
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "shell-tag";
+      el.textContent = ">_";
+      el.title = `셸 ${pane.id}${pane.label ? ` · ${pane.label}` : ""}`;
+      el.addEventListener("click", () => this.callbacks.onSelect(pane.id));
+      const tag = new CSS2DObject(el);
+      tag.position.set(0, 1.25, 0);
+      group.add(stand, screen, tag);
+      this.shells.set(pane.id, group);
+      this.scene.add(group);
+    }
   }
 
   /** 광장 순번과 집터 안 순번을 매긴다 — 먼저 끝난 에이전트가 광장 앞자리에 선다. */
@@ -172,6 +227,10 @@ export class WorldScene {
     const actor = id ? this.actors.get(id) : undefined;
     if (actor && fly) {
       this.flight = { target: actor.group.position.clone().setY(0.9), distance: Math.min(this.distance(), 17) };
+    } else if (id && fly) {
+      const shell = this.shells.get(id);
+      if (shell) this.flight = { target: shell.position.clone().setY(0.8), distance: Math.min(this.distance(), 17) };
+      else if (id.startsWith("ws:")) this.flyToPlot(id.slice(3));
     }
   }
 

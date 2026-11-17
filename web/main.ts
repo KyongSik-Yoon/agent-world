@@ -1,7 +1,12 @@
 // 들머리: 서버의 스냅샷 흐름을 받아 장면과 HUD 에 나눠 주고, 둘 사이의 고르기·필터·단축키를 잇는다.
 import type { AgentStatus, AgentView, WorldSnapshot } from "../shared/types.ts";
-import { STATUS_LABEL, needsAttention } from "./format.ts";
-import { Hud, STATUS_VAR } from "./hud.ts";
+import { post } from "./api.ts";
+import { Builder } from "./build.ts";
+import { type Action, workspaceKey } from "./detail.ts";
+import { STATUS_VAR } from "./dom.ts";
+import { STATUS_LABEL, bubbleText, needsAttention } from "./format.ts";
+import { Hud } from "./hud.ts";
+import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
 
@@ -22,10 +27,16 @@ function store(key: string, value: string): void {
 }
 
 let selectedId: string | null = null;
+/** 지금 고른 것을 고른 시각 — 얼마나 들여다봤는지 잰다. */
+let selectedAt = 0;
+
+/** 완료를 읽었다고 치는 데 필요한, 상태 창을 열어 둔 최소 시간. 스친 클릭은 치지 않는다. */
+const READ_MS = 1500;
 
 const scene = new WorldScene(document.getElementById("world")!, {
   onSelect: (id) => select(id),
   onHover: (id) => hud.setHover(id),
+  onPlot: (workspaceId) => select(workspaceKey(workspaceId)),
 });
 
 const hud = new Hud({
@@ -35,13 +46,82 @@ const hud = new Hud({
     hud.setHover(id);
   },
   onFilter: (pass) => scene.setFilter(pass),
-  onOpenInHerdr: (a) => void openInHerdr(a),
+  onAction: (action) => act(action),
+});
+
+const terminal = new TermOverlay();
+terminal.onError = (message) => hud.toast("입력을 보내지 못했습니다", message, "var(--blocked)");
+void loadTermTheme();
+
+const builder = new Builder({
+  snapshot: () => hud.latest,
+  select: (id) => select(id),
+  toast: (title, text, color) => hud.toast(title, text, color),
+  draft: (paneId, text) => hud.setDraft(paneId, text),
 });
 
 function select(id: string | null): void {
+  if (id === selectedId) return;
+  // 완료한 에이전트의 상태 창을 들여다보다 떠나면, 읽은 것으로 적는다.
+  const left = hud.selected;
+  if (left?.status === "done" && left.paneId && Date.now() - selectedAt >= READ_MS) markSeen(left, false);
   selectedId = id;
+  selectedAt = Date.now();
   scene.select(id);
   hud.select(id);
+}
+
+/** 완료를 확인했다고 적는다(또는 되돌린다). herdr 의 초점은 건드리지 않고 월드 서버가 기억한다. */
+function markSeen(a: AgentView, undo: boolean): void {
+  if (!a.paneId || !hud.latest?.control) return;
+  const paneId = a.paneId;
+  void post<{ seen?: boolean }>("/api/seen", { paneId, undo })
+    .then((res) => {
+      if (!undo && res.seen) hud.undoToast("확인 처리했습니다", a.title, () => markSeen(a, true));
+    })
+    .catch((e: Error) => hud.toast("확인 처리 실패", e.message, "var(--blocked)"));
+}
+
+function openTerminal(paneId: string): void {
+  const snap = hud.latest;
+  const pane = snap?.panes.find((p) => p.id === paneId);
+  const agent = snap?.agents.find((a) => a.paneId === paneId);
+  const ws = snap?.workspaces.find((w) => w.id === pane?.workspaceId);
+  terminal.open(paneId, agent?.title ?? pane?.label ?? pane?.title ?? paneId, `${ws ? `${ws.number} · ${ws.label} · ` : ""}${paneId}`, pane?.cols);
+}
+
+function act(action: Action): void {
+  switch (action.type) {
+    case "select":
+      select(action.id);
+      break;
+    case "open-herdr":
+      void openInHerdr(action.agent);
+      break;
+    case "terminal":
+      openTerminal(action.paneId);
+      break;
+    case "new-agent":
+      builder.newAgent(action.workspaceId, action.paneId);
+      break;
+    case "new-tab":
+      void builder.newTab(action.workspaceId);
+      break;
+    case "split":
+      void builder.split(action.paneId, action.direction);
+      break;
+    case "rename":
+      builder.rename(action.kind, action.id, action.current, action.what);
+      break;
+    case "close":
+      builder.close(action.kind, action.id);
+      break;
+    case "seen": {
+      const a = hud.latest?.agents.find((x) => x.paneId === action.paneId);
+      if (a) markSeen(a, action.undo);
+      break;
+    }
+  }
 }
 
 async function openInHerdr(a: AgentView): Promise<void> {
@@ -105,9 +185,11 @@ function announce(snapshot: WorldSnapshot): void {
     lastStatus.set(a.id, a.status);
     if (!primed || before === undefined || before === a.status || !needsAttention(a.status)) continue;
     const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : a.workspaceLabel;
-    hud.toast(STATUS_LABEL[a.status], `${a.title} — ${where}`, STATUS_VAR[a.status], () => select(a.id));
+    // 확인 필요면 무엇을 기다리는지까지 알린다.
+    const what = a.status === "blocked" && a.pending ? ` — ${bubbleText(a) ?? ""}` : "";
+    hud.toast(STATUS_LABEL[a.status], `${a.title} — ${where}${what}`, STATUS_VAR[a.status], () => select(a.id));
     if (notify && document.visibilityState !== "visible") {
-      const n = new Notification(`${STATUS_LABEL[a.status]} · ${a.title}`, { body: where, tag: a.id });
+      const n = new Notification(`${STATUS_LABEL[a.status]} · ${a.title}`, { body: `${where}${what}`, tag: a.id });
       n.onclick = () => {
         window.focus();
         select(a.id);
@@ -130,30 +212,60 @@ function connect(): void {
     announce(snapshot);
     scene.sync(snapshot);
     hud.update(snapshot);
+    builder.observe(snapshot);
+    buildBtn.hidden = !snapshot.herdr || !snapshot.control;
   };
   // EventSource 가 스스로 다시 붙는다. 끊긴 동안에는 그렇다고 알려 둔다.
   events.onerror = () => hud.setConnection("down", "서버와 끊김 — 다시 연결 중…");
 }
+
+const buildBtn = document.getElementById("btn-build")!;
 
 connect();
 
 // ── 단추와 단축키 ────────────────────────────────────────────────────────────────────────────
 
 document.getElementById("btn-next")!.addEventListener("click", nextAttention);
+buildBtn.addEventListener("click", () => builder.newHouse());
 document.getElementById("btn-home")!.addEventListener("click", () => {
   select(null);
   scene.overview();
 });
 
 window.addEventListener("keydown", (e) => {
-  const typing = e.target instanceof HTMLInputElement;
+  // 글을 치는 중이면(입력란, 터미널, 대화상자) 그 키는 월드의 단축키가 아니다.
+  const target = e.target instanceof HTMLElement ? e.target : null;
+  const typing = target !== null && (target.matches("input, textarea, select, [contenteditable]") || target.closest("dialog") !== null);
+  if (e.isComposing || terminal.isOpen || document.querySelector("dialog[open]")) return;
   if (e.key === "Escape") {
-    if (typing) (e.target as HTMLInputElement).blur();
+    if (typing) target.blur();
     else select(null);
     return;
   }
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
   switch (e.key.toLowerCase()) {
+    case "c":
+      if (hud.focusComposer()) e.preventDefault();
+      break;
+    case "`": {
+      const paneId = hud.selectedPaneId;
+      if (paneId) {
+        e.preventDefault();
+        openTerminal(paneId);
+      }
+      break;
+    }
+    case "b":
+      if (!buildBtn.hidden) {
+        e.preventDefault();
+        builder.newHouse();
+      }
+      break;
+    case "d": {
+      const a = hud.selected;
+      if (a?.status === "done") markSeen(a, false);
+      break;
+    }
     case "n":
       nextAttention();
       break;
