@@ -1030,6 +1030,13 @@ kbd {
   opacity: 0.5;
 }
 
+/* 입력창 아래의 상태줄·안내줄: 접지 않고 한 줄씩, 넘치는 끝만 끊는다. */
+.term.preview .tl.fit {
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+}
+
 .term .w1,
 .term .w2 {
   display: inline-block;

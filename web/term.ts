@@ -184,9 +184,9 @@ const PROMPT_LINE = /^\s{0,2}[\u276f>\u203a\u00bb]/;
 /**
  * 입력창 아래의 꾸밈(상태줄·안내줄)이 시작하는 줄. 입력창을 확실히 찾지 못하면 -1.
  *
- * 데스크톱 폭에 맞춰 그린 상태줄은 좁은 미리보기에서 줄이 넘쳐 깨지는데, 담긴 것(모델·컨텍스트)은 상태 창이
- * 이미 보여 준다. 입력창 자체는 남긴다 — 보낸 말이나 붙인 이미지가 거기 남아 있는지를 미리보기로 확인하기 때문이다.
- * 가로줄 두 개와 그 사이의 프롬프트 줄이 모두 보일 때만 자르므로, 대화상자처럼 모양이 다른 화면은 그대로 나온다.
+ * 데스크톱 폭에 맞춰 그린 상태줄은 좁은 미리보기에서 줄이 접혀 그림이 깨진다. 이 줄들은 접지 않고 한 줄씩,
+ * 넘치는 끝만 … 로 끊어 보여 준다. 가로줄 두 개와 그 사이의 프롬프트 줄이 모두 보일 때만 그렇게 하므로,
+ * 대화상자처럼 모양이 다른 화면은 평소대로 접혀 전부 나온다.
  */
 export function footerStart(lines: readonly string[]): number {
   const rules: number[] = [];
@@ -208,8 +208,8 @@ export class TermScreen {
   /** 화면을 보고 있어야 하는 상태인지 — 끊겼을 때 다시 붙을지 정한다. */
   private wanted = false;
   onGone: (() => void) | undefined;
-  /** 미리보기에서 입력창 아래의 상태줄·안내줄을 뺀다. */
-  hideFooter = false;
+  /** 미리보기에서 입력창 아래의 상태줄·안내줄을 접지 않고 한 줄씩 보여 준다. */
+  fitFooter = false;
   private lastText: string | undefined;
 
   constructor(private readonly options: ScreenOptions = {}) {
@@ -269,7 +269,7 @@ export class TermScreen {
     return this.source !== undefined;
   }
 
-  /** hideFooter 를 바꾼 뒤, 받아 둔 화면으로 다시 그린다. */
+  /** fitFooter 를 바꾼 뒤, 받아 둔 화면으로 다시 그린다. */
   redraw(): void {
     if (this.lastText !== undefined) this.draw(this.lastText);
   }
@@ -282,9 +282,9 @@ export class TermScreen {
       while (lines.length > 1 && plainText(lines[lines.length - 1]!).trim() === "") lines.pop();
     };
     if (tail || this.back > 0) trim();
-    if (tail && this.hideFooter) {
+    if (tail && this.fitFooter) {
       const start = footerStart(lines.map(plainText));
-      if (start > 0) lines = lines.slice(0, start);
+      if (start > 0) for (const line of lines.slice(start)) line.classList.add("fit");
     }
     if (tail) lines = lines.slice(-tail);
     const stick = this.back === 0 || this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40;

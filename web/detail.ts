@@ -170,10 +170,10 @@ export class DetailPanel {
     }
     this.root.hidden = false;
 
-    // 에이전트의 미리보기는 입력창까지만 보여 준다. 확인 필요일 때는 대화상자가 그 자리에 뜨므로 화면 그대로 둔다.
-    const hideFooter = agent !== undefined && agent.status !== "blocked";
-    if (hideFooter !== this.preview.hideFooter) {
-      this.preview.hideFooter = hideFooter;
+    // 에이전트의 미리보기는 상태줄을 접지 않고 보여 준다. 확인 필요일 때는 대화상자가 그 자리에 뜨므로 화면 그대로 둔다.
+    const fitFooter = agent !== undefined && agent.status !== "blocked";
+    if (fitFooter !== this.preview.fitFooter) {
+      this.preview.fitFooter = fitFooter;
       this.preview.redraw();
     }
     if (wantPreview) this.preview.start(wantPreview);
