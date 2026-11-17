@@ -103,7 +103,7 @@ server/   Bun 서버 — herdr RPC, 로그 tail, 스냅샷을 SSE 로 밀어 준
   adapters/   하네스별 로그 리더
 web/      three.js 장면과 HUD
   detail.ts   상태 창(에이전트·셸·집), term.ts 터미널 미러, build.ts 만들기·닫기 대화상자
-  world/      섬·집터(environment), 캐릭터(characters), 배우(actor), 배치(layout)
+  world/      섬·집터(environment), 캐릭터(characters), 배우(actor), 배치(layout), 이름표 층(labels)
 shared/   서버와 화면이 같이 쓰는 스냅샷 타입
 dev/      mock-herdr.ts — 실제 herdr 없이 화면을 시험하는 흉내 소켓
 ```
