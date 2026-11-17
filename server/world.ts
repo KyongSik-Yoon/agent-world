@@ -43,11 +43,13 @@ function isGenericTitle(title: string): boolean {
   return title === "" || /^[\w.-]+@[\w.-]+:/.test(title) || /^(claude code|codex|agy|antigravity|opencode)$/i.test(title);
 }
 
+/**
+ * 지금 하고 있는 일 — 마지막 활동. 마지막이 사용자 지시면 이번 턴에는 아직 한 일이 없으므로 비워 둔다.
+ * 지난 턴의 활동을 끌어오면 새 지시를 받고도 지난 응답을 말풍선에 단 채 일하러 간다.
+ */
 function currentActivity(recent: readonly Activity[]): Activity | undefined {
-  for (let i = recent.length - 1; i >= 0; i -= 1) {
-    if (recent[i]!.kind !== "user") return recent[i];
-  }
-  return recent[recent.length - 1];
+  const last = recent[recent.length - 1];
+  return last?.kind === "user" ? undefined : last;
 }
 
 interface Tracked {
