@@ -62,7 +62,7 @@ export class DetailPanel {
   private readonly body = h("div", { class: "d-body" });
   private readonly dock = h("div", { class: "d-dock" });
   private readonly quick = h("div", { class: "quick" });
-  private readonly input = h("textarea", { rows: "2", spellcheck: "false" });
+  private readonly input = h("textarea", { rows: "1", spellcheck: "false" });
   private readonly sendBtn = h("button", { class: "btn primary", type: "button" }, "보내기");
   private readonly attachBtn = h("button", { class: "attach", type: "button", title: "이미지 붙이기 — 입력창에 붙여넣거나 끌어다 놓아도 됩니다", "aria-label": "이미지 붙이기" }, "＋");
   private readonly note = h("div", { class: "dock-note" });
@@ -99,6 +99,16 @@ export class DetailPanel {
     term.addEventListener("click", () => this.docked && this.callbacks.act({ type: "terminal", paneId: this.docked.paneId }));
     this.quick.append(keys, term);
 
+    this.input.addEventListener("input", () => this.fitInput());
+    // 상태 창 폭이 바뀌면 줄바꿈이 달라지므로 높이를 다시 맞춘다(높이 변화에는 반응하지 않는다).
+    // 관찰 콜백 안에서 크기를 바꾸면 관찰 고리 오류가 나므로 다음 프레임에 맞춘다.
+    let inputWidth = 0;
+    new ResizeObserver(([entry]) => {
+      const width = entry?.contentRect.width ?? 0;
+      if (width === inputWidth) return;
+      inputWidth = width;
+      requestAnimationFrame(() => this.fitInput());
+    }).observe(this.input);
     this.input.addEventListener("keydown", (e) => {
       // 한글을 조합하는 중의 Enter 는 글자를 확정하는 키다.
       if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
@@ -191,7 +201,19 @@ export class DetailPanel {
 
   /** 지금 그 pane 의 입력창이 열려 있으면 보낼 말을 적어 둔다. */
   setDraft(paneId: string, text: string): void {
-    if (this.docked?.paneId === paneId) this.input.value = text;
+    if (this.docked?.paneId === paneId) this.setInput(text);
+  }
+
+  /** 입력창 글을 바꾸고 높이를 글에 맞춘다. */
+  private setInput(text: string): void {
+    this.input.value = text;
+    this.fitInput();
+  }
+
+  /** 입력창은 한 줄 높이에서 시작해 글이 늘면 따라 커진다(최대 높이는 CSS 가 정한다). */
+  private fitInput(): void {
+    this.input.style.height = "auto";
+    this.input.style.height = `${this.input.scrollHeight + this.input.offsetHeight - this.input.clientHeight}px`;
   }
 
   setCovered(covered: boolean): void {
@@ -259,7 +281,7 @@ export class DetailPanel {
     this.dock.hidden = target === null;
     this.attachBtn.hidden = !target?.agent;
     if (same || !target) return;
-    this.input.value = "";
+    this.setInput("");
     this.clearShots();
     this.input.placeholder = target.agent ? "이 에이전트에게 보낼 말 — Enter 전송 · Shift+Enter 줄바꿈" : "명령을 치고 Enter — 이 셸에서 바로 실행합니다";
     this.sendBtn.textContent = target.agent ? "보내기" : "실행";
@@ -337,7 +359,7 @@ export class DetailPanel {
         this.setNote("", "");
         this.open.screen = true;
       }
-      if (this.docked === target) this.input.value = "";
+      if (this.docked === target) this.setInput("");
     } catch (e) {
       if (e instanceof ApiError && e.code === "agent_blocked") {
         this.setNote("에이전트가 질문에 대한 답을 기다리는 중입니다. 화면의 선택지를 위 키로 먼저 눌러 주세요.", "err");

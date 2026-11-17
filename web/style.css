@@ -1290,14 +1290,16 @@ kbd {
   gap: 4px;
 }
 
+/* 같은 폭으로 나누되, 글자가 들어가지 않는 단추(⇧Tab)만 제 폭을 지킨다. */
 .quick .keys button {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 3px 2px;
+  flex: 1 1 0;
+  min-width: max-content;
+  padding: 0 4px;
 }
 
 .quick button {
-  padding: 3px 6px;
+  height: 26px;
+  padding: 0 6px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--soft);
@@ -1317,7 +1319,9 @@ kbd {
   white-space: nowrap;
 }
 
+/* 입력창 한 줄 높이 — 이미지 단추와 보내기 단추가 같은 높이로 선다. 입력창이 커지면 단추는 아래에 붙어 있다. */
 .compose {
+  --compose-h: 38px;
   display: flex;
   gap: 6px;
   align-items: flex-end;
@@ -1339,8 +1343,17 @@ kbd {
 
 .compose textarea {
   flex: 1;
-  min-height: 42px;
+  height: var(--compose-h);
+  min-height: var(--compose-h);
   max-height: 220px;
+  resize: none;
+}
+
+/* 안내 문구가 넘치면 두 줄로 내려가 잘리지 않고 한 줄에서 줄인다. */
+.compose textarea::placeholder {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .compose textarea:focus,
@@ -1353,13 +1366,15 @@ kbd {
 
 .compose .btn {
   flex: none;
-  padding: 9px 12px;
+  height: var(--compose-h);
+  padding: 0 14px;
+  border-radius: 10px;
 }
 
 .compose .attach {
   flex: none;
-  width: 30px;
-  height: 36px;
+  width: var(--compose-h);
+  height: var(--compose-h);
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--soft);
@@ -1757,15 +1772,15 @@ dialog.dlg .warn {
 
   .quick button,
   .quick .keys button {
-    min-height: 36px;
-    padding: 8px 4px;
+    height: 36px;
+    padding: 0 4px;
     font-size: 13px;
   }
 
   .quick button.wide {
-    padding: 8px 10px;
+    padding: 0 10px;
   }
-  .compose .attach { width: 40px; height: 42px; }
+  .compose { --compose-h: 42px; }
   .shot { width: 60px; height: 60px; }
   .shot button { width: 24px; height: 24px; line-height: 24px; font-size: 12px; }
 
