@@ -155,38 +155,90 @@ export const codexReader: LogReader<LogSummary> = {
   ready: (s) => s.sawAssistant && s.model !== undefined,
 };
 
-async function walk(sinceMs: number, wantId?: string): Promise<LogFile[]> {
-  const found: LogFile[] = [];
-  const list = async (dir: string): Promise<string[]> => {
-    try {
-      return await readdir(dir);
-    } catch {
-      return [];
+const ROLLOUT = /^rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
+/** 매번 빠짐없이 살펴보는 날짜 폴더의 수(최근 것부터). 새 세션의 로그는 여기에 생긴다. */
+const RECENT_DAYS = 2;
+/** 그보다 오래된 날짜 폴더를 전부 다시 살펴보는 간격. 그 사이에는 움직이던 로그만 본다. */
+const OLD_SCAN_MS = 5 * 60_000;
+
+async function list(dir: string): Promise<string[]> {
+  try {
+    return await readdir(dir);
+  } catch {
+    return [];
+  }
+}
+
+/** 날짜 폴더들(`YYYY/MM/DD`)을 최근 것부터. 오래 쓴 사람은 수백 개가 된다. */
+async function dayDirs(): Promise<string[]> {
+  const newestFirst = (names: string[]) => names.filter((n) => /^\d+$/.test(n)).sort((x, y) => Number(y) - Number(x));
+  const out: string[] = [];
+  for (const year of newestFirst(await list(root()))) {
+    for (const month of newestFirst(await list(join(root(), year)))) {
+      for (const day of newestFirst(await list(join(root(), year, month)))) out.push(join(root(), year, month, day));
     }
-  };
-  for (const year of await list(root())) {
-    for (const month of await list(join(root(), year))) {
-      for (const day of await list(join(root(), year, month))) {
-        const dir = join(root(), year, month, day);
-        for (const name of await list(dir)) {
-          const m = /^rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i.exec(name);
-          if (!m) continue;
-          const sessionId = m[1]!;
-          if (wantId && sessionId !== wantId) continue;
-          try {
-            const info = await stat(join(dir, name));
-            if (info.mtimeMs >= sinceMs) found.push({ sessionId, path: join(dir, name), mtimeMs: info.mtimeMs });
-          } catch {
-            // 사이에 지워진 파일.
-          }
-        }
+  }
+  return out;
+}
+
+/** 그 로그가 sinceMs 뒤에 움직였으면 돌려준다. */
+async function active(path: string, sessionId: string, sinceMs: number): Promise<LogFile | undefined> {
+  try {
+    const info = await stat(path);
+    return info.mtimeMs >= sinceMs ? { sessionId, path, mtimeMs: info.mtimeMs } : undefined;
+  } catch {
+    // 사이에 지워진 파일.
+    return undefined;
+  }
+}
+
+async function activeIn(dir: string, sinceMs: number): Promise<LogFile[]> {
+  const found: LogFile[] = [];
+  for (const name of await list(dir)) {
+    const m = ROLLOUT.exec(name);
+    const hit = m && (await active(join(dir, name), m[1]!, sinceMs));
+    if (hit) found.push(hit);
+  }
+  return found;
+}
+
+/** 오래된 날짜 폴더에서 마지막으로 전부 살폈을 때 움직이고 있던 로그들(경로 → 세션 id)과 그 시각. */
+let oldActive = new Map<string, string>();
+let oldScannedAt = 0;
+
+/**
+ * 최근에 움직인 로그를 찾는다.
+ *
+ * 파일의 수정 시각을 보려면 하나하나 stat 해야 하는데, 여러 달 쓴 사람은 로그가 수천 개다. 10초마다 전부 보면
+ * 그것만으로 스냅샷이 늦어진다. 며칠째 이어지는 세션은 오래된 폴더에 있으므로 날짜로 잘라 버릴 수는 없다 —
+ * 그래서 최근 폴더는 매번, 오래된 폴더는 가끔 전부 보고 그 사이에는 움직이던 것만 다시 본다.
+ */
+async function discover(sinceMs: number): Promise<LogFile[]> {
+  const days = await dayDirs();
+  const found: LogFile[] = [];
+  for (const dir of days.slice(0, RECENT_DAYS)) found.push(...(await activeIn(dir, sinceMs)));
+  if (Date.now() - oldScannedAt >= OLD_SCAN_MS) {
+    const next = new Map<string, string>();
+    for (const dir of days.slice(RECENT_DAYS)) {
+      for (const file of await activeIn(dir, sinceMs)) {
+        next.set(file.path, file.sessionId);
+        found.push(file);
       }
+    }
+    oldActive = next;
+    oldScannedAt = Date.now();
+  } else {
+    for (const [path, sessionId] of oldActive) {
+      const hit = await active(path, sessionId, sinceMs);
+      if (hit) found.push(hit);
     }
   }
   return found;
 }
 
 const pathCache = new Map<string, string>();
+/** 날짜 폴더를 전부 뒤졌는데 로그가 없던 세션. 아직 첫 줄을 쓰지 않은 것이라, 그 뒤로는 최근 폴더만 본다. */
+const missed = new Set<string>();
 
 export const codex: Harness = {
   vendor: "codex",
@@ -196,9 +248,18 @@ export const codex: Harness = {
     if (!SESSION_ID.test(sessionId)) return null;
     const cached = pathCache.get(sessionId);
     if (cached) return cached;
-    const hit = (await walk(0, sessionId))[0];
-    if (hit) pathCache.set(sessionId, hit.path);
-    return hit?.path ?? null;
+    // 이름에 세션 id 가 들어 있어 stat 없이 찾는다. 대개 최근 세션이라 최근 폴더부터 보고, 찾으면 멈춘다.
+    const days = await dayDirs();
+    for (const dir of missed.has(sessionId) ? days.slice(0, RECENT_DAYS) : days) {
+      const name = (await list(dir)).find((n) => ROLLOUT.exec(n)?.[1] === sessionId);
+      if (!name) continue;
+      const path = join(dir, name);
+      pathCache.set(sessionId, path);
+      missed.delete(sessionId);
+      return path;
+    }
+    missed.add(sessionId);
+    return null;
   },
-  discover: (sinceMs) => walk(sinceMs),
+  discover,
 };
