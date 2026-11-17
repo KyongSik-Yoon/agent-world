@@ -3,8 +3,12 @@ import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+export function herdrDefaultSocket(): string {
+  return join(homedir(), ".config", "herdr", "herdr.sock");
+}
+
 export function herdrSocketPath(): string {
-  return process.env.HERDR_SOCKET_PATH || join(homedir(), ".config", "herdr", "herdr.sock");
+  return process.env.HERDR_SOCKET_PATH || herdrDefaultSocket();
 }
 
 export class HerdrError extends Error {
@@ -113,7 +117,13 @@ export interface HerdrSnapshot {
 
 export async function herdrSnapshot(): Promise<HerdrSnapshot> {
   const result = await herdrRpc<{ snapshot: HerdrSnapshot }>("session.snapshot");
-  return result.snapshot;
+  const snap = result.snapshot;
+  // 버전이 다른 herdr 가 목록 하나를 빼고 보내도 스냅샷 전체가 깨지지 않게 한다.
+  snap.workspaces ??= [];
+  snap.tabs ??= [];
+  snap.panes ??= [];
+  snap.agents ??= [];
+  return snap;
 }
 
 /** 사용자의 실제 herdr 화면을 그 pane 으로 옮긴다(pane·tab·workspace 가 한 번에 따라간다). */

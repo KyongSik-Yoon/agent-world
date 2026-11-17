@@ -73,6 +73,7 @@ export class World {
   /** herdr pane 안에서 돌던 세션을 마지막으로 본 시각. pane 을 닫은 세션이 "herdr 밖 세션"으로 되살아나지 않게 한다. */
   private readonly lastInHerdr = new Map<string, number>();
   /** 완료 상태인 pane 의 herdr 상태 변경 번호 — 확인 기록을 남길 때 쓴다. */
+  /** 완료 상태인 pane 과 그 상태 번호. 스냅샷을 만드는 도중에 확인 요청이 와도 답할 수 있게, 만들 때마다 비우지 않고 고쳐 쓴다. */
   private doneSeq = new Map<string, number>();
 
   /** outside: herdr 에 붙어 있는 동안에도 herdr 밖 세션을 보여 준다. */
@@ -97,7 +98,13 @@ export class World {
       entry = { harness, path, tail: new TailedLog(path, harness.reader) };
       this.tracked.set(key, entry);
     }
-    await entry.tail.refresh();
+    try {
+      await entry.tail.refresh();
+    } catch {
+      // 열 수 없는 로그(권한이 다르거나, 확인한 사이에 지워졌다) 하나가 스냅샷 전체를 깨뜨리지 않게 한다.
+      // 그 에이전트는 로그 없이 herdr 가 알려 주는 것만으로 선다.
+      return undefined;
+    }
     return entry;
   }
 
@@ -194,7 +201,8 @@ export class World {
     if (status !== "blocked") view.pending = undefined;
     const seq = pane.state_change_seq ?? 0;
     const seen = this.seen.check(pane.pane_id, seq);
-    if (status === "done") {
+    if (status !== "done") this.doneSeq.delete(pane.pane_id);
+    else {
       this.doneSeq.set(pane.pane_id, seq);
       if (seen) {
         status = "idle";
@@ -270,7 +278,6 @@ export class World {
 
   private async build(): Promise<WorldSnapshot> {
     this.used = new Set();
-    this.doneSeq = new Map();
     await this.seen.load();
     let snap: HerdrSnapshot | undefined;
     let herdrError: string | undefined;
@@ -326,7 +333,9 @@ export class World {
           rows: size?.height,
         });
       }
-      this.seen.prune(new Set(snap.panes.map((p) => p.pane_id)));
+      const alive = new Set(snap.panes.map((p) => p.pane_id));
+      this.seen.prune(alive);
+      for (const id of this.doneSeq.keys()) if (!alive.has(id)) this.doneSeq.delete(id);
     }
 
     // herdr 에 붙어 있으면 herdr 의 에이전트만 보여 준다 — 밖의 세션은 월드에서 말을 걸 수도, 확인 처리할 수도
