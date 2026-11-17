@@ -74,6 +74,8 @@ export class WorldScene {
   private timer: ReturnType<typeof setTimeout> | undefined;
   /** 이름표 층을 다시 놓아야 하는 프레임 수(스냅샷·크기·고르기가 바뀐 직후). */
   private labelsDirty = 3;
+  /** 고른 캐릭터가 다른 자리로 가는 중이라 카메라가 따라 움직이고 있다. */
+  private following = false;
   private readonly lastCamera = new THREE.Matrix4();
   /** 직전 프레임에 걸어가는 캐릭터가 있었는지. */
   private walking = false;
@@ -420,10 +422,17 @@ export class WorldScene {
     this.callbacks.onSelect(this.pick(e));
   }
 
-  /** 지금 몇 ms 간격으로 그릴지: 조작 중 0(주사율 그대로), 가만히 두면 30장쯤, 곁눈질 화면이면 12장쯤. */
+  /**
+   * 지금 몇 ms 간격으로 그릴지: 조작 중 0(주사율 그대로), 가만히 두면 30장쯤, 곁눈질 화면이면 12장쯤.
+   *
+   * 고른 캐릭터를 따라가는 flight 는 고르기를 풀 때까지 남아 있으므로, flight 가 있다는 것만으로 조작 중이라고
+   * 치지 않는다(그러면 캐릭터를 고른 내내 주사율대로 그린다). 다가가는 동안은 고른 입력에서 ACTIVE_MS 가 덮고,
+   * 그 뒤로는 화면이 크게 움직일 때만 — 제자리로 돌아가는 중이거나, 고른 캐릭터가 먼 길을 가는 중일 때만 — 조작 중이다.
+   */
   private pace(now: number): { gap: number; ambient: boolean } {
     const quiet = now - this.lastInputAt;
-    if (this.flight !== null || quiet < ACTIVE_MS) return { gap: 0, ambient: false };
+    const sweeping = this.flight?.position !== undefined || (this.flight !== null && this.following);
+    if (sweeping || quiet < ACTIVE_MS) return { gap: 0, ambient: false };
     const ambient = quiet > AMBIENT_AFTER_MS || !document.hasFocus();
     return { gap: ambient ? AMBIENT_FRAME_MS : IDLE_FRAME_MS, ambient };
   }
@@ -484,6 +493,7 @@ export class WorldScene {
     // 고른 에이전트가 걸어가면 카메라의 목표도 같이 간다.
     const selected = this.selectedId ? this.actors.get(this.selectedId) : undefined;
     if (selected && this.flight) this.flight.target.copy(selected.group.position).setY(0.9);
+    this.following = selected?.transit ?? false;
     if (this.flight?.position) {
       const k = 1 - Math.exp(-dt * 4.2);
       this.controls.target.lerp(this.flight.target, k);
