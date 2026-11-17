@@ -5,6 +5,9 @@
 // 터미널 하나가 창을 여러 개 가질 수 있어서(ghostty), herdr 가 붙이는 제목 `<호스트>: <워크스페이스>` 로 고른다.
 import { readFile } from "node:fs/promises";
 import { hostname } from "node:os";
+import { resolve } from "node:path";
+
+import { herdrDefaultSocket, herdrSocketPath } from "./herdr.ts";
 
 interface HyprClient {
   address: string;
@@ -30,17 +33,50 @@ async function parentOf(pid: number): Promise<number> {
   }
 }
 
+/**
+ * 이 서버가 붙은 herdr 세션의 이름. 기본 세션이면 "", 알 수 없는 자리의 소켓이면 undefined(가리지 않는다).
+ * 이름 붙은 세션의 소켓은 `…/herdr/sessions/<이름>/herdr.sock` 에 있다.
+ */
+export function sessionOfSocket(socket: string, defaultSocket: string): string | undefined {
+  if (resolve(socket) === resolve(defaultSocket)) return "";
+  return /\/sessions\/([^/]+)\/herdr\.sock$/.exec(resolve(socket))?.[1];
+}
+
+/**
+ * herdr 프로세스가 어느 세션의 화면인지를 실행 인자로 읽는다. 기본 세션이면 "", 화면이 아니면(서버, 다른 기계에
+ * 붙은 것, 한 번 돌고 끝나는 명령) null.
+ */
+export function sessionOfClient(args: readonly string[]): string | null {
+  const rest = args.slice(1);
+  if (rest.includes("--remote") || rest.some((a) => a.startsWith("--remote=")) || rest.includes("--machine")) return null;
+  let session = "";
+  const words: string[] = [];
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i]!;
+    if (arg === "--session") session = rest[(i += 1)] ?? "";
+    else if (arg.startsWith("--session=")) session = arg.slice("--session=".length);
+    else if (!arg.startsWith("-")) words.push(arg);
+  }
+  if (words.length === 0) return session;
+  if (words[0] === "session" && words[1] === "attach") return words[2] ?? null;
+  return null;
+}
+
 async function herdrClientAncestors(): Promise<Set<number>> {
   const pids = (await run(["pgrep", "-x", "herdr"])).split("\n").map(Number).filter(Boolean);
+  // herdr 창이 세션마다 따로 떠 있을 수 있다. 이 서버가 붙은 세션의 창만 올린다 — 다른 세션의 창을 올리면
+  // 누른 pane 이 없는 화면이 앞으로 나온다.
+  const mine = sessionOfSocket(herdrSocketPath(), herdrDefaultSocket());
   const ancestors = new Set<number>();
   for (const pid of pids) {
-    let cmdline = "";
+    let args: string[];
     try {
-      cmdline = (await readFile(`/proc/${pid}/cmdline`, "utf8")).replaceAll("\0", " ");
+      args = (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0").filter(Boolean);
     } catch {
       continue;
     }
-    if (/\sserver(\s|$)/.test(cmdline)) continue;
+    const session = sessionOfClient(args);
+    if (session === null || (mine !== undefined && session !== mine)) continue;
     for (let p = await parentOf(pid), hops = 0; p > 1 && hops < 12; p = await parentOf(p), hops += 1) ancestors.add(p);
   }
   return ancestors;
