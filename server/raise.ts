@@ -65,6 +65,8 @@ export async function findHerdrWindow(): Promise<HyprClient | null> {
 }
 
 export async function raiseHerdrWindow(): Promise<boolean> {
+  // 창 초점을 빼앗기고 싶지 않으면 AGENT_WORLD_RAISE=0 으로 끈다(herdr 안의 화면만 옮긴다).
+  if (process.env.AGENT_WORLD_RAISE === "0") return false;
   const target = await findHerdrWindow();
   if (!target) return false;
   await run(["hyprctl", "dispatch", "focuswindow", `address:${target.address}`]);

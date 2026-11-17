@@ -1,0 +1,280 @@
+// 3D 장면: 렌더러·카메라·조작, 스냅샷을 배우들로 옮기는 일, 고르기.
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
+
+import type { AgentView, WorldSnapshot } from "../../shared/types.ts";
+import { Actor } from "./actor.ts";
+import { Environment, type Theme } from "./environment.ts";
+import { buildLayout, type Layout } from "./layout.ts";
+
+export interface SceneCallbacks {
+  onSelect(id: string | null): void;
+  onHover(id: string | null): void;
+}
+
+const FOG: Record<Theme, string> = { day: "#CBE7F6", night: "#161B33" };
+
+export class WorldScene {
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly labels = new CSS2DRenderer();
+  private readonly scene = new THREE.Scene();
+  private readonly camera = new THREE.PerspectiveCamera(36, 1, 0.5, 600);
+  private readonly controls: OrbitControls;
+  private readonly env: Environment;
+  private readonly actors = new Map<string, Actor>();
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly pointer = new THREE.Vector2();
+  private readonly clock = new THREE.Clock();
+  private layout: Layout = buildLayout([]);
+  private layoutKey = "";
+  private selectedId: string | null = null;
+  private hoveredId: string | null = null;
+  /** 카메라가 부드럽게 옮겨 갈 목표. 사용자가 직접 움직이면 지운다. */
+  private flight: { target: THREE.Vector3; distance: number } | null = null;
+  private downAt: { x: number; y: number } | null = null;
+
+  constructor(
+    private readonly container: HTMLElement,
+    private readonly callbacks: SceneCallbacks,
+  ) {
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    container.append(this.renderer.domElement);
+
+    this.labels.domElement.className = "labels";
+    container.append(this.labels.domElement);
+
+    this.scene.fog = new THREE.Fog(FOG.day, 70, 210);
+    this.env = new Environment((workspaceId) => this.flyToPlot(workspaceId));
+    this.scene.add(this.env.group);
+
+    this.camera.position.set(0, 34, 44);
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.09;
+    this.controls.minDistance = 7;
+    this.controls.maxDistance = 130;
+    this.controls.minPolarAngle = 0.2;
+    this.controls.maxPolarAngle = 1.36;
+    this.controls.target.set(0, 0.5, 0);
+    this.controls.addEventListener("start", () => {
+      this.flight = null;
+    });
+
+    const el = this.renderer.domElement;
+    el.addEventListener("pointermove", (e) => this.onPointerMove(e));
+    el.addEventListener("pointerdown", (e) => {
+      this.downAt = { x: e.clientX, y: e.clientY };
+    });
+    el.addEventListener("pointerup", (e) => this.onPointerUp(e));
+    el.addEventListener("pointerleave", () => this.setHover(null));
+
+    new ResizeObserver(() => this.resize()).observe(container);
+    this.resize();
+    this.overview(false);
+    this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  private resize(): void {
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h);
+    this.labels.setSize(w, h);
+  }
+
+  setTheme(theme: Theme): void {
+    this.env.setTheme(theme);
+    (this.scene.fog as THREE.Fog).color.set(FOG[theme]);
+  }
+
+  /** 스냅샷을 장면에 반영한다: 배치가 바뀌었으면 무대를 다시 짓고, 배우를 만들고 치우고 갱신한다. */
+  sync(snapshot: WorldSnapshot): void {
+    const key = snapshot.workspaces.map((w) => w.id).join("|");
+    if (key !== this.layoutKey) {
+      const first = this.layoutKey === "";
+      this.layoutKey = key;
+      this.layout = buildLayout(snapshot.workspaces.map((w) => w.id));
+      this.env.rebuild(this.layout, snapshot.workspaces);
+      if (first) this.overview(false);
+    } else {
+      for (const ws of snapshot.workspaces) this.env.labelSign(ws);
+    }
+
+    const seen = new Set<string>();
+    for (const view of snapshot.agents) {
+      seen.add(view.id);
+      const actor = this.actors.get(view.id);
+      if (actor && actor.view.vendor === view.vendor) {
+        actor.apply(view);
+        continue;
+      }
+      if (actor) this.removeActor(view.id);
+      const created = new Actor(
+        view,
+        (id) => this.callbacks.onSelect(id),
+        (id) => this.setHover(id),
+      );
+      created.selected = view.id === this.selectedId;
+      this.actors.set(view.id, created);
+      this.scene.add(created.group);
+    }
+    for (const id of [...this.actors.keys()]) if (!seen.has(id)) this.removeActor(id);
+
+    this.place(snapshot.agents);
+    const blocked = snapshot.agents.filter((a) => a.status === "blocked").length;
+    const done = snapshot.agents.filter((a) => a.status === "done").length;
+    this.env.setSignal(blocked, done);
+  }
+
+  /** 광장 순번과 집터 안 순번을 매긴다 — 먼저 끝난 에이전트가 광장 앞자리에 선다. */
+  private place(agents: readonly AgentView[]): void {
+    const done = agents.filter((a) => a.status === "done").sort((a, b) => a.statusSince - b.statusSince || a.id.localeCompare(b.id));
+    done.forEach((a, i) => {
+      const actor = this.actors.get(a.id);
+      if (actor) actor.placement = { plaza: i, inPlot: 0 };
+    });
+    const groups = new Map<string, AgentView[]>();
+    for (const a of agents) {
+      if (a.status === "done") continue;
+      const bucket = a.status === "unknown" ? "idle" : a.status;
+      const k = `${a.workspaceId}|${bucket}`;
+      groups.set(k, [...(groups.get(k) ?? []), a]);
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => a.id.localeCompare(b.id));
+      list.forEach((a, i) => {
+        const actor = this.actors.get(a.id);
+        if (actor) actor.placement = { plaza: 0, inPlot: i };
+      });
+    }
+  }
+
+  private removeActor(id: string): void {
+    const actor = this.actors.get(id);
+    if (!actor) return;
+    this.scene.remove(actor.group);
+    actor.dispose();
+    this.actors.delete(id);
+    if (this.hoveredId === id) this.hoveredId = null;
+  }
+
+  /** 고른 에이전트를 표시하고, fly 면 카메라가 따라간다. */
+  select(id: string | null, fly = true): void {
+    this.selectedId = id;
+    for (const [actorId, actor] of this.actors) actor.selected = actorId === id;
+    const actor = id ? this.actors.get(id) : undefined;
+    if (actor && fly) {
+      this.flight = { target: actor.group.position.clone().setY(0.9), distance: Math.min(this.distance(), 17) };
+    }
+  }
+
+  /** 로스터 필터: 통과하지 못한 배우를 흐리게 한다. null 이면 모두 또렷하게. */
+  setFilter(pass: ((view: AgentView) => boolean) | null): void {
+    for (const actor of this.actors.values()) actor.muted = pass ? !pass(actor.view) : false;
+  }
+
+  setExternalHover(id: string | null): void {
+    this.setHover(id, false);
+  }
+
+  private setHover(id: string | null, notify = true): void {
+    if (id === this.hoveredId) return;
+    this.hoveredId = id;
+    for (const [actorId, actor] of this.actors) actor.hovered = actorId === id;
+    this.renderer.domElement.style.cursor = id ? "pointer" : "";
+    if (notify) this.callbacks.onHover(id);
+  }
+
+  private distance(): number {
+    return this.camera.position.distanceTo(this.controls.target);
+  }
+
+  /** 마을 전체가 보이는 자리로 돌아간다. */
+  overview(animate = true): void {
+    const distance = this.layout.islandRadius * 2.35 + 6;
+    const target = new THREE.Vector3(0, 0.5, 1.5);
+    if (animate) {
+      this.flight = { target, distance };
+      return;
+    }
+    this.controls.target.copy(target);
+    const dir = new THREE.Vector3(0, 0.72, 0.7).normalize();
+    this.camera.position.copy(target).addScaledVector(dir, distance);
+    this.controls.update();
+  }
+
+  private flyToPlot(workspaceId: string): void {
+    const plot = this.layout.plots.get(workspaceId);
+    if (plot) this.flight = { target: plot.center.clone().setY(0.8), distance: 21 };
+  }
+
+  private pick(e: PointerEvent): string | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hits = this.raycaster.intersectObjects(
+      [...this.actors.values()].map((a) => a.hit),
+      false,
+    );
+    return (hits[0]?.object.userData.actorId as string | undefined) ?? null;
+  }
+
+  private onPointerMove(e: PointerEvent): void {
+    if (e.buttons !== 0) return;
+    this.setHover(this.pick(e));
+  }
+
+  private onPointerUp(e: PointerEvent): void {
+    const down = this.downAt;
+    this.downAt = null;
+    // 끌어서 카메라를 돌린 것은 클릭이 아니다.
+    if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 || e.button !== 0) return;
+    this.callbacks.onSelect(this.pick(e));
+  }
+
+  private frame(): void {
+    const dt = Math.min(this.clock.getDelta(), 0.1);
+    const t = this.clock.elapsedTime;
+
+    const actors = [...this.actors.values()];
+    for (const actor of actors) actor.update(t, dt, this.layout, this.camera);
+    // 서로 겹치지 않게 살짝 밀어낸다.
+    for (let i = 0; i < actors.length; i += 1) {
+      for (let j = i + 1; j < actors.length; j += 1) {
+        const a = actors[i]!.group.position;
+        const b = actors[j]!.group.position;
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const d = Math.hypot(dx, dz);
+        if (d >= 1.25 || d < 1e-4) continue;
+        const push = ((1.25 - d) / d) * 0.5 * Math.min(1, dt * 8);
+        actors[i]!.nudge(-dx * push, -dz * push);
+        actors[j]!.nudge(dx * push, dz * push);
+      }
+    }
+
+    // 고른 에이전트가 걸어가면 카메라의 목표도 같이 간다.
+    const selected = this.selectedId ? this.actors.get(this.selectedId) : undefined;
+    if (selected && this.flight) this.flight.target.copy(selected.group.position).setY(0.9);
+    if (this.flight) {
+      const k = 1 - Math.exp(-dt * 4.2);
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      const distance = offset.length() + (this.flight.distance - offset.length()) * k;
+      this.controls.target.lerp(this.flight.target, k);
+      this.camera.position.copy(this.controls.target).addScaledVector(offset.normalize(), distance);
+      if (!selected && this.controls.target.distanceTo(this.flight.target) < 0.02 && Math.abs(distance - this.flight.distance) < 0.05) this.flight = null;
+    }
+
+    this.env.update(t, dt);
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+    this.labels.render(this.scene, this.camera);
+  }
+}

@@ -56,9 +56,12 @@ export class World {
   private external: Array<LogFile & { harness: Harness }> = [];
   private discoveredAt = 0;
   private discovering = false;
+  /** 이번 스냅샷에서 읽은 로그들 — 끝나면 나머지는 놓아준다. */
+  private used = new Set<string>();
 
   private async track(harness: Harness, sessionId: string, knownPath?: string): Promise<Tracked | undefined> {
     const key = `${harness.vendor}:${sessionId}`;
+    this.used.add(key);
     let entry = this.tracked.get(key);
     if (!entry) {
       const missedAt = this.unresolved.get(key);
@@ -206,7 +209,18 @@ export class World {
       });
   }
 
-  async snapshot(): Promise<WorldSnapshot> {
+  private running: Promise<WorldSnapshot> | undefined;
+
+  /** 스냅샷을 만든다. 만드는 중에 또 부르면 같은 결과를 함께 기다린다. */
+  snapshot(): Promise<WorldSnapshot> {
+    this.running ??= this.build().finally(() => {
+      this.running = undefined;
+    });
+    return this.running;
+  }
+
+  private async build(): Promise<WorldSnapshot> {
+    this.used = new Set();
     let snap: HerdrSnapshot | undefined;
     let herdrError: string | undefined;
     try {
@@ -249,9 +263,10 @@ export class World {
       }
     }
 
-    // 사라진 에이전트의 상태 기록을 치운다.
+    // 사라진 에이전트의 상태 기록과, 더는 읽지 않는 로그를 치운다.
     const alive = new Set(agents.map((a) => a.id));
     for (const id of this.since.keys()) if (!alive.has(id)) this.since.delete(id);
+    for (const key of this.tracked.keys()) if (!this.used.has(key)) this.tracked.delete(key);
 
     return {
       at: Date.now(),

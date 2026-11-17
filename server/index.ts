@@ -82,6 +82,8 @@ const server = Bun.serve({
   hostname: "127.0.0.1",
   port: PORT,
   idleTimeout: 0,
+  // 평소에는 한 번 묶어 둔 번들을 내보낸다. 화면을 고치는 동안에는 AGENT_WORLD_DEV=1 로 띄운다.
+  development: process.env.AGENT_WORLD_DEV === "1",
   routes: {
     "/": index,
     "/api/snapshot": {

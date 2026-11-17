@@ -45,7 +45,7 @@ export function herdrRpc<T = unknown>(method: string, params: Record<string, unk
       }
     };
     socket.on("connect", () => socket.write(`${JSON.stringify({ id, method, params })}\n`));
-    socket.on("data", (c) => {
+    socket.on("data", (c: Buffer) => {
       chunks.push(c);
       if (c[c.length - 1] === 0x0a) parse();
     });

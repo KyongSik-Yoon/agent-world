@@ -54,6 +54,12 @@ export function oneLine(text: string, max = MAX_ACTIVITY_CHARS): string {
 }
 
 export function pushActivity(s: LogSummary, kind: ActivityKind, name: string, text: string, at: string): Activity {
+  const last = s.recent[s.recent.length - 1];
+  if (kind === "thinking" && last?.kind === "thinking") {
+    // 연달아 이어지는 생각은 한 줄로 접는다 — 로그가 "생각 중"으로만 차지 않게.
+    last.at = at;
+    return last;
+  }
   const activity: Activity = { kind, name, text: oneLine(text), at };
   s.recent.push(activity);
   if (s.recent.length > MAX_RECENT) s.recent.splice(0, s.recent.length - MAX_RECENT);

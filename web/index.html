@@ -1,2 +1,41 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><title>Agent World</title></head><body>placeholder</body></html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent World</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 42'%3E%3Cpath d='M8 11H34V19H38V23H34V31H31.5V27H30V31H27.5V27H14.5V31H12V27H10.5V31H8V23H4V19H8Z' fill='%23D77757'/%3E%3Crect x='11.75' y='14.6' width='2.8' height='4.6' fill='%2309090B'/%3E%3Crect x='27.45' y='14.6' width='2.8' height='4.6' fill='%2309090B'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body data-theme="day">
+    <div id="world"></div>
+
+    <header id="topbar" class="glass">
+      <div class="brand"><span class="brand-mark"></span>Agent World</div>
+      <div id="chips" role="group" aria-label="상태별 에이전트 수"></div>
+      <div class="spacer"></div>
+      <span id="conn" class="conn" data-state="wait">연결 중…</span>
+      <button id="btn-next" class="btn accent" type="button" title="확인할 에이전트로 차례로 이동 (N)">
+        다음 확인 <b id="next-count">0</b>
+      </button>
+      <button id="btn-notify" class="btn icon" type="button" title="완료·확인 필요 알림 받기" aria-pressed="false">🔔</button>
+      <button id="btn-theme" class="btn icon" type="button" title="낮/밤 바꾸기 (T)">🌙</button>
+      <button id="btn-home" class="btn icon" type="button" title="마을 전체 보기 (H)">⌂</button>
+    </header>
+
+    <aside id="roster" class="glass" aria-label="에이전트 목록">
+      <input id="search" type="search" placeholder="찾기 — 이름·워크스페이스·모델 ( / )" autocomplete="off" spellcheck="false" />
+      <div id="roster-list"></div>
+    </aside>
+
+    <aside id="detail" class="glass" aria-label="에이전트 상태" hidden></aside>
+
+    <div id="toasts" aria-live="polite"></div>
+    <div id="help">드래그 회전 · 휠 확대 · 우클릭 드래그 이동 · <kbd>N</kbd> 다음 확인 · <kbd>Enter</kbd> herdr 로 이동 · <kbd>Esc</kbd> 닫기</div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
