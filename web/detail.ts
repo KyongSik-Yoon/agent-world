@@ -57,7 +57,7 @@ export class DetailPanel {
   private readonly head = h("div", { class: "d-head" });
   private readonly body = h("div", { class: "d-body" });
   private readonly dock = h("div", { class: "d-dock" });
-  private readonly keys = h("div", { class: "quick" });
+  private readonly quick = h("div", { class: "quick" });
   private readonly input = h("textarea", { rows: "2", spellcheck: "false" });
   private readonly sendBtn = h("button", { class: "btn primary", type: "button" }, "보내기");
   private readonly note = h("div", { class: "dock-note" });
@@ -74,17 +74,19 @@ export class DetailPanel {
     private readonly root: HTMLElement,
     private readonly callbacks: DetailCallbacks,
   ) {
+    // 키 단추는 한 묶음으로 남는 폭을 나눠 쓰고, 터미널 단추는 그 옆에 제 폭으로 선다.
+    const keys = h("div", { class: "keys" });
     for (const key of QUICK_KEYS) {
       const btn = h("button", { type: "button", title: key.title }, key.label);
       btn.addEventListener("click", () => {
         if (!this.docked) return;
         void sendInput(this.docked.paneId, { text: key.text, keys: key.keys, raw: key.raw }).catch((e: Error) => this.setNote(e.message, "err"));
       });
-      this.keys.append(btn);
+      keys.append(btn);
     }
     const term = h("button", { type: "button", class: "wide", title: "터미널 크게 보기 (`)" }, "터미널 ⤢");
     term.addEventListener("click", () => this.docked && this.callbacks.act({ type: "terminal", paneId: this.docked.paneId }));
-    this.keys.append(term);
+    this.quick.append(keys, term);
 
     this.input.addEventListener("keydown", (e) => {
       // 한글을 조합하는 중의 Enter 는 글자를 확정하는 키다.
@@ -93,7 +95,7 @@ export class DetailPanel {
       void this.submit();
     });
     this.sendBtn.addEventListener("click", () => void this.submit());
-    this.dock.append(this.keys, h("div", { class: "compose" }, this.input, this.sendBtn), this.note);
+    this.dock.append(this.quick, h("div", { class: "compose" }, this.input, this.sendBtn), this.note);
     this.root.replaceChildren(this.head, this.body, this.dock);
     this.preview.el.classList.add("preview");
     this.preview.el.title = "눌러서 크게 보기";

@@ -1171,13 +1171,25 @@ kbd {
 
 .quick {
   display: flex;
-  flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 7px;
 }
 
+/* 키 단추들은 줄을 넘기지 않고 남는 폭을 나눠 가진다 — 패널 폭이나 글꼴이 달라져도 한 줄에 선다. */
+.quick .keys {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+}
+
+.quick .keys button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 2px;
+}
+
 .quick button {
-  min-width: 28px;
   padding: 3px 6px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -1193,8 +1205,9 @@ kbd {
 }
 
 .quick button.wide {
-  margin-left: auto;
+  flex: none;
   font-family: var(--font);
+  white-space: nowrap;
 }
 
 .compose {
@@ -1564,10 +1577,21 @@ dialog.dlg .warn {
     opacity: 1;
   }
 
-  .quick button {
-    min-width: 40px;
-    padding: 8px 10px;
+  /* 손가락으로 누를 크기를 지키려고 키를 다섯 개씩 두 줄로 세운다. */
+  .quick .keys {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .quick button,
+  .quick .keys button {
+    min-height: 36px;
+    padding: 8px 4px;
     font-size: 13px;
+  }
+
+  .quick button.wide {
+    padding: 8px 10px;
   }
 
   .btn {
