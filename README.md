@@ -1,5 +1,7 @@
 # Agent World
 
+[English](README.en.md)
+
 herdr 에 떠 있는 코딩 에이전트들을 3D 마을로 보여 주고, herdr 창으로 돌아가지 않고도 말을 걸고 집을 짓는
 로컬 대시보드. 에이전트 하나가 캐릭터 하나이고, **어디에 서 있는지가 곧 상태**다.
 
@@ -42,7 +44,33 @@ herdr 에 떠 있는 코딩 에이전트들을 3D 마을로 보여 주고, herdr
   경로를 받아 `[Image #N]` 으로 달고, 그 밖의 하네스에는 경로를 글에 실어 보낸다. 이레가 지난 파일은 지운다.
 - herdr TUI 에 남겨 둔 것: pane 배치·크기·이동, 복사 모드, 마우스, 플러그인, 원격 머신, 세션 관리.
 
-## 실행
+## herdr 플러그인으로 쓰기
+
+```sh
+herdr plugin install KyongSik-Yoon/agent-world
+```
+
+[Bun](https://bun.sh)이 있어야 한다(1.4.4 에서 확인했다). 설치하면 herdr 가 시작할 때마다 서버를 띄워 두고(같은 세션에 이미 떠 있으면 그대로 둔다),
+명령 팔레트에 네 가지 동작이 생긴다.
+
+| 동작 | 하는 일 |
+| --- | --- |
+| `Agent World: open in browser` | 떠 있지 않으면 띄우고 브라우저로 연다. |
+| `Agent World: show address` | 어디에 떠 있는지 팝업으로 보여 준다(`o` 열기 · `r` 다시 띄우기 · `s` 끄기). |
+| `Agent World: restart` | 껐다가 다시 띄운다 — 업데이트하거나 설정을 바꾼 뒤에. |
+| `Agent World: stop` | 이 herdr 세션의 서버를 끈다. |
+
+서버는 그 herdr 세션에 붙는다. 기본 세션은 `http://127.0.0.1:4780`, 이름 붙은 세션은 세션마다 정해진 다른 포트다(아래 `AGENT_WORLD_PORT`).
+설정은 `herdr plugin config-dir kyongsik-yoon.agent-world` 가 찍는 폴더의 `env` 파일에 아래 환경 변수를 `이름=값` 으로 적고 `restart` 한다:
+
+```sh
+AGENT_WORLD_LANG=en
+AGENT_WORLD_READONLY=1
+```
+
+서버의 기록은 `herdr plugin log list --plugin kyongsik-yoon.agent-world` 와 플러그인 상태 폴더의 `server.log` 에 남는다.
+
+## 직접 실행
 
 ```sh
 bun install
@@ -52,6 +80,7 @@ bun start            # http://127.0.0.1:4780
 | 환경 변수 | 뜻 |
 | --- | --- |
 | `AGENT_WORLD_PORT` | 포트. 주지 않으면 herdr 세션마다 정해진 자리를 쓴다 — 기본 세션은 4780, 이름 붙은 세션은 소켓 경로에서 정해지는 4781~4879 의 한 포트(세션이 같으면 늘 같다). 그 자리가 차 있으면 옆 포트로 옮겨 띄우고, 같은 herdr 에 이미 떠 있으면 그 주소만 알리고 끝난다. 지금 주소는 `bun run url` 이 찍는다. 루프백에만 묶인다. |
+| `AGENT_WORLD_LANG` | 기본 말. `en` 이면 영어, 그 밖에는 한국어. 화면 오른쪽 위의 `EN`/`한` 단추로 브라우저마다 따로 바꿀 수 있고(기억된다), 주소에 `?lang=en` 을 붙여 열어도 된다. |
 | `AGENT_WORLD_READONLY=1` | 보기 전용. 지시·키 입력·만들기·닫기와 `herdr 에서 열기`(herdr 화면 옮기기) 요청을 모두 거절한다. |
 | `AGENT_WORLD_TRUST_HOSTS` | `tailscale serve` 로 내보낼 때의 주소(`host.tailnet.ts.net:4780`, 쉼표로 여럿). 이 PC 를 tailnet 에 올린 계정의 요청만 받는다. |
 | `AGENT_WORLD_OUTSIDE=1` | herdr 에 붙어 있는 동안에도 herdr 밖 세션(다른 터미널, 데스크톱 앱)을 함께 보여 준다. |
@@ -121,3 +150,7 @@ herdr session stop aw-test && herdr session delete aw-test
 ```
 
 캐릭터의 실루엣과 브랜드 마크는 Collie(MIT)의 상태줄 로고·아이콘 데이터에서 왔다.
+
+## 라이선스
+
+[MIT](LICENSE)
