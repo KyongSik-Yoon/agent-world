@@ -199,8 +199,8 @@ export class Actor {
       sizes: () => this.sizes(),
       lifts: LIFTS,
       // 번호만 남기고도 겹치면 숨는다(캐릭터와 발밑 고리는 그대로 보이고, 올리거나 고르면 다시 나온다).
-      // 나를 부르는 에이전트는 숨기지 않는다 — 겹치더라도 번호는 남긴다.
-      hideable: () => this.view.status !== "blocked",
+      // 나를 부르는 에이전트(확인 필요, 완료)는 숨기지 않는다 — 겹치더라도 번호는 남긴다.
+      hideable: () => this.view.status !== "blocked" && this.view.status !== "done",
       setLevel: (level) => {
         this.lod = level;
       },

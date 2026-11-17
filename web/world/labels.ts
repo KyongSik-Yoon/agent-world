@@ -228,8 +228,10 @@ export class LabelLayer {
       }
     }
 
-    // 겹쳤을 때 위에 오는 순서: 급한 것이 위, 같은 급이면 가까운 것이 위.
-    const stacked = all.filter((l) => l.shown).sort((a, b) => b.rank() - a.rank() || b.depth - a.depth);
+    // 겹쳤을 때 위에 오는 순서: 급한 것이 위, 같은 급이면 가까운 것이 위. 옆으로 비켜 거는 것(문패)은 맨 아래다 —
+    // 문패와 겹치는 것은 자리가 끝내 없어 번호만 남은 이름표뿐인데, 그 작은 번호가 문패 밑에 깔리면 반쯤 잘려 보인다.
+    const tier = (l: Label): number => (l.shifts ? 99 : l.rank());
+    const stacked = all.filter((l) => l.shown).sort((a, b) => tier(b) - tier(a) || b.depth - a.depth);
     stacked.forEach((label, i) => {
       label.z = i + 1;
     });

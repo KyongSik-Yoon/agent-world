@@ -109,7 +109,12 @@ input {
   pointer-events: auto;
   cursor: pointer;
   user-select: none;
-  transition: opacity 0.25s;
+  /* 자리가 막혀 비켜 올라선 이름표는 그만큼 부드럽게 올라간다. 자리를 잡는 transform 과 따로 노는 translate 를 쓰고,
+     이름표째로 옮긴다 — 조각만 옮기면 눌리는 영역이 제자리에 남아 남의 이름표를 가린다. */
+  translate: 0 var(--lift, 0px);
+  transition:
+    opacity 0.25s,
+    translate 0.18s ease-out;
 }
 
 .tag[data-status="idle"],
@@ -117,11 +122,6 @@ input {
   opacity: 0.58;
 }
 
-/* 자리가 막혀 비켜 올라선 이름표: 조각들이 그만큼 부드럽게 올라간다(transform 과 따로 노는 translate 로). */
-.tag > * {
-  translate: 0 var(--lift, 0px);
-  transition: translate 0.18s ease-out;
-}
 
 .tag.hovered,
 .tag.selected {
