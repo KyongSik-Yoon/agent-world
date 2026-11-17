@@ -151,9 +151,10 @@ export class Builder {
     };
     kind.addEventListener("change", syncName);
     void this.loadKinds().then((kinds) => {
-      // 서버의 PATH 에서 못 찾은 것도 고를 수 있게 둔다 — 셸 설정으로만 잡히는 설치(alias, nvm)는 herdr 의
-      // pane 안에서는 잘 뜬다. 숨기면 목록이 비어 아무것도 못 들이는 사람이 생긴다.
-      for (const k of kinds) kind.append(h("option", { value: k.kind }, `${brandFor(k.kind).name} (${k.kind})${k.installed ? "" : " — PATH 에서 못 찾음"}`));
+      // 서버의 PATH 에서 하나도 못 찾았으면 전부 보여 준다 — 셸 설정으로만 잡히는 설치(alias, nvm)는 herdr 의
+      // pane 안에서는 잘 뜨는데, 숨기면 목록이 비어 아무것도 못 들인다.
+      const none = !kinds.some((k) => k.installed);
+      for (const k of kinds.filter((x) => none || x.installed)) kind.append(h("option", { value: k.kind }, `${brandFor(k.kind).name} (${k.kind})${k.installed ? "" : " — PATH 에서 못 찾음"}`));
       const prefer = kinds.find((k) => k.installed && k.kind === "claude") ?? kinds.find((k) => k.installed);
       if (prefer) kind.value = prefer.kind;
       syncName();
