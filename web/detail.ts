@@ -146,6 +146,36 @@ export class DetailPanel {
     this.preview.el.addEventListener("click", () => {
       if (this.preview.pane && !window.getSelection()?.toString()) this.callbacks.act({ type: "terminal", paneId: this.preview.pane });
     });
+
+    // 창 안에서 누르고 있거나 글을 골라 둔 동안에는 다시 그리지 않는다(render 가 미뤄 둔다). 손을 떼거나 고르기를
+    // 풀면 그때 최신 상태로 그린다.
+    for (const part of [this.head, this.body]) {
+      part.addEventListener("pointerdown", () => {
+        this.pressing = true;
+      });
+    }
+    const released = (): void => {
+      if (!this.pressing) return;
+      this.pressing = false;
+      // 뗀 자리의 click 이 먼저 처리된 뒤에 그린다.
+      setTimeout(() => this.flushHeld(), 0);
+    };
+    window.addEventListener("pointerup", released);
+    window.addEventListener("pointercancel", released);
+    document.addEventListener("selectionchange", () => this.flushHeld());
+  }
+
+  /** 지금 다시 그리면 사용자가 하던 일이 끊기는지 — 창 안의 무언가를 누르는 중이거나, 창 안의 글을 골라 두었다. */
+  private interacting(): boolean {
+    if (this.pressing) return true;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.anchorNode) return false;
+    return this.head.contains(selection.anchorNode) || this.body.contains(selection.anchorNode);
+  }
+
+  private flushHeld(): void {
+    if (!this.held || !this.snapshot || this.interacting()) return;
+    this.render(this.snapshot, this.selectedId, true);
   }
 
   /**
@@ -219,8 +249,13 @@ export class DetailPanel {
   setCovered(covered: boolean): void {
     this.covered = covered;
     if (covered) this.preview.stop();
-    else if (this.snapshot) this.render(this.snapshot, this.selectedId);
+    else if (this.snapshot) this.render(this.snapshot, this.selectedId, true);
   }
+
+  /** 머리나 본문의 무언가를 누르고 있는 중인지(pointerdown 과 pointerup 사이). */
+  private pressing = false;
+  /** 사용자가 하던 일을 끊지 않으려고 다시 그리기를 미뤄 두었다. */
+  private held = false;
 
   focusComposer(): boolean {
     if (!this.docked) return false;
@@ -228,7 +263,16 @@ export class DetailPanel {
     return true;
   }
 
-  render(snapshot: WorldSnapshot, selectedId: string | null): void {
+  /** force: 사용자가 창 안에서 한 일(펼치기, 보내기)에 따른 다시 그리기 — 미루지 않는다. */
+  render(snapshot: WorldSnapshot, selectedId: string | null, force = false): void {
+    // 창은 스냅샷마다 머리와 본문을 새로 짓는다. 사용자가 그 안의 글을 골라 두었거나 단추를 누르는 중이면, 다시 지으면
+    // 고른 것이 풀리고 누르던 단추가 발밑에서 바뀌어 클릭이 사라진다. 같은 대상을 보고 있는 동안에는 미뤄 둔다.
+    if (!force && selectedId === this.selectedId && !this.root.hidden && this.interacting()) {
+      this.snapshot = snapshot;
+      this.held = true;
+      return;
+    }
+    this.held = false;
     // 스크롤 위치는 본문을 짓기 전에 읽는다 — 다시 쓰는 노드(응답 글·미리보기)가 새 본문으로 옮겨 가는 순간
     // 옛 본문이 짧아져, 그 뒤에 읽으면 이미 위로 밀린 값이 나온다.
     const top = selectedId === this.selectedId ? this.body.scrollTop : 0;
@@ -371,7 +415,7 @@ export class DetailPanel {
     } finally {
       this.busy = false;
       this.sendBtn.disabled = false;
-      if (this.snapshot) this.render(this.snapshot, this.selectedId);
+      if (this.snapshot) this.render(this.snapshot, this.selectedId, true);
     }
   }
 
@@ -591,7 +635,7 @@ export class DetailPanel {
   }
 
   private rerender(): void {
-    if (this.snapshot) this.render(this.snapshot, this.selectedId);
+    if (this.snapshot) this.render(this.snapshot, this.selectedId, true);
   }
 
   // ── 셸 pane ────────────────────────────────────────────────────────────────────────────────
