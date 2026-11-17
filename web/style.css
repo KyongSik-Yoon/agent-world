@@ -1332,6 +1332,24 @@ kbd {
   width: 2ch;
 }
 
+/* 블록 문자는 글꼴 대신 칸 전체(1칸 × 줄 높이)를 배경으로 칠한다(term.ts 의 BLOCKS). 글자는 복사용으로만 남기고 감춘다.
+   사방으로 0.5px 씩 덮어, 칸·줄 경계가 소수점 픽셀에 걸려도 실선 틈이 생기지 않게 한다(차지하는 자리는 1칸 그대로). */
+.term .blk {
+  display: inline-block;
+  width: calc(1ch + 1px);
+  height: calc(1.22em + 1px);
+  margin: -0.5px;
+  vertical-align: top;
+  -webkit-text-fill-color: transparent;
+  overflow: hidden;
+}
+
+.term .blk.shade {
+  width: 1ch;
+  height: 1.22em;
+  margin: 0;
+}
+
 /* 한글·한자는 대개 1em 폭이라 두 칸(영문 0.6em×2)에 못 미쳐, 칸 가운데 떠서 글자 사이가 벌어진다. 이 기기에서 잰 배율로
    글자만 키워 두 칸을 채운다 — transform 이라 칸 자리와 줄 배치는 그대로다. 배율(가로·세로)은 term.ts 의 fitWide 가 정한다. */
 .term .w2.cjk {

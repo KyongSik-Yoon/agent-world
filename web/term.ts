@@ -149,7 +149,75 @@ const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF
 /** 고정폭 글꼴이 제 너비로 그려 주는 글자들 — 나머지는 상자에 넣어 칸을 맞춘다. */
 /** 두 칸 글자 가운데 그림 글자. 한글·한자와 달리 이미 두 칸쯤 넓어 키우지 않는다. */
 const EMOJI = /[\u{1F300}-\u{1FAFF}]/u;
-const SAFE = /[ -\u024F\u2500-\u259F\u2800-\u28FF]/;
+const SAFE = /[ -\u024F\u2500-\u257F\u2800-\u28FF]/;
+
+/**
+ * 블록 문자(▀▄█▌▐▛▜ …, U+2580–259F)는 글꼴로 그리지 않고 칸에 직접 칠한다. 휴대폰 글꼴의 블록 글자는 줄 높이를 다 채우지
+ * 못해 줄 사이에 틈이 생기고, 사분면 글자(▛▜▝▘)가 없는 글꼴에서는 다른 글꼴이 대신 그려 모양과 폭이 어긋난다 — Claude
+ * Code 의 캐릭터 같은 블록 그림이 깨진다. 데스크톱 터미널도 이 글자들은 직접 그린다.
+ * 칸을 8×8 로 보고 글자 모양을 다각형 하나로 적는다. 조각 여러 개를 깔면 조각마다 따로 픽셀에 맞춰져 그 사이에 1px 틈이
+ * 생기므로, 조각이 둘 이상인 사분면(▙▚▛▜▞▟)은 한 덩어리로 오려 낸다(clip-path). 네모 하나인 글자는 배경 한 장으로
+ * 깐다(오리기는 칸마다 무거워, 블록이 많은 화면에서 느려진다). 음영(░▒▓)은 글자색을 옅게 깐다.
+ */
+const BLOCKS: Record<string, number[] | number> = (() => {
+  const rect = (l: number, t: number, r: number, b: number) => [l, t, r, t, r, b, l, b];
+  const map: Record<string, number[] | number> = {
+    "\u2580": rect(0, 0, 8, 4),
+    "\u2588": [],
+    "\u2590": rect(4, 0, 8, 8),
+    "\u2591": 0.25,
+    "\u2592": 0.5,
+    "\u2593": 0.75,
+    "\u2594": rect(0, 0, 8, 1),
+    "\u2595": rect(7, 0, 8, 8),
+    "\u2596": rect(0, 4, 4, 8),
+    "\u2597": rect(4, 4, 8, 8),
+    "\u2598": rect(0, 0, 4, 4),
+    "\u2599": [0, 0, 4, 0, 4, 4, 8, 4, 8, 8, 0, 8],
+    "\u259A": [0, 0, 4, 0, 4, 4, 8, 4, 8, 8, 4, 8, 4, 4, 0, 4],
+    "\u259B": [0, 0, 8, 0, 8, 4, 4, 4, 4, 8, 0, 8],
+    "\u259C": [0, 0, 8, 0, 8, 8, 4, 8, 4, 4, 0, 4],
+    "\u259D": rect(4, 0, 8, 4),
+    "\u259E": [4, 0, 8, 0, 8, 4, 4, 4, 4, 8, 0, 8, 0, 4, 4, 4],
+    "\u259F": [4, 0, 8, 0, 8, 8, 0, 8, 0, 4, 4, 4],
+  };
+  // ▁▂▃▄▅▆▇: 아래에서 n/8, ▉▊▋▌▍▎▏: 왼쪽에서 (8-n)/8.
+  for (let n = 1; n <= 7; n += 1) {
+    map[String.fromCharCode(0x2580 + n)] = rect(0, 8 - n, 8, 8);
+    map[String.fromCharCode(0x2588 + n)] = rect(0, 0, 8 - n, 8);
+  }
+  return map;
+})();
+
+/** 블록 글자 하나를 칠하는 규칙 — 글자색(currentColor)으로 칸을 칠한다. */
+function blockRule(spec: number[] | number): string {
+  if (typeof spec === "number") return `background:color-mix(in srgb,currentColor ${spec * 100}%,transparent)`;
+  if (spec.length === 0) return "background:currentColor";
+  if (spec.length === 8) {
+    // 네모 하나: 배경 한 장을 그 자리에 깐다. 조각이 하나라 틈이 생길 데가 없고, 오리기보다 가볍다.
+    const [l, t, , , r, b] = spec as [number, number, number, number, number, number];
+    const at = (start: number, size: number) => (size >= 8 ? 0 : (start / (8 - size)) * 100);
+    return `background:linear-gradient(currentColor,currentColor) ${at(l, r - l)}% ${at(t, b - t)}%/${((r - l) / 8) * 100}% ${((b - t) / 8) * 100}% no-repeat`;
+  }
+  const points: string[] = [];
+  for (let i = 0; i < spec.length; i += 2) points.push(`${(spec[i]! / 8) * 100}% ${(spec[i + 1]! / 8) * 100}%`);
+  return `background:currentColor;clip-path:polygon(${points.join(",")})`;
+}
+
+/** 글자마다 칸에 인라인 스타일을 적는 것보다 규칙을 한 번 깔고 클래스로 고르는 쪽이 빠르다(4,800칸 다시 그리기 160 → 130ms). */
+function blockClass(ch: string): string {
+  return `blk b${ch.charCodeAt(0).toString(16)}`;
+}
+
+function installBlockRules(): void {
+  const style = document.createElement("style");
+  style.textContent = Object.entries(BLOCKS)
+    .map(([ch, spec]) => `.term .b${ch.charCodeAt(0).toString(16)}{${blockRule(spec)}}`)
+    .join("\n");
+  document.head.append(style);
+}
+
+installBlockRules();
 
 /** 칸을 차지하지 않고 앞 글자에 얹히는 글자: 결합 문자, 이음 문자, 한글 자모의 가운뎃·끝소리. */
 const JOINS = /[\p{M}\u200D\u1160-\u11FF]/u;
@@ -189,6 +257,16 @@ function cells(text: string, into: HTMLElement): void {
       continue;
     }
     cell += joined;
+    if (BLOCKS[cell] !== undefined) {
+      flush();
+      const block = document.createElement("span");
+      // 음영은 반투명이라 겹치면 겹친 줄이 진해진다 — 겹치지 않게 둔다.
+      block.className = typeof BLOCKS[cell] === "number" ? `${blockClass(cell)} shade` : blockClass(cell);
+      // 글자는 남겨 둔다 — 골라 복사하면 원래 글자가 나온다. 보이지만 않는다(CSS).
+      block.textContent = cell;
+      into.append(block);
+      continue;
+    }
     if (SAFE.test(cell[0]!)) {
       plain += cell;
       continue;
