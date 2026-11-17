@@ -4,13 +4,20 @@
 // 도구 호출 안에서 `cat <임시 폴더>/answer`(FIFO)로 카드 버튼의 답을 기다린다. 엔진에게는 도구가 도는 중이라
 // 터미널 제목의 스피너가 멈추지 않고, herdr 는 그 제목 규칙(우선순위 1100)으로 working 이라 판정한다.
 // `pane.report_agent` 로 blocked 를 보고해도 herdr 는 Claude pane 에서 그것을 쓰지 않는다(0.9.5 실측).
-// 로그에도 도구 호출은 답한 뒤에야 적힌다. 남는 신호가 이 기다리는 프로세스라, 그 환경변수로 pane 을 가린다.
+// 로그에도 도구 호출은 답한 뒤에야 적힌다.
 //
-// Linux 의 /proc 에서만 읽는다. 다른 곳에서는 아무것도 찾지 않는다.
+// 그래서 두 가지를 본다.
+// - 표식 파일(desk-look 0.81.5~): 카드가 뜰 때 `<런타임 폴더>/desk-look/waiting/<세션 id>.json` 에 pane·fifo·pid 를
+//   적고 닫힐 때 지운다. 강제로 죽은 세션의 표식은 남으므로 pid 가 살아 있고 fifo 가 남아 있을 때만 믿는다.
+// - 기다리는 프로세스: 표식이 없는 예전 판이나 표식을 못 적은 경우. `cat …/answer` 의 환경변수로 pane 을 가린다.
+//   Linux 의 /proc 에서만 읽는다.
+import { existsSync } from "node:fs";
 import { lstat, readFile, readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import { herdrSocketPath } from "./herdr.ts";
+
+const HAS_PROC = existsSync("/proc/self/environ");
 
 /** cat 은 9분마다 시간이 다 돼 끊기고 곧바로 다시 뜬다. 그 틈에 상태가 working 으로 떨어지지 않게 이만큼 기다린다. */
 const ROUND_GAP_MS = 5_000;
@@ -38,7 +45,7 @@ function envOf(raw: string): Map<string, string> {
 }
 
 /** 지금 답 파이프를 기다리는 프로세스들 — pane id → FIFO 경로. 이 서버가 붙은 herdr 세션의 pane 만. */
-async function scan(socket: string): Promise<Map<string, string>> {
+async function scanProcs(socket: string): Promise<Map<string, string>> {
   const found = new Map<string, string>();
   let pids: string[];
   try {
@@ -69,6 +76,65 @@ async function scan(socket: string): Promise<Map<string, string>> {
     }),
   );
   return found;
+}
+
+/**
+ * 표식을 적는 쪽은 $XDG_RUNTIME_DIR, 없으면 $TMPDIR 를 쓴다. 이 서버와 에이전트의 환경이 어긋날 수 있어 둘 다 본다.
+ */
+function markerDirs(): string[] {
+  const dirs = [process.env.XDG_RUNTIME_DIR, process.env.TMPDIR].filter((d): d is string => !!d).map((d) => resolve(d, "desk-look/waiting"));
+  return [...new Set(dirs)];
+}
+
+/**
+ * 표식을 적은 에이전트가 아직 그 pane 에서 살아 있는지. 남은 표식의 pid 가 다른 프로세스에 다시 쓰일 수 있어서,
+ * /proc 이 있으면 그 프로세스의 HERDR_PANE_ID 까지 맞춰 본다. 없으면(macOS) 살아 있는지만 본다.
+ */
+async function holdsPane(pid: number, pane: string): Promise<boolean> {
+  try {
+    return envOf(await readFile(`/proc/${pid}/environ`, "utf8")).get("HERDR_PANE_ID") === pane;
+  } catch {
+    if (HAS_PROC) return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** 표식 파일이 가리키는 대기 — pane id → FIFO 경로. 이 서버가 붙은 herdr 세션의 pane 만. */
+async function scanMarkers(socket: string): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  await Promise.all(
+    markerDirs().map(async (dir) => {
+      let names: string[];
+      try {
+        names = (await readdir(dir)).filter((n) => n.endsWith(".json"));
+      } catch {
+        return;
+      }
+      await Promise.all(
+        names.map(async (name) => {
+          try {
+            const m = JSON.parse(await readFile(join(dir, name), "utf8")) as { pane?: unknown; socket?: unknown; fifo?: unknown; pid?: unknown };
+            if (typeof m.pane !== "string" || typeof m.socket !== "string" || typeof m.fifo !== "string" || typeof m.pid !== "number") return;
+            if (resolve(m.socket) !== socket || !(await holdsPane(m.pid, m.pane)) || !(await isFifo(m.fifo))) return;
+            found.set(m.pane, m.fifo);
+          } catch {
+            // 쓰는 중이거나 그 사이에 지워졌다.
+          }
+        }),
+      );
+    }),
+  );
+  return found;
+}
+
+async function scan(socket: string): Promise<Map<string, string>> {
+  const [markers, procs] = await Promise.all([scanMarkers(socket), scanProcs(socket)]);
+  return new Map([...procs, ...markers]);
 }
 
 export class AskingPanes {
