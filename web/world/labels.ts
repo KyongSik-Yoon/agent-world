@@ -30,6 +30,11 @@ export interface LabelSpec {
    * 얼마나 올라섰는지는 요소의 `--lift` 로 알려 준다 — 스타일시트가 그만큼 부드럽게 올린다.
    */
   lifts?: readonly number[];
+  /**
+   * 제자리 대신 옆으로 붙을 수 있는 자리들(제 너비의 몇 배만큼 옮기는지). 문패가 쓴다 — 기둥 가운데에 걸거나,
+   * 오른쪽이나 왼쪽으로 내어 건다. 다른 이름표들이 다 펴졌을 때 덜 가리는 쪽을 고르고, `--shift` 로 알려 준다.
+   */
+  shifts?: readonly number[];
   /** 가장 작은 모습으로도 자리가 없으면 숨겨도 되는지. 상태에 따라 달라질 수 있어 매번 묻는다. */
   hideable?(): boolean;
   /** 지금은 줄이지 않는다(올려놓았거나 골랐다). */
@@ -41,6 +46,8 @@ interface Label extends LabelSpec {
   level: number;
   /** 지금 올라서 있는 높이(px). */
   lift: number;
+  /** 지금 옆으로 비켜 있는 정도(제 너비의 배수). */
+  shift: number;
   /** 더 자세한 모습으로 돌아갈 자리가 난 시각. 아직 없으면 0. */
   roomSince: number;
   shown: boolean;
@@ -64,7 +71,18 @@ const RESTORE_MS = 450;
 /** 화면 밖으로 이만큼 벗어난 요소는 자리 다툼에서 뺀다. */
 const OFFSCREEN = 80;
 
+/** 옆으로 옮겨 걸어서 덜 가리게 되는 넓이가 이만큼(px²)은 돼야 옮긴다 — 엎치락뒤치락하지 않게. */
+const KEEP_SHIFT = 60;
 const NO_LIFT: readonly number[] = [0];
+
+type Rect = [number, number, number, number];
+
+/** 두 네모가 겹치는 넓이. */
+function overlap(a: Rect, b: Rect): number {
+  const w = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const h = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  return w > 0 && h > 0 ? w * h : 0;
+}
 
 const point = new THREE.Vector3();
 
@@ -98,7 +116,7 @@ export class LabelLayer {
   }
 
   attach(spec: LabelSpec): void {
-    this.labels.set(spec.el, { ...spec, level: 0, lift: 0, roomSince: 0, shown: false, x: 0, y: 0, z: 0, wroteX: NaN, wroteY: NaN, wroteZ: NaN, wroteShown: false, depth: 0 });
+    this.labels.set(spec.el, { ...spec, level: 0, lift: 0, shift: 0, roomSince: 0, shown: false, x: 0, y: 0, z: 0, wroteX: NaN, wroteY: NaN, wroteZ: NaN, wroteShown: false, depth: 0 });
     // 자리를 받기 전에는 보이지 않게 둔다(왼쪽 위 구석에 한 프레임 비치지 않도록).
     spec.el.style.visibility = "hidden";
     this.domElement.append(spec.el);
@@ -142,13 +160,35 @@ export class LabelLayer {
 
     // 급한 것부터 자리를 잡는다.
     const placing = all.filter((l) => l.shown).sort((a, b) => a.rank() - b.rank() || (a.order < b.order ? -1 : a.order > b.order ? 1 : 0));
-    const taken: Array<[number, number, number, number]> = [];
+    const taken: Rect[] = [];
+    // 옆으로 비켜 걸 수 있는 것(문패)은, 다른 이름표들이 다 펴졌을 때 차지할 자리를 미리 보고 덜 가리는 쪽에 건다.
+    const wished = placing.some((l) => l.shifts) ? placing.filter((l) => !l.shifts).map((l) => this.rect(l, l.sizes()[0]!, 0)) : [];
     let waiting = false;
     for (const label of placing) {
       const sizes = label.sizes();
       const last = sizes.length - 1;
       const pinned = label.pinned?.() ?? false;
-      const overlaps = (r: readonly [number, number, number, number]): boolean => taken.some((t) => r[0] < t[2] && r[2] > t[0] && r[1] < t[3] && r[3] > t[1]);
+      const overlaps = (r: Rect): boolean => taken.some((t) => r[0] < t[2] && r[2] > t[0] && r[1] < t[3] && r[3] > t[1]);
+      if (label.shifts) {
+        // 이미 자리 잡은 것과 겹치는 쪽은 피하고, 그다음으로 펴진 이름표를 덜 가리는 쪽. 비슷하면 지금 자리를 지킨다.
+        const cost = (shift: number): number => {
+          const r = this.rect(label, sizes[0]!, 0, 0, shift);
+          return (overlaps(r) ? 1e6 : 0) + wished.reduce((sum, w) => sum + overlap(r, w), 0);
+        };
+        let best = label.shift;
+        let least = cost(label.shift) - KEEP_SHIFT;
+        for (const shift of label.shifts) {
+          const c = cost(shift);
+          if (c < least) {
+            least = c;
+            best = shift;
+          }
+        }
+        if (best !== label.shift) {
+          label.shift = best;
+          label.el.style.setProperty("--shift", `${best * 100}%`);
+        }
+      }
       const lifts = label.lifts ?? NO_LIFT;
       let target = -1;
       let lift = 0;
@@ -158,7 +198,7 @@ export class LabelLayer {
         for (const up of lifts) {
           // 지금 그렇게 서 있으면 조금 겹쳐도 봐주고, 더 자세한 모습으로 돌아가는 데는 여유를 더 요구한다.
           const slack = level === label.level && up === label.lift ? -STICKY : level < label.level ? STICKY : 0;
-          if (overlaps(this.rect(label, sizes[level]!, slack, up))) continue;
+          if (overlaps(this.rect(label, sizes[level]!, slack, up, label.shift))) continue;
           target = level;
           lift = up;
           break;
@@ -166,7 +206,7 @@ export class LabelLayer {
       }
       // 가장 작은 모습으로도 겹친다. 숨겨도 되는 것은 숨기고, 아니면 겹친 채로 가장 작게 둔다.
       if (target < 0) target = label.hideable?.() ? last + 1 : last;
-      if (target <= last) taken.push(this.rect(label, sizes[target]!, 0, lift));
+      if (target <= last) taken.push(this.rect(label, sizes[target]!, 0, lift, label.shift));
       if (target > label.level) {
         // 줄어드는 것은 바로.
         label.level = target;
@@ -215,11 +255,11 @@ export class LabelLayer {
     return waiting;
   }
 
-  /** 그 크기로, lift 만큼 올라서 놓였을 때 화면에서 차지하는 네모(틈 포함). slack 이 양수면 그만큼 더 넓게 본다. */
-  private rect(label: Label, size: Size, slack: number, lift = 0): [number, number, number, number] {
+  /** 그 크기로, lift 만큼 올라서고 shift 만큼 옆으로 비켜 놓였을 때 화면에서 차지하는 네모(틈 포함). slack 이 양수면 그만큼 더 넓게 본다. */
+  private rect(label: Label, size: Size, slack: number, lift = 0, shift = 0): Rect {
     const [cx, cy] = label.center ?? [0.5, 1];
     const pad = GAP / 2 + slack;
-    const left = label.x - size[0] * cx;
+    const left = label.x - size[0] * (cx - shift);
     const top = label.y - size[1] * cy - lift;
     return [left - pad, top - pad, left + size[0] + pad, top + size[1] + pad];
   }

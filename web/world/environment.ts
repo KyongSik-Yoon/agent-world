@@ -66,6 +66,9 @@ interface Themed {
   glow?: number;
 }
 
+/** 문패가 기둥에 걸리는 자리: 가운데, 오른쪽으로 내어 걸기, 왼쪽으로 내어 걸기. */
+const SIGN_SHIFTS = [0, 0.5, -0.5] as const;
+
 export class Environment {
   readonly group = new THREE.Group();
   readonly sun = new THREE.DirectionalLight("#FFF1D6", 2.6);
@@ -376,7 +379,7 @@ export class Environment {
     g.add(sign);
     // 문패는 줄어들지 않는다. 일하거나 쉬는 에이전트의 이름표가 문패를 덮지 않고 비켜 간다.
     const size: [number, number] = [96, 22];
-    labels.attach({ el, anchor: sign, order: ws.id, rank: () => 1, sizes: () => [size] });
+    labels.attach({ el, anchor: sign, order: ws.id, rank: () => 1, sizes: () => [size], shifts: SIGN_SHIFTS });
     labels.measure(el, (w, h) => {
       size[0] = w;
       size[1] = h;

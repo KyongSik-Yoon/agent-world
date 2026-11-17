@@ -298,6 +298,12 @@ input {
   box-shadow: 0 2px 8px rgba(10, 20, 50, 0.18);
 }
 
+/* 이름표를 덜 가리는 쪽으로 기둥 옆에 내어 걸린 문패: 그만큼 부드럽게 옮겨 간다. */
+.plot-sign {
+  translate: var(--shift, 0%) 0;
+  transition: translate 0.2s ease-out;
+}
+
 .plot-sign.focused {
   outline: 2px solid var(--accent);
 }
