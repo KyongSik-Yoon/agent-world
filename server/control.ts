@@ -38,7 +38,7 @@ const MAX_TEXT = 200_000;
 const AGENT_NAME = /^[a-z][a-z0-9_-]{0,31}$/;
 const KINDS = new Set<Kind>(["workspace", "tab", "pane", "agent"]);
 /** 붙여넣은 경로를 하네스가 이미지로 바꿔 달 때까지 기다려 주는 시간. */
-const IMAGE_ATTACH_MS = 4000;
+const IMAGE_ATTACH_MS = 6000;
 const IMAGE_MARK = /\[Image #\d+\]/g;
 
 type Handler = (req: Request) => Response | Promise<Response>;
@@ -208,11 +208,17 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         // 질문에 막혀 있으면 붙여넣은 경로가 대화상자로 들어간다. agent.prompt 가 거절하는 것과 같은 이유로 먼저 막는다.
         if (pane?.agent_status === "blocked") throw new Reject("에이전트가 질문에 대한 답을 기다리는 중입니다.", 409, "agent_blocked");
         if (pane?.agent === "claude") {
-          // Claude Code 는 경로만 붙여넣으면 그 파일을 읽어 [Image #N] 으로 단다. 다 달린 뒤에 글을 보낸다.
-          const count = async () => (await herdrScreen(paneId)).match(IMAGE_MARK)?.length ?? 0;
-          const before = await count();
+          // Claude Code 는 경로만 붙여넣으면 그 파일을 읽어 [Image #N] 으로 단다. 새 번호가 장수만큼 보인 뒤에만 보낸다 —
+          // 붙지 않았다면 입력창이 아닌 무언가(herdr 가 못 알아본 대화상자 등)가 떠 있는 것이라, Enter 가 엉뚱한 것을 누른다.
+          const marks = async () => new Set((await herdrScreen(paneId)).match(IMAGE_MARK) ?? []);
+          const before = await marks();
           for (const path of images) await herdrInput(paneId, path, undefined);
-          for (const until = Date.now() + IMAGE_ATTACH_MS; Date.now() < until && (await count()) < before + images.length; ) await Bun.sleep(120);
+          let attached = false;
+          for (const until = Date.now() + IMAGE_ATTACH_MS; !attached && Date.now() < until; ) {
+            await Bun.sleep(120);
+            attached = [...(await marks())].filter((m) => !before.has(m)).length >= images.length;
+          }
+          if (!attached) throw new Reject("이미지가 에이전트 입력창에 붙지 않았습니다. 터미널 화면을 확인해 주세요.", 409, "image_not_attached");
           if (prompt.trim()) await herdrPrompt(paneId, prompt);
           else await herdrInput(paneId, undefined, ["enter"]);
         } else {

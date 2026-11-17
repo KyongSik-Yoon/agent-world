@@ -74,6 +74,7 @@ export class DetailPanel {
   private docked: { paneId: string; agent: boolean } | null = null;
   private sent: { text: string; at: number; confirmed: boolean; before?: string } | null = null;
   private readonly open = { prompt: false, reply: false, screen: false };
+  private readonly proseOf: { prompt?: { text: string; box: HTMLElement }; reply?: { text: string; box: HTMLElement } } = {};
   private busy = false;
 
   constructor(
@@ -271,7 +272,10 @@ export class DetailPanel {
       if (e instanceof ApiError && e.code === "agent_blocked") {
         this.setNote("에이전트가 질문에 대한 답을 기다리는 중입니다. 화면의 선택지를 위 키로 먼저 눌러 주세요.", "err");
         this.open.screen = true;
-      } else this.setNote((e as Error).message, "err");
+      } else {
+        this.setNote((e as Error).message, "err");
+        if (e instanceof ApiError && e.code === "image_not_attached") this.open.screen = true;
+      }
     } finally {
       this.busy = false;
       this.sendBtn.disabled = false;
@@ -447,7 +451,11 @@ export class DetailPanel {
 
   private textSection(title: string, text: string, key: "prompt" | "reply"): HTMLElement {
     const long = text.length > 420 || text.split("\n").length > 8;
-    const box = h("div", { class: long && !this.open[key] ? "prose clamp" : "prose" }, prose(text));
+    // 스냅샷이 올 때마다 다시 그리지만 글은 거의 그대로다. 같은 글이면 만들어 둔 노드를 다시 쓴다.
+    let made = this.proseOf[key];
+    if (made?.text !== text) made = this.proseOf[key] = { text, box: h("div", {}, prose(text)) };
+    const box = made.box;
+    box.className = long && !this.open[key] ? "prose clamp" : "prose";
     const head = h("h3", {}, title);
     if (long) {
       head.append(
