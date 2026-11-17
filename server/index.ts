@@ -15,7 +15,7 @@ import { MAX_IMAGE_BYTES } from "./images.ts";
 import { herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag, herdrSocketPath } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
 import { addressFile, type Address } from "./address.ts";
-import { DEFAULT_LANG, L, langOf, say } from "./text.ts";
+import { L, defaultLang, langOf, say } from "./text.ts";
 import { World } from "./world.ts";
 
 const NO_PANE = L("그 pane 은 지금 herdr 에 없습니다.", "That pane no longer exists in herdr.");
@@ -160,7 +160,7 @@ async function bundledPage(): Promise<Record<string, { GET: (req: Request) => Re
   for (const out of built.outputs) {
     const isPage = out.path.endsWith(".html");
     // 문서에 서버의 기본 말을 적어 준다 — 화면은 따로 고른 말이 없을 때 이것을 따른다.
-    const raw = isPage ? new TextEncoder().encode((await out.text()).replace(/<html lang="[^"]*"/, `<html lang="${DEFAULT_LANG}"`)) : new Uint8Array(await out.arrayBuffer());
+    const raw = isPage ? new TextEncoder().encode((await out.text()).replace(/<html lang="[^"]*"/, `<html lang="${defaultLang()}"`)) : new Uint8Array(await out.arrayBuffer());
     const br = new Uint8Array(brotliCompressSync(raw, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 } }));
     const gz = Bun.gzipSync(raw, { level: 9 });
     const base: Record<string, string> = {

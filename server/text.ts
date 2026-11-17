@@ -8,8 +8,13 @@ export interface Text {
   en: string;
 }
 
-/** 서버의 기본 말. 화면이 따로 고르지 않았을 때와 터미널 출력에 쓴다. `AGENT_WORLD_LANG=en` 이면 영어. */
-export const DEFAULT_LANG: Lang = process.env.AGENT_WORLD_LANG === "en" ? "en" : "ko";
+/**
+ * 서버의 기본 말. 화면이 따로 고르지 않았을 때와 터미널 출력에 쓴다. `AGENT_WORLD_LANG=en` 이면 영어.
+ * 부를 때마다 읽는다 — 플러그인 손잡이는 설정 파일을 읽어 환경에 넣은 뒤에 말을 한다.
+ */
+export function defaultLang(): Lang {
+  return process.env.AGENT_WORLD_LANG === "en" ? "en" : "ko";
+}
 
 export function L(ko: string, en: string): Text {
   return { ko, en };
@@ -20,12 +25,12 @@ export function asText(text: Text | string): Text {
   return typeof text === "string" ? { ko: text, en: text } : text;
 }
 
-export function say(text: Text | string, lang: Lang = DEFAULT_LANG): string {
+export function say(text: Text | string, lang: Lang = defaultLang()): string {
   return typeof text === "string" ? text : text[lang];
 }
 
 /** 이 요청을 보낸 화면이 쓰는 말. 화면이 `x-agent-world-lang` 으로 알려 준다. */
 export function langOf(req: Request): Lang {
   const asked = req.headers.get("x-agent-world-lang");
-  return asked === "en" || asked === "ko" ? asked : DEFAULT_LANG;
+  return asked === "en" || asked === "ko" ? asked : defaultLang();
 }

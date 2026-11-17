@@ -130,15 +130,19 @@ herdr 에 붙어 있는 동안에는 herdr 의 에이전트만 보여 준다. he
 server/   Bun 서버 — herdr RPC, 로그 tail, 스냅샷을 SSE 로 밀어 준다
   control.ts  조작 엔드포인트(지시·키 입력·터미널 미러·만들기·닫기)
   adapters/   하네스별 로그 리더
+  text.ts     서버가 건네는 말(한국어·영어)
 web/      three.js 장면과 HUD
   detail.ts   상태 창(에이전트·셸·집), term.ts 터미널 미러, build.ts 만들기·닫기 대화상자
   world/      섬·집터(environment), 캐릭터(characters), 배우(actor), 배치(layout), 이름표 층(labels)
+  i18n.ts     t() 와 말 바꾸기 — 영어 풀이는 locale/en.ts
 shared/   서버와 화면이 같이 쓰는 스냅샷 타입
-dev/      mock-herdr.ts — 실제 herdr 없이 화면을 시험하는 흉내 소켓
+scripts/  plugin.ts — herdr 플러그인으로 돌 때의 시작·정지·열기
+dev/      mock-herdr.ts — 실제 herdr 없이 화면을 시험하는 흉내 소켓, i18n-check.ts
 ```
 
 `bun run probe` 는 서버를 띄우지 않고 지금의 스냅샷을 표로 찍는다. `bun run url` 은 이 herdr 세션에 떠 있는 서버의 주소를 찍는다
-(서버가 `~/.local/state/agent-world/server*.json` 에 적어 둔다) — `xdg-open "$(bun run --silent url)"`.
+(서버가 `~/.local/state/agent-world/server*.json` 에 적어 둔다) — `xdg-open "$(bun run --silent url)"`. `bun run i18n` 은 화면의 문장마다
+영어 풀이가 있는지 본다 — 화면에 글을 더하면 `t("…")` 로 감싸고 `web/locale/en.ts` 에 풀이를 적는다.
 
 조작을 시험할 때는 쓰고 있는 herdr 대신 이름 붙은 테스트 세션을 쓴다:
 
