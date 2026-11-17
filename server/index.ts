@@ -145,6 +145,31 @@ setInterval(() => void tick(), TICK_MS);
 setInterval(() => broadcast(encoder.encode(": keepalive\n\n")), HEARTBEAT_MS);
 
 /**
+ * 화면 문서에 붙이는 지킴 머리말.
+ *
+ * 이 화면에서 스크립트가 돌면 곧 터미널에 글자를 넣을 수 있다. 화면 코드는 에이전트가 쓴 글을 노드로만 만들어 넣지만
+ * (innerHTML 을 쓰지 않는다), 그 한 겹이 뚫려도 넣은 스크립트가 돌지 못하게 한 겹을 더 둔다: 제 출처의 스크립트만 돌리고,
+ * 다른 곳으로는 아무것도 보내지 못하며, 다른 사이트가 이 화면을 틀 안에 넣어 클릭을 가로채지 못한다.
+ * 개발 모드에서는 Bun 이 고친 코드를 밀어 넣는 길과 부딪혀 붙이지 않는다.
+ */
+const PAGE_GUARDS: Record<string, string> = {
+  "content-security-policy": [
+    "default-src 'none'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; "),
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "cross-origin-opener-policy": "same-origin",
+};
+
+/**
  * 화면을 한 번 묶어, 파일마다 압축본까지 만들어 둔다.
  *
  * 묶은 스크립트는 700KB 쯤인데 압축하면 그 1/4 이다. 이 PC 에서 열 때는 차이가 없지만, tailnet 너머의 휴대폰에서
@@ -165,6 +190,8 @@ async function bundledPage(): Promise<Record<string, { GET: (req: Request) => Re
     const gz = Bun.gzipSync(raw, { level: 9 });
     const base: Record<string, string> = {
       "content-type": out.type,
+      "x-content-type-options": "nosniff",
+      ...(isPage ? PAGE_GUARDS : {}),
       vary: "accept-encoding",
       // 스크립트와 스타일은 이름에 내용의 해시가 들어 있어 영영 묵혀도 된다. 문서는 매번 확인하게 한다.
       "cache-control": isPage ? "no-cache" : "public, max-age=31536000, immutable",
@@ -184,7 +211,10 @@ async function bundledPage(): Promise<Record<string, { GET: (req: Request) => Re
 }
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" },
+  });
 }
 
 /** 실제로 묶인 포트. 기본 포트가 차 있으면 PORT 와 다를 수 있다. */
