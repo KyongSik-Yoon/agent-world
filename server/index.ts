@@ -11,6 +11,9 @@ import { World } from "./world.ts";
 const PORT = Number(process.env.AGENT_WORLD_PORT || 4780);
 const TICK_MS = 1000;
 const HEARTBEAT_MS = 15_000;
+const IDLE_TICK_MS = 15_000;
+/** 새로 붙은 브라우저에 바로 건네도 되는 스냅샷의 나이. 이보다 묵었으면 새로 만들어 보낸다. */
+const FRESH_MS = 2_500;
 
 const world = new World();
 const encoder = new TextEncoder();
@@ -34,7 +37,8 @@ function broadcast(bytes: Uint8Array): void {
 }
 
 async function tick(): Promise<void> {
-  if (ticking || clients.size === 0) return;
+  // 보는 사람이 없으면 드문드문만 만든다 — 상태가 바뀐 시각을 크게 놓치지 않을 만큼만.
+  if (ticking || (clients.size === 0 && Date.now() - (latest?.at ?? 0) < IDLE_TICK_MS)) return;
   ticking = true;
   try {
     const snapshot = await world.snapshot();
@@ -96,8 +100,9 @@ const server = Bun.serve({
           start(controller) {
             self = controller;
             clients.add(controller);
-            if (latest) controller.enqueue(frame(latest));
-            // 첫 접속이면 다음 틱을 기다리지 않고 바로 만든다.
+            // 묵은 스냅샷을 먼저 보내면 화면이 옛 상태를 기준 삼아, 곧이어 오는 새 스냅샷의 차이를
+            // 전부 "방금 바뀐 것"으로 알린다. 신선할 때만 건네고, 아니면 바로 새로 만든다.
+            if (latest && Date.now() - latest.at < FRESH_MS) controller.enqueue(frame(latest));
             latestKey = "";
             void tick();
           },

@@ -24,6 +24,9 @@ const EXTERNAL_WORKING_MS = 10 * 60_000;
 /** 턴이 닫힌 뒤 이만큼은 "방금 끝남"으로 보여 준다. */
 const EXTERNAL_DONE_MS = 10 * 60_000;
 
+/** 스냅샷 사이가 이보다 벌어지면 "지켜보던 중"이 아니었다고 본다. */
+const WATCH_GAP_MS = 5_000;
+
 const STATUSES = new Set<AgentStatus>(["working", "blocked", "done", "idle", "unknown"]);
 
 function harnessFor(agent: string): Harness | undefined {
@@ -56,6 +59,8 @@ export class World {
   private external: Array<LogFile & { harness: Harness }> = [];
   private discoveredAt = 0;
   private discovering = false;
+  /** 직전 스냅샷을 다 만든 시각. */
+  private builtAt = 0;
   /** 이번 스냅샷에서 읽은 로그들 — 끝나면 나머지는 놓아준다. */
   private used = new Set<string>();
 
@@ -79,11 +84,21 @@ export class World {
     return entry;
   }
 
-  private statusSince(id: string, status: AgentStatus, firstSeenAt: number): number {
+  /**
+   * 지금 상태가 언제 시작됐는지.
+   *
+   * 지켜보던 중에 바뀌었으면 지금이다. 처음 보는 에이전트면 로그가 마지막으로 움직인 때를 쓴다.
+   * 한동안 스냅샷을 만들지 않다가(아무도 화면을 보고 있지 않았다) 바뀐 것을 발견했을 때는 지금이
+   * 아니다 — 마지막으로 본 때와 지금 사이의 어느 시점이므로, 그 사이에 로그가 움직였으면 그때를,
+   * 아니면 마지막으로 본 때를 쓴다. 그러지 않으면 몇 시간 전에 끝난 일이 "방금 완료"로 보인다.
+   */
+  private statusSince(id: string, status: AgentStatus, logUpdatedAt: number | undefined): number {
+    const now = Date.now();
     const prev = this.since.get(id);
     if (prev && prev.status === status) return prev.at;
-    // 처음 보는 에이전트면 로그가 마지막으로 움직인 때를, 지켜보던 중에 바뀌었으면 지금을 쓴다.
-    const at = prev ? Date.now() : firstSeenAt;
+    let at = now;
+    if (!prev) at = Math.min(logUpdatedAt ?? now, now);
+    else if (now - this.builtAt > WATCH_GAP_MS) at = Math.max(Math.min(logUpdatedAt ?? now, now), this.builtAt);
     this.since.set(id, { status, at });
     return at;
   }
@@ -153,7 +168,7 @@ export class World {
       (view.lastPrompt ? oneLine(view.lastPrompt, 60) : "") ||
       ws?.tokens?.topic ||
       view.workspaceLabel;
-    view.statusSince = this.statusSince(view.id, status, view.logUpdatedAt ?? Date.now());
+    view.statusSince = this.statusSince(view.id, status, view.logUpdatedAt);
     return view;
   }
 
@@ -188,7 +203,7 @@ export class World {
     view.workspaceId = `ext:${view.cwd || file.harness.vendor}`;
     view.workspaceLabel = place;
     view.title = summary.title || (await file.harness.title?.(file.sessionId)) || (view.lastPrompt ? oneLine(view.lastPrompt, 60) : place);
-    view.statusSince = this.statusSince(view.id, view.status, view.logUpdatedAt ?? Date.now());
+    view.statusSince = this.statusSince(view.id, view.status, view.logUpdatedAt);
     return view;
   }
 
@@ -268,8 +283,9 @@ export class World {
     for (const id of this.since.keys()) if (!alive.has(id)) this.since.delete(id);
     for (const key of this.tracked.keys()) if (!this.used.has(key)) this.tracked.delete(key);
 
+    this.builtAt = Date.now();
     return {
-      at: Date.now(),
+      at: this.builtAt,
       herdr: snap !== undefined,
       herdrError,
       workspaces: [...workspaces.values()].sort((a, b) => (a.number || 1e9) - (b.number || 1e9) || a.label.localeCompare(b.label)),

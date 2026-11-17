@@ -169,6 +169,8 @@ window.addEventListener("keydown", (e) => {
       hud.focusSearch();
       break;
     case "enter": {
+      // 다른 단추 위에서 누른 Enter 는 그 단추의 것이다 — 덩달아 herdr 화면을 옮기지 않는다.
+      if (e.target instanceof HTMLElement && e.target.closest("button:not(.row), a")) break;
       const a = hud.selected;
       if (a?.paneId) void openInHerdr(a);
       break;
