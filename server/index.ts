@@ -3,14 +3,20 @@
 // 이 서버는 에이전트 로그의 요약과 터미널 화면을 내보내고, 에이전트에게 글자를 넣을 수도 있다.
 // 그래서 127.0.0.1 밖으로는 열지 않고, Host 와 Origin 을 확인해 다른 사이트가 브라우저를 거쳐
 // 읽어 가거나 조작하는 길을 막는다. 조작을 아예 끄려면 AGENT_WORLD_READONLY=1 로 띄운다.
+import { resolve } from "node:path";
+
 import index from "../web/index.html";
 import type { SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
 import { controlRoutes } from "./control.ts";
-import { herdrFocus, herdrScreen } from "./herdr.ts";
+import { herdrFocus, herdrScreen, herdrSocketPath } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
 import { World } from "./world.ts";
 
+/** 포트를 직접 정해 줬는지. 정해 줬으면 그 포트만 쓰고, 아니면 4780 부터 빈 자리를 찾는다. */
+const PORT_GIVEN = Boolean(process.env.AGENT_WORLD_PORT);
 const PORT = Number(process.env.AGENT_WORLD_PORT || 4780);
+/** 기본 포트가 차 있을 때 더 찾아보는 자리 수. herdr 세션을 이보다 많이 동시에 띄우는 일은 드물다. */
+const PORT_TRIES = 10;
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
   console.error(`AGENT_WORLD_PORT 가 포트 번호가 아닙니다: ${process.env.AGENT_WORLD_PORT}`);
   process.exit(1);
@@ -123,7 +129,9 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 }
 
-const LOOPBACK = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, `[::1]:${PORT}`]);
+/** 실제로 묶인 포트. 기본 포트가 차 있으면 PORT 와 다를 수 있다. */
+let port = PORT;
+const loopback = (host: string): boolean => host === `127.0.0.1:${port}` || host === `localhost:${port}` || host === `[::1]:${port}`;
 
 // 다른 기기에서 쓰려고 `tailscale serve` 로 내보낼 때 그 주소를 적는다(예: `host.tailnet.ts.net:4780`).
 // 이 이름으로 온 요청은 tailscale 이 붙여 주는 사용자 표시가 이 PC 의 주인과 같을 때만 받는다 —
@@ -157,7 +165,7 @@ async function trusted(req: Request): Promise<boolean> {
   if (TAILNET_HOSTS.has(host)) {
     const login = req.headers.get("tailscale-user-login");
     if (!login || login !== (await tailnetOwner())) return false;
-  } else if (!LOOPBACK.has(host)) return false;
+  } else if (!loopback(host)) return false;
   const origin = req.headers.get("origin");
   if (origin === null) return req.method === "GET";
   try {
@@ -171,27 +179,72 @@ function guarded(handler: (req: Request) => Response | Promise<Response>) {
   return async (req: Request) => ((await trusted(req)) ? handler(req) : json({ error: "forbidden" }, 403));
 }
 
-function serve() {
+/** 이 서버가 무엇에 붙어 있는지. 같은 포트를 두고 만난 다른 Agent World 가 서로를 알아보는 데 쓴다. */
+interface Identity {
+  app: "agent-world";
+  socket: string;
+  readonly: boolean;
+}
+const identity: Identity = { app: "agent-world", socket: resolve(herdrSocketPath()), readonly: READONLY };
+
+/** 그 포트에 떠 있는 것이 Agent World 면 그 정체를, 아니면(다른 프로그램이거나 답이 없으면) null 을 준다. */
+async function identify(at: number): Promise<Identity | null> {
   try {
-    return listen();
-  } catch (e) {
-    // 가장 흔한 실패는 이미 떠 있는 Agent World 다. 스택 대신 무엇을 하면 되는지 적는다.
-    if ((e as { code?: string }).code === "EADDRINUSE") {
-      console.error(`포트 ${PORT} 을 이미 쓰고 있습니다. Agent World 가 떠 있다면 http://127.0.0.1:${PORT} 를 열고, 따로 하나 더 띄우려면 AGENT_WORLD_PORT 로 다른 포트를 주세요.`);
-    } else console.error(`서버를 띄우지 못했습니다: ${(e as Error).message}`);
-    process.exit(1);
+    const res = await fetch(`http://127.0.0.1:${at}/api/identity`, { signal: AbortSignal.timeout(1000) });
+    const body = (await res.json()) as Partial<Identity>;
+    return body.app === "agent-world" && typeof body.socket === "string" ? (body as Identity) : null;
+  } catch {
+    return null;
   }
 }
 
-const listen = () =>
+/**
+ * 포트를 잡는다. 차 있으면 누가 쓰는지 본다:
+ *   - 같은 herdr 에 같은 모드로 붙은 Agent World 면 이미 떠 있는 것이다. 그 주소를 알리고 조용히 끝낸다
+ *     (herdr 가 시작할 때마다 띄우는 플러그인에서 두 번째 실행이 오류가 되지 않게).
+ *   - 다른 herdr 세션의 Agent World 나 다른 프로그램이면 다음 포트를 본다. 포트를 직접 정해 줬으면 옮기지 않고 알린다.
+ */
+async function start() {
+  for (let at = PORT; ; at += 1) {
+    port = at;
+    try {
+      return listen(at);
+    } catch (e) {
+      if ((e as { code?: string }).code !== "EADDRINUSE") {
+        console.error(`서버를 띄우지 못했습니다: ${(e as Error).message}`);
+        process.exit(1);
+      }
+      const other = await identify(at);
+      if (other?.socket === identity.socket && other.readonly === identity.readonly) {
+        console.log(`Agent World 가 이미 떠 있습니다 → http://127.0.0.1:${at}`);
+        process.exit(0);
+      }
+      const who = other ? "다른 herdr 세션(또는 다른 모드)의 Agent World" : "다른 프로그램";
+      if (PORT_GIVEN || at >= PORT + PORT_TRIES - 1 || at >= 65535) {
+        console.error(
+          PORT_GIVEN
+            ? `포트 ${at} 을 ${who} 이(가) 쓰고 있습니다. AGENT_WORLD_PORT 로 다른 포트를 주세요.`
+            : `포트 ${PORT}~${at} 이 모두 차 있습니다. AGENT_WORLD_PORT 로 빈 포트를 주세요.`,
+        );
+        process.exit(1);
+      }
+      console.log(`포트 ${at} 은 ${who} 이(가) 쓰고 있어 다음 포트를 봅니다.`);
+    }
+  }
+}
+
+const listen = (at: number) =>
   Bun.serve({
   hostname: "127.0.0.1",
-  port: PORT,
+  port: at,
+  // 같은 포트를 여러 프로세스가 나눠 쓰지 않는다. 나눠 쓰면 요청이 서로 다른 herdr 에 붙은 서버들 사이를 오간다.
+  reusePort: false,
   idleTimeout: 0,
   // 평소에는 한 번 묶어 둔 번들을 내보낸다. 화면을 고치는 동안에는 AGENT_WORLD_DEV=1 로 띄운다.
   development: process.env.AGENT_WORLD_DEV === "1",
   routes: {
     "/": index,
+    "/api/identity": { GET: guarded(() => json(identity)) },
     "/api/snapshot": {
       GET: guarded(async () => json(await world.snapshot())),
     },
@@ -257,7 +310,7 @@ const listen = () =>
   fetch: () => new Response("not found", { status: 404 }),
 });
 
-const server = serve();
+const server = await start();
 
 console.log(`Agent World → http://127.0.0.1:${server.port}${READONLY ? " (보기 전용)" : ""}`);
 for (const host of TAILNET_HOSTS) console.log(`  tailnet 에서도 받음(이 PC 의 계정만) → https://${host}`);
