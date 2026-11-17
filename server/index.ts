@@ -80,10 +80,39 @@ function json(body: unknown, status = 200): Response {
 
 const LOOPBACK = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, `[::1]:${PORT}`]);
 
-/** 루프백 이름으로 들어온 요청인지, 그리고 다른 출처의 페이지가 보낸 것은 아닌지. */
-function trusted(req: Request): boolean {
-  const host = req.headers.get("host") ?? "";
-  if (!LOOPBACK.has(host)) return false;
+// 다른 기기에서 쓰려고 `tailscale serve` 로 내보낼 때 그 주소를 적는다(예: `host.tailnet.ts.net:4780`).
+// 이 이름으로 온 요청은 tailscale 이 붙여 주는 사용자 표시가 이 PC 의 주인과 같을 때만 받는다 —
+// 같은 tailnet 의 다른 사람이나 태그 기기는 통과하지 못한다.
+const TAILNET_HOSTS = new Set(
+  (process.env.AGENT_WORLD_TRUST_HOSTS ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+let owner: Promise<string | null> | undefined;
+
+/** 이 PC 를 tailnet 에 올린 계정. 알아내지 못하면 null — 그러면 tailnet 으로 온 요청은 모두 거절된다. */
+function tailnetOwner(): Promise<string | null> {
+  owner ??= (async () => {
+    try {
+      const proc = Bun.spawn(["tailscale", "status", "--json"], { stdout: "pipe", stderr: "ignore" });
+      const status = (await new Response(proc.stdout).json()) as { Self?: { UserID?: number }; User?: Record<string, { LoginName?: string }> };
+      return status.User?.[String(status.Self?.UserID)]?.LoginName ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  return owner;
+}
+
+/** 믿을 수 있는 이름으로 들어온 요청인지, 그리고 다른 출처의 페이지가 보낸 것은 아닌지. */
+async function trusted(req: Request): Promise<boolean> {
+  const host = (req.headers.get("host") ?? "").toLowerCase();
+  if (TAILNET_HOSTS.has(host)) {
+    const login = req.headers.get("tailscale-user-login");
+    if (!login || login !== (await tailnetOwner())) return false;
+  } else if (!LOOPBACK.has(host)) return false;
   const origin = req.headers.get("origin");
   if (origin === null) return req.method === "GET";
   try {
@@ -94,7 +123,7 @@ function trusted(req: Request): boolean {
 }
 
 function guarded(handler: (req: Request) => Response | Promise<Response>) {
-  return (req: Request) => (trusted(req) ? handler(req) : json({ error: "forbidden" }, 403));
+  return async (req: Request) => ((await trusted(req)) ? handler(req) : json({ error: "forbidden" }, 403));
 }
 
 const server = Bun.serve({
@@ -169,3 +198,4 @@ const server = Bun.serve({
 });
 
 console.log(`Agent World → http://127.0.0.1:${server.port}${READONLY ? " (보기 전용)" : ""}`);
+for (const host of TAILNET_HOSTS) console.log(`  tailnet 에서도 받음(이 PC 의 계정만) → https://${host}`);

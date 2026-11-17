@@ -45,6 +45,7 @@ bun start            # http://127.0.0.1:4780
 | --- | --- |
 | `AGENT_WORLD_PORT` | 포트(기본 4780). 루프백에만 묶인다. |
 | `AGENT_WORLD_READONLY=1` | 보기 전용. 지시·키 입력·만들기·닫기 요청을 모두 거절한다. |
+| `AGENT_WORLD_TRUST_HOSTS` | `tailscale serve` 로 내보낼 때의 주소(`host.tailnet.ts.net:4780`, 쉼표로 여럿). 이 PC 를 tailnet 에 올린 계정의 요청만 받는다. |
 | `AGENT_WORLD_RAISE=0` | `herdr 에서 열기`가 터미널 창을 앞으로 가져오지 않게 한다. |
 | `HERDR_SOCKET_PATH` | herdr 소켓 경로(기본 `~/.config/herdr/herdr.sock`). |
 | `AGENT_WORLD_DEV=1` | 화면 코드를 고칠 때. 번들을 매번 새로 만든다(`bun run dev`). |
@@ -55,6 +56,13 @@ bun start            # http://127.0.0.1:4780
 이 서버는 터미널에 글자를 넣을 수 있다. 그래서 127.0.0.1 에만 묶이고, 바꾸는 요청은 같은 출처에서 온 POST 만
 받으며, 대상은 지금 herdr 에 실제로 있는 pane·탭·스페이스로 한정한다. 같은 PC 의 다른 사용자 계정까지는 막지
 않으므로, 여럿이 쓰는 기계에서는 `AGENT_WORLD_READONLY=1` 로 띄운다.
+
+다른 기기에서 쓰려면 tailnet 안으로만 내보낸다(공인 인터넷 공개는 하지 않는다):
+
+```sh
+AGENT_WORLD_TRUST_HOSTS=<host>.<tailnet>.ts.net:4780 bun start
+ts-gate quick http://127.0.0.1:4780 -p 4780 -t 8h     # 또는 tailscale serve --bg --https=4780 http://127.0.0.1:4780
+```
 
 ## 어떻게 아는가
 
