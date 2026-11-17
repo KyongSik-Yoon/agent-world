@@ -59,8 +59,8 @@ const LOD_CLASS = ["", "lod1", "lod2"];
  * 바로 문패 옆 대문에 서는데, 빛기둥과 고리로 이미 눈에 띄므로 말풍선이 문패를 덮기보다 문패를 비켜 접힌다.
  */
 const RANK: Record<AgentStatus, number> = { blocked: 2, done: 3, working: 4, idle: 5, unknown: 5 };
-/** 제자리가 막혔을 때 이름표가 비켜 올라설 수 있는 높이(px) — 문패 한 줄, 두 줄 높이만큼. */
-const LIFTS = [0, 28, 56] as const;
+/** 제자리가 막혔을 때 이름표가 비켜 올라설 수 있는 높이(px) — 문패 한 줄 높이씩 세 줄까지. */
+const LIFTS = [0, 28, 56, 84] as const;
 /** 크기를 아직 재지 못했을 때 쓰는 어림값(px). */
 const GUESS = { bubble: [118, 28], plate: [112, 21], compact: [34, 21] } as const satisfies Record<string, Size>;
 

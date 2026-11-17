@@ -255,6 +255,26 @@ function setRoster(open: boolean): void {
 }
 rosterBtn.addEventListener("click", () => setRoster(document.body.dataset.roster !== "open"));
 
+// 목록과 상태 창이 장면을 얼마나 덮는지 알려 준다 — 장면이 그 사이 빈 자리의 한가운데에 오게.
+// 좁은 화면(휴대폰)에서는 패널이 화면 전체를 쓰는 서랍이라 밀지 않는다.
+{
+  const rosterEl = document.getElementById("roster")!;
+  const detailEl = document.getElementById("detail")!;
+  const phone = matchMedia("(max-width: 760px)");
+  const syncInsets = (): void => {
+    if (phone.matches) return scene.setInsets(0, 0);
+    const detail = detailEl.hidden ? 0 : window.innerWidth - detailEl.getBoundingClientRect().left;
+    scene.setInsets(rosterEl.getBoundingClientRect().right, Math.max(0, detail));
+  };
+  const watch = new ResizeObserver(syncInsets);
+  watch.observe(rosterEl);
+  watch.observe(detailEl);
+  new MutationObserver(syncInsets).observe(detailEl, { attributes: true, attributeFilter: ["hidden"] });
+  phone.addEventListener("change", syncInsets);
+  window.addEventListener("resize", syncInsets);
+  syncInsets();
+}
+
 connect();
 
 // ── 단추와 단축키 ────────────────────────────────────────────────────────────────────────────

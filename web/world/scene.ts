@@ -93,6 +93,13 @@ export class WorldScene {
   private readonly lastCamera = new THREE.Matrix4();
   /** 직전 프레임에 걸어가는 캐릭터가 있었는지. */
   private walking = false;
+  /**
+   * 화면 좌우를 덮고 있는 패널의 폭(px) — 목록과 상태 창. 장면의 한가운데가 창의 한가운데가 아니라 패널 사이
+   * 빈 자리의 한가운데에 오도록 시야를 그만큼 옆으로 민다. 창이 좁을수록(화면 절반에 띄운 창) 차이가 크다.
+   */
+  private inset = { left: 0, right: 0 };
+  /** 지금 시야가 옆으로 밀려 있는 정도(px). inset 을 부드럽게 따라간다. */
+  private shiftX = 0;
 
   constructor(
     private readonly container: HTMLElement,
@@ -170,11 +177,42 @@ export class WorldScene {
     requestAnimationFrame(this.tick);
   }
 
+  /** 좌우 패널이 덮은 폭을 알려 준다. 시야는 다음 프레임들에 걸쳐 부드럽게 옮겨 간다. */
+  setInsets(left: number, right: number): void {
+    if (left === this.inset.left && right === this.inset.right) return;
+    this.inset = { left, right };
+    if (this.layoutKey === null) {
+      // 아직 아무것도 그리기 전이면 미끄러져 들어오지 않고 처음부터 제자리에서 시작한다.
+      this.shiftX = (left - right) / 2;
+      this.applyShift();
+      return;
+    }
+    // 옮겨 가는 동안은 화면 전체가 움직인다 — 주사율 그대로 그린다.
+    this.lastInputAt = performance.now();
+  }
+
+  /** 패널에 덮이지 않은 자리의 가로세로 비. 처음 화면의 거리를 여기에 맞춘다. */
+  private freeAspect(): number {
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    return Math.max(w - this.inset.left - this.inset.right, w * 0.4) / h;
+  }
+
+  /** 시야를 패널 사이 빈 자리의 한가운데로 민다. */
+  private applyShift(): void {
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    if (Math.abs(this.shiftX) < 0.5) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(w, h, -this.shiftX, 0, w, h);
+    this.labelsDirty = Math.max(this.labelsDirty, 1);
+  }
+
   private resize(): void {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.applyShift();
     // 브라우저 확대/축소가 바뀌면 화소 비율도 바뀐다. 처음 값에 묶어 두면 필요 이상으로 그리거나 흐려진다.
     this.renderer.setPixelRatio(this.pixelRatio(w, h));
     this.renderer.setSize(w, h);
@@ -351,6 +389,9 @@ export class WorldScene {
   select(id: string | null, fly = true): void {
     const before = this.selectedId;
     this.labelsDirty = 3;
+    // 고르는 것은 어떻게 골랐든(목록에서 키보드로, 알림을 눌러서) 조작이다 — 다가가는 동안은 주사율 그대로 그린다.
+    // 포인터나 키 입력만 조작으로 치면 그 밖의 길로 고른 때는 카메라가 초당 30장으로 끊겨 움직인다.
+    if (fly) this.lastInputAt = performance.now();
     if (id && !before && fly) {
       // 돌아오는 중에 다시 골랐으면, 가던 곳이 돌아갈 자리다.
       const returning = this.flight?.position ? this.flight : null;
@@ -448,7 +489,7 @@ export class WorldScene {
     this.home = null;
     // 세로로 긴 화면(휴대폰)은 가로 시야가 좁아 같은 거리에서는 섬의 양옆이 잘린다. 좁은 만큼 물러서되,
     // 캐릭터가 점이 되지 않을 만큼만.
-    const narrow = Math.min(Math.max(1, 1.6 / this.camera.aspect), 1.9);
+    const narrow = Math.min(Math.max(1, 1.6 / this.freeAspect()), 1.9);
     const distance = Math.min((this.layout.islandRadius * 2.35 + 6) * narrow, this.controls.maxDistance);
     const target = new THREE.Vector3(0, 0.5, 1.5);
     const position = target.clone().addScaledVector(new THREE.Vector3(0, 0.72, 0.7).normalize(), distance);
@@ -586,6 +627,14 @@ export class WorldScene {
       this.controls.target.lerp(this.flight.target, k);
       this.camera.position.copy(this.controls.target).addScaledVector(offset.normalize(), distance);
       if (!selected && this.controls.target.distanceTo(this.flight.target) < 0.02 && Math.abs(distance - this.flight.distance) < 0.05) this.flight = null;
+    }
+
+    // 패널이 열리고 닫히면 시야의 한가운데를 빈 자리 쪽으로 부드럽게 옮긴다.
+    const wantShift = (this.inset.left - this.inset.right) / 2;
+    if (Math.abs(wantShift - this.shiftX) > 0.25) {
+      this.shiftX += (wantShift - this.shiftX) * (1 - Math.exp(-dt * 7));
+      if (Math.abs(wantShift - this.shiftX) <= 0.25) this.shiftX = wantShift;
+      this.applyShift();
     }
 
     this.env.update(t, dt);

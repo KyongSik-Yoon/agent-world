@@ -204,8 +204,22 @@ export class LabelLayer {
           break;
         }
       }
-      // 가장 작은 모습으로도 겹친다. 숨겨도 되는 것은 숨기고, 아니면 겹친 채로 가장 작게 둔다.
-      if (target < 0) target = label.hideable?.() ? last + 1 : last;
+      // 가장 작은 모습으로도 겹친다. 숨겨도 되는 것은 숨기고, 아니면 가장 작은 모습으로 가장 덜 겹치는 높이에 둔다.
+      if (target < 0) {
+        target = label.hideable?.() ? last + 1 : last;
+        if (target === last) {
+          let least = Number.POSITIVE_INFINITY;
+          for (const up of lifts) {
+            const r = this.rect(label, sizes[last]!, 0, up, label.shift);
+            // 지금 높이는 조금 봐준다 — 비슷하게 겹치는 두 자리를 오가지 않게.
+            const covered = taken.reduce((sum, t) => sum + overlap(r, t), 0) - (up === label.lift ? KEEP_SHIFT : 0);
+            if (covered < least) {
+              least = covered;
+              lift = up;
+            }
+          }
+        }
+      }
       if (target <= last) taken.push(this.rect(label, sizes[target]!, 0, lift, label.shift));
       if (target > label.level) {
         // 줄어드는 것은 바로.
