@@ -178,6 +178,8 @@ export class TermScreen {
   private source: EventSource | undefined;
   private paneId = "";
   private back = 0;
+  /** 화면을 보고 있어야 하는 상태인지 — 끊겼을 때 다시 붙을지 정한다. */
+  private wanted = false;
   onGone: (() => void) | undefined;
 
   constructor(private readonly options: ScreenOptions = {}) {
@@ -203,14 +205,31 @@ export class TermScreen {
     const source = new EventSource(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}`);
     this.source = source;
     source.addEventListener("screen", (e) => this.draw((JSON.parse((e as MessageEvent<string>).data) as { text: string }).text));
-    source.addEventListener("gone", () => {
+    const gone = () => {
       this.stop();
       this.el.textContent = "이 pane 은 닫혔습니다.";
       this.onGone?.();
-    });
+    };
+    source.addEventListener("gone", gone);
+    source.onerror = () => {
+      // 오류 응답을 받은 EventSource 는 다시 붙지 않는다. pane 이 사라진 것인지(404) 서버가 잠깐 꺼진 것인지
+      // 가려서, 꺼진 것이면 조금 뒤에 새로 연다.
+      if (source.readyState !== EventSource.CLOSED || this.source !== source) return;
+      this.source = undefined;
+      void fetch(`/api/screen?pane=${encodeURIComponent(paneId)}`)
+        .then((res) => res.status)
+        .catch(() => 0)
+        .then((status) => {
+          if (this.source !== undefined || this.paneId !== paneId || this.back !== back) return;
+          if (status === 404) gone();
+          else setTimeout(() => this.source === undefined && this.paneId === paneId && this.back === back && this.wanted && this.start(paneId, back), 2000);
+        });
+    };
+    this.wanted = true;
   }
 
   stop(): void {
+    this.wanted = false;
     this.source?.close();
     this.source = undefined;
   }

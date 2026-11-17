@@ -215,9 +215,13 @@ function announce(snapshot: WorldSnapshot): void {
 
 // ── 스냅샷 흐름 ──────────────────────────────────────────────────────────────────────────────
 
+/** 다시 붙기를 직접 시도할 때의 간격(ms). 실패가 이어지면 조금씩 늘린다. */
+let retryMs = 1000;
+
 function connect(): void {
   const events = new EventSource("/api/events");
   events.onmessage = (e) => {
+    retryMs = 1000;
     const snapshot = JSON.parse(e.data as string) as WorldSnapshot;
     if (snapshot.herdr) hud.setConnection("live", `herdr 연결됨 · 에이전트 ${snapshot.agents.length}`);
     else hud.setConnection("logs", `herdr 없음 — 로그만으로 표시 · ${snapshot.agents.length}`);
@@ -227,8 +231,15 @@ function connect(): void {
     builder.observe(snapshot);
     buildBtn.hidden = !snapshot.herdr || !snapshot.control;
   };
-  // EventSource 가 스스로 다시 붙는다. 끊긴 동안에는 그렇다고 알려 둔다.
-  events.onerror = () => hud.setConnection("down", "서버와 끊김 — 다시 연결 중…");
+  events.onerror = () => {
+    hud.setConnection("down", "서버와 끊김 — 다시 연결 중…");
+    // 연결이 그냥 끊긴 것이면 EventSource 가 스스로 다시 붙는다. 하지만 오류 응답을 받으면(서버가 꺼진 동안
+    // 앞단 프록시가 502 를 돌려줄 때) 영영 포기하므로, 그때는 직접 새로 연다.
+    if (events.readyState !== EventSource.CLOSED) return;
+    events.close();
+    setTimeout(connect, retryMs);
+    retryMs = Math.min(retryMs * 1.6, 8000);
+  };
 }
 
 const buildBtn = document.getElementById("btn-build")!;
