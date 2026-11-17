@@ -1,7 +1,8 @@
 // 벤더별 캐릭터 모델.
 //
-// Claude 의 Clawd 와 Antigravity 의 아치는 Collie 상태줄 로고(SVG)의 실루엣을 그대로 3D 로 옮긴
+// Claude 의 Clawd 와 Antigravity 의 아치는 직접 그린 상태줄 로고(SVG)의 실루엣을 그대로 3D 로 옮긴
 // 것이다 — Clawd 는 같은 42×42 격자의 몸통·팔·다리 4개를 상자로, AGY 는 같은 아치 경로를 압출해서.
+// (Collie 의 것이 아니다. Collie 에서 온 것은 brands.ts 의 브랜드 글리프와 색뿐이다.)
 // 그 밖의 벤더는 브랜드 마크를 얼굴에 띄운 로봇이 된다.
 import * as THREE from "three";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";

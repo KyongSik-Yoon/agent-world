@@ -4,9 +4,9 @@ Agent World itself is under the [MIT License](LICENSE). It includes material fro
 
 ## Collie (ColliePWA)
 
-The vendor glyphs and tile colours in `web/brands.ts`, and the character silhouettes derived from them in
-`web/world/characters.ts`, come from Collie's `web/src/components/agent-icon-data.ts` and status-line logos.
-Agent World is not an official Collie project.
+The vendor glyphs and tile colours in `web/brands.ts` come from Collie's `web/src/components/agent-icon-data.ts`,
+which collected each one from that project's own mark (Claude and Codex via Simple Icons, CC0; the others from the
+projects' own sites). Nothing else is taken from Collie, and Agent World is not an official Collie project.
 
 ```
 MIT License
@@ -40,4 +40,6 @@ Installed as a dependency (`three`, MIT License, © 2010–2025 three.js authors
 
 The names and marks of the coding agents shown in the UI (Claude Code, Codex, Antigravity, Gemini, and others)
 belong to their respective owners. They are used only to tell the user which agent a character stands for.
+The Clawd and arch characters (`web/world/characters.ts`, and the page icon) are this project's own drawings of
+Claude Code's and Antigravity's marks — the drawings are ours, the marks they depict are not.
 Agent World is not affiliated with or endorsed by any of them, nor by herdr.
