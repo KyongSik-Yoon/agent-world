@@ -450,10 +450,13 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
           seen.delete("");
           return json({ dirs: [...seen].filter((p) => !p.includes("/.herdr/worktrees/")).sort().slice(0, 30).map(short) });
         }
-        const full = resolve(expandHome(prefix));
+        // 경로로 읽을 수 있는 것만 받는다(`~/…`, `/…`). 그 밖의 글자는 서버가 떠 있는 폴더 기준으로 풀려 엉뚱한 곳을 보여 준다.
+        if (!/^(~($|\/)|\/)/.test(prefix.trim())) return json({ dirs: [] });
+        const full = resolve(expandHome(prefix.trim()));
         // 홈 밖은 훑지 않는다 — 폴더 이름을 알려 주는 창구이므로 범위를 좁게 둔다.
         if (full !== home && !full.startsWith(`${home}/`)) return json({ dirs: [] });
-        const [dir, head] = prefix.endsWith("/") ? [full, ""] : [dirname(full), basename(full)];
+        // 홈 자체(`~`)를 쳤을 때는 홈 안을 보여 준다 — 홈의 부모를 훑으면 다른 계정의 폴더 이름이 나온다.
+        const [dir, head] = prefix.endsWith("/") || full === home ? [full, ""] : [dirname(full), basename(full)];
         let names: string[];
         try {
           names = await readdir(dir);
