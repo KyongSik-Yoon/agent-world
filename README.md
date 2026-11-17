@@ -12,7 +12,7 @@ herdr 에 띄워 둔 코딩 에이전트들을 3D 마을로 보여 주는 로컬
 | 작업 중 | 자기 워크스페이스 집터 마당에서 일합니다. 말풍선에 지금 하는 일이 뜹니다. |
 | 완료 | 가운데 광장으로 걸어 나와 기다립니다(초록 빛기둥). |
 | 확인 필요 | 집터 대문 앞에 나와 뜁니다(빨간 빛기둥). |
-| 대기 | 집 옆에서 좁니다(흐리게 보입니다). |
+| 대기 | 집 옆에서 졸고 있습니다(흐리게 보입니다). |
 
 캐릭터를 누르면 상태 창이 열리고 모델, effort, 컨텍스트, 마지막 지시와 응답, 활동 로그, 터미널 화면이 보입니다.
 이때 카메라가 그 캐릭터 쪽으로 다가가는데, 창을 닫으면(✕ 또는 Esc) 원래 보던 자리와 배율로 돌아옵니다.
@@ -165,19 +165,19 @@ herdr 에 붙어 있는 동안에는 herdr 의 에이전트만 보여 줍니다.
 ## 구조
 
 ```
-server/   Bun 서버 — herdr RPC, 로그 tail, 스냅샷을 SSE 로 밀어 준다
+server/   Bun 서버. herdr RPC 와 로그 tail 을 맡고, 스냅샷을 SSE 로 보낸다
   control.ts  조작 엔드포인트(지시·키 입력·터미널 미러·만들기·닫기)
   adapters/   하네스별 로그 리더
-  text.ts     서버가 건네는 말(한국어·영어)
-  key.ts      접속 열쇠와 이 사용자만 읽는 상태 파일
+  text.ts     서버 메시지(한국어·영어)
+  key.ts      접속 열쇠, 이 사용자만 읽을 수 있는 상태 파일
 web/      three.js 장면과 HUD
   detail.ts   상태 창(에이전트·셸·집), term.ts 터미널 미러, build.ts 만들기·닫기 대화상자
   world/      섬·집터(environment), 캐릭터(characters), 배우(actor), 배치(layout), 이름표 층(labels)
   app/        홈 화면 설치용 매니페스트와 아이콘
-  i18n.ts     t() 와 말 바꾸기 — 영어 풀이는 locale/en.ts
-shared/   서버와 화면이 같이 쓰는 스냅샷 타입
-scripts/  plugin.ts — herdr 플러그인으로 돌 때의 시작·정지·열기
-dev/      mock-herdr.ts — 실제 herdr 없이 화면을 시험하는 흉내 소켓, i18n-check.ts
+  i18n.ts     t() 와 언어 전환. 영어 번역은 locale/en.ts
+shared/   서버와 화면이 함께 쓰는 스냅샷 타입
+scripts/  plugin.ts. herdr 플러그인으로 실행될 때의 시작·정지·열기
+dev/      mock-herdr.ts(실제 herdr 없이 화면을 시험하는 가짜 소켓), i18n-check.ts
 docs/     홈페이지(index.html)와 스크린샷
 ```
 
@@ -188,7 +188,7 @@ docs/     홈페이지(index.html)와 스크린샷
 조작 기능을 시험할 때는 쓰고 있는 herdr 말고 이름 붙은 테스트 세션을 씁니다.
 
 ```sh
-# 따로 도는 빈 herdr. herdr pane 안에서 띄울 때는 물려받은 HERDR_* 를 떼어야 쓰던 세션과 섞이지 않는다.
+# 격리된 빈 herdr 를 띄웁니다. herdr pane 안에서 실행할 때는 물려받은 HERDR_* 를 지워야 쓰던 세션과 섞이지 않습니다.
 env -u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH -u HERDR_SESSION -u HERDR_ENV herdr --session aw-test server &
 HERDR_SOCKET_PATH=~/.config/herdr/sessions/aw-test/herdr.sock AGENT_WORLD_PORT=4782 bun start
 herdr session stop aw-test && herdr session delete aw-test
