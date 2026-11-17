@@ -1,7 +1,7 @@
 // 스냅샷을 한 번 만들어 표로 찍는다 — 서버를 띄우지 않고 데이터 결합을 확인할 때 쓴다.
 import { World } from "./world.ts";
 
-const world = new World(false);
+const world = new World(false, process.env.AGENT_WORLD_OUTSIDE === "1");
 await world.snapshot();
 // 로그 탐색은 첫 스냅샷이 띄워 놓고 끝나기를 기다리지 않으므로, 한 박자 뒤에 다시 만든다.
 await new Promise((r) => setTimeout(r, 1500));

@@ -73,7 +73,11 @@ export class World {
   /** 완료 상태인 pane 의 herdr 상태 변경 번호 — 확인 기록을 남길 때 쓴다. */
   private doneSeq = new Map<string, number>();
 
-  constructor(private readonly control: boolean) {}
+  /** outside: herdr 에 붙어 있는 동안에도 herdr 밖 세션을 보여 준다. */
+  constructor(
+    private readonly control: boolean,
+    private readonly outside = false,
+  ) {}
 
   private async track(harness: Harness, sessionId: string, knownPath?: string): Promise<Tracked | undefined> {
     const key = `${harness.vendor}:${sessionId}`;
@@ -322,7 +326,10 @@ export class World {
       this.seen.prune(new Set(snap.panes.map((p) => p.pane_id)));
     }
 
-    this.discover();
+    // herdr 에 붙어 있으면 herdr 의 에이전트만 보여 준다 — 밖의 세션은 월드에서 말을 걸 수도, 확인 처리할 수도
+    // 없어 자리와 알림만 차지한다. herdr 가 꺼져 있을 때는 로그로 찾은 세션이 전부이므로 그대로 보여 준다.
+    if (!snap || this.outside) this.discover();
+    else this.external = [];
     const now = Date.now();
     for (const key of inHerdr) this.lastInHerdr.set(key, now);
     for (const [key, at] of this.lastInHerdr) if (now - at > EXTERNAL_KEEP_MS) this.lastInHerdr.delete(key);

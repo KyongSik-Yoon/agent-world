@@ -50,6 +50,7 @@ bun start            # http://127.0.0.1:4780
 | `AGENT_WORLD_PORT` | 포트(기본 4780). 루프백에만 묶인다. |
 | `AGENT_WORLD_READONLY=1` | 보기 전용. 지시·키 입력·만들기·닫기 요청을 모두 거절한다. |
 | `AGENT_WORLD_TRUST_HOSTS` | `tailscale serve` 로 내보낼 때의 주소(`host.tailnet.ts.net:4780`, 쉼표로 여럿). 이 PC 를 tailnet 에 올린 계정의 요청만 받는다. |
+| `AGENT_WORLD_OUTSIDE=1` | herdr 에 붙어 있는 동안에도 herdr 밖 세션(다른 터미널, 데스크톱 앱)을 함께 보여 준다. |
 | `AGENT_WORLD_RAISE=0` | `herdr 에서 열기`가 터미널 창을 앞으로 가져오지 않게 한다. |
 | `HERDR_SOCKET_PATH` | herdr 소켓 경로(기본 `~/.config/herdr/herdr.sock`). |
 | `AGENT_WORLD_DEV=1` | 화면 코드를 고칠 때. 번들을 매번 새로 만든다(`bun run dev`). |
@@ -85,8 +86,9 @@ ts-gate quick http://127.0.0.1:4780 -p 4780 -t 8h     # 또는 tailscale serve -
 | Antigravity | `~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript.jsonl` |
 | Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*-<session>.jsonl` |
 
-herdr 에 없는 세션(다른 터미널, 데스크톱 앱)은 최근 30분 안에 움직인 로그로 찾아내고, 상태는 로그 시각으로
-추정한다. herdr 가 꺼져 있으면 이 방식만으로 돈다. 그 밖의 하네스는 herdr 가 알려 주는 제목과 상태만으로
+herdr 에 붙어 있는 동안에는 herdr 의 에이전트만 보여 준다. herdr 밖의 세션(다른 터미널, 데스크톱 앱)은 월드에서
+말을 걸 수도 확인 처리할 수도 없기 때문이다. herdr 가 꺼져 있으면 최근 30분 안에 움직인 로그로 세션을 찾아내고
+상태는 로그 시각으로 추정한다(`AGENT_WORLD_OUTSIDE=1` 이면 herdr 가 켜져 있어도 함께 보여 준다). 그 밖의 하네스는 herdr 가 알려 주는 제목과 상태만으로
 캐릭터가 선다 — 로그를 읽게 하려면 `server/adapters/` 에 어댑터 하나를 더하면 된다.
 
 ## 구조

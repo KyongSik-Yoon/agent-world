@@ -19,7 +19,7 @@ const FRESH_MS = 2_500;
 
 const READONLY = process.env.AGENT_WORLD_READONLY === "1";
 
-const world = new World(!READONLY);
+const world = new World(!READONLY, process.env.AGENT_WORLD_OUTSIDE === "1");
 const encoder = new TextEncoder();
 type Client = ReadableStreamDefaultController<Uint8Array>;
 /** 붙어 있는 화면들. 값은 전체 스냅샷을 한 번 받았는지 — 받은 화면에는 바뀐 것만 보낸다. */
