@@ -1,14 +1,38 @@
 // 들머리: 서버의 스냅샷 흐름을 받아 장면과 HUD 에 나눠 주고, 둘 사이의 고르기·필터·단축키를 잇는다.
 import type { AgentStatus, AgentView, SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
-import { post } from "./api.ts";
+import { post, LANG_HEADER } from "./api.ts";
 import { Builder } from "./build.ts";
 import { type Action, workspaceKey } from "./detail.ts";
-import { STATUS_VAR, store, stored } from "./dom.ts";
+import { STATUS_VAR, h, store, stored } from "./dom.ts";
 import { STATUS_LABEL, bubbleText, needsAttention } from "./format.ts";
 import { Hud } from "./hud.ts";
+import { lang, localizeStatic, t, setLang } from "./i18n.ts";
 import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
+
+// index.html 에 적힌 글을 지금 말로 — HUD 와 장면을 짓기 전에 한 번.
+localizeStatic();
+
+// 아래 도움말 줄. 글이 <kbd> 로 쪼개져 있어 조각마다 풀 수 없으니, 줄 전체를 t() 문장들로 짓는다.
+{
+  const kbd = (key: string) => h("kbd", {}, key);
+  const items: Array<Array<Node | string>> = [
+    [t("드래그 회전")],
+    [kbd("Space"), "+", t("드래그 이동")],
+    [t("휠 확대")],
+    [kbd("H"), " ", t("처음 화면")],
+    [kbd("N"), " ", t("다음 확인")],
+    [kbd("C"), " ", t("말 걸기")],
+    [kbd("`"), " ", t("터미널")],
+    [kbd("D"), " ", t("확인 완료")],
+    [kbd("B"), " ", t("집 짓기")],
+    [kbd("Enter"), " ", t("herdr 로")],
+    [kbd("Esc"), " ", t("닫기")],
+  ];
+  const help = document.getElementById("help")!;
+  items.forEach((item, i) => help.append(...(i > 0 ? [" · "] : []), ...item));
+}
 
 let selectedId: string | null = null;
 /** 지금 고른 것을 고른 시각 — 얼마나 들여다봤는지 잰다. */
@@ -40,8 +64,8 @@ const hud = new Hud({
 });
 
 const terminal = new TermOverlay();
-terminal.onError = (message) => hud.toast("입력을 보내지 못했습니다", message, "var(--blocked)");
-terminal.onGone = (title) => hud.toast("터미널을 닫았습니다", `${title} — 이 pane 이 herdr 에서 닫혔습니다.`, "var(--idle)");
+terminal.onError = (message) => hud.toast(t("입력을 보내지 못했습니다"), message, "var(--blocked)");
+terminal.onGone = (title) => hud.toast(t("터미널을 닫았습니다"), t("{title} — 이 pane 이 herdr 에서 닫혔습니다.", { title }), "var(--idle)");
 terminal.onToggle = (open) => {
   scene.setCovered(open);
   hud.setCovered(open);
@@ -78,9 +102,9 @@ function markSeen(a: AgentView, undo: boolean): void {
   const paneId = a.paneId;
   void post<{ seen?: boolean }>("/api/seen", { paneId, undo })
     .then((res) => {
-      if (!undo && res.seen) hud.undoToast("확인 처리했습니다", a.title, () => markSeen(a, true));
+      if (!undo && res.seen) hud.undoToast(t("확인 처리했습니다"), a.title, () => markSeen(a, true));
     })
-    .catch((e: Error) => hud.toast("확인 처리 실패", e.message, "var(--blocked)"));
+    .catch((e: Error) => hud.toast(t("확인 처리 실패"), e.message, "var(--blocked)"));
 }
 
 function openTerminal(paneId: string): void {
@@ -128,19 +152,19 @@ function act(action: Action): void {
 async function openInHerdr(a: AgentView): Promise<void> {
   if (!a.paneId || !hud.latest?.control) return;
   try {
-    const res = await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paneId: a.paneId }) });
+    const res = await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json", ...LANG_HEADER }, body: JSON.stringify({ paneId: a.paneId }) });
     const data = (await res.json()) as { ok?: boolean; raised?: boolean; error?: string };
     if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-    hud.toast("herdr 로 이동", data.raised ? `${a.title} — 터미널 창을 앞으로 가져왔습니다.` : `${a.title} — herdr 화면을 이 pane 으로 옮겼습니다.`, "var(--accent)");
+    hud.toast(t("herdr 로 이동"), data.raised ? t("{title} — 터미널 창을 앞으로 가져왔습니다.", { title: a.title }) : t("{title} — herdr 화면을 이 pane 으로 옮겼습니다.", { title: a.title }), "var(--accent)");
   } catch (e) {
-    hud.toast("이동 실패", (e as Error).message, "var(--blocked)");
+    hud.toast(t("이동 실패"), (e as Error).message, "var(--blocked)");
   }
 }
 
 function nextAttention(): void {
   const list = hud.attention();
   if (list.length === 0) {
-    hud.toast("확인할 에이전트가 없습니다", "완료했거나 입력을 기다리는 에이전트가 생기면 여기로 데려다 드립니다.", "var(--idle)");
+    hud.toast(t("확인할 에이전트가 없습니다"), t("완료했거나 입력을 기다리는 에이전트가 생기면 여기로 데려다 드립니다."), "var(--idle)");
     return;
   }
   const at = list.findIndex((a) => a.id === selectedId);
@@ -148,6 +172,12 @@ function nextAttention(): void {
 }
 
 // ── 낮/밤 ────────────────────────────────────────────────────────────────────────────────────
+
+// 말 바꾸기: 단추에는 바꿔 갈 말을 적는다(한국어 화면에서는 EN, 영어 화면에서는 한).
+const langBtn = document.getElementById("btn-lang")!;
+langBtn.textContent = lang === "ko" ? "EN" : "한";
+langBtn.title = lang === "ko" ? "Switch to English" : "한국어로 바꾸기";
+langBtn.addEventListener("click", () => setLang(lang === "ko" ? "en" : "ko"));
 
 const themeBtn = document.getElementById("btn-theme")!;
 
@@ -170,7 +200,7 @@ notifyBtn.addEventListener("click", async () => {
   if (!notify && "Notification" in window) {
     const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
     notify = permission === "granted";
-    if (!notify) hud.toast("알림이 막혀 있습니다", "브라우저의 사이트 설정에서 알림을 허용해 주세요.", "var(--blocked)");
+    if (!notify) hud.toast(t("알림이 막혀 있습니다"), t("브라우저의 사이트 설정에서 알림을 허용해 주세요."), "var(--blocked)");
   } else notify = false;
   notifyBtn.setAttribute("aria-pressed", String(notify));
   store("agent-world.notify", notify ? "on" : "off");
@@ -210,8 +240,8 @@ let retryMs = 1000;
 function show(snapshot: WorldSnapshot): void {
   // 이름 붙은 herdr 세션이면 그 이름을 함께 보여 준다 — 세션마다 띄운 화면이 여럿일 때 어느 것인지 알 수 있게.
   const session = snapshot.session ? ` (${snapshot.session})` : "";
-  if (snapshot.herdr) hud.setConnection("live", `herdr${session} 연결됨 · 에이전트 ${snapshot.agents.length}`, snapshot.session ? `herdr 세션 ${snapshot.session}` : "");
-  else hud.setConnection("logs", `herdr 없음 — 로그만으로 표시 · ${snapshot.agents.length}`, snapshot.herdrError ?? "");
+  if (snapshot.herdr) hud.setConnection("live", t("herdr{session} 연결됨 · 에이전트 {n}", { session, n: snapshot.agents.length }), snapshot.session ? t("herdr 세션 {name}", { name: snapshot.session }) : "");
+  else hud.setConnection("logs", t("herdr 없음 — 로그만으로 표시 · {n}", { n: snapshot.agents.length }), snapshot.herdrError?.[lang] ?? "");
   announce(snapshot);
   scene.sync(snapshot);
   hud.update(snapshot);
@@ -237,7 +267,7 @@ function connect(): void {
     show(current);
   });
   events.onerror = () => {
-    hud.setConnection("down", "서버와 끊김 — 다시 연결 중…");
+    hud.setConnection("down", t("서버와 끊김 — 다시 연결 중…"));
     // 연결이 그냥 끊긴 것이면 EventSource 가 스스로 다시 붙는다. 하지만 오류 응답을 받으면(서버가 꺼진 동안
     // 앞단 프록시가 502 를 돌려줄 때) 영영 포기하므로, 그때는 직접 새로 연다.
     if (events.readyState !== EventSource.CLOSED) return;

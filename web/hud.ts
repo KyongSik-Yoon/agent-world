@@ -4,6 +4,7 @@ import { brandFor, brandTile } from "./brands.ts";
 import { type Action, DetailPanel, workspaceKey } from "./detail.ts";
 import { STATUS_VAR, h } from "./dom.ts";
 import { STATUS_LABEL, STATUS_ORDER, bubbleText, needsAttention, statusAge } from "./format.ts";
+import { lang, t } from "./i18n.ts";
 
 function matches(a: AgentView, query: string): boolean {
   if (!query) return true;
@@ -148,7 +149,7 @@ export class Hud {
     if (this.chipEls.size === 0) {
       for (const status of order) {
         const count = h("b");
-        const chip = h("button", { class: "chip", type: "button" }, h("i"), STATUS_LABEL[status], count);
+        const chip = h("button", { class: "chip", type: "button", title: STATUS_LABEL[status] }, h("i"), h("span", { class: "chip-label" }, STATUS_LABEL[status]), count);
         chip.style.setProperty("--c", STATUS_VAR[status]);
         chip.addEventListener("click", () => {
           this.statusFilter = this.statusFilter === status ? null : status;
@@ -188,14 +189,15 @@ export class Hud {
     if (children.length === 0) {
       const snap = this.snapshot!;
       // 처음 띄운 사람이 가장 먼저 보는 글이다 — 왜 비었고 무엇을 하면 되는지까지 적는다.
-      const why =
+      const paragraphs =
         snap.agents.length > 0
-          ? "조건에 맞는 에이전트가 없습니다."
+          ? [t("조건에 맞는 에이전트가 없습니다.")]
           : !snap.herdr
-            ? `herdr 에 붙지 못했습니다.\n\n최근 30분 안에 움직인 에이전트 세션도 없습니다. herdr 를 띄우면 여기에 나타납니다.${snap.herdrError ? `\n\n${snap.herdrError}` : ""}`
+            ? [t("herdr 에 붙지 못했습니다."), t("최근 30분 안에 움직인 에이전트 세션도 없습니다. herdr 를 띄우면 여기에 나타납니다."), ...(snap.herdrError ? [snap.herdrError[lang]] : [])]
             : snap.control
-              ? "아직 에이전트가 없습니다.\n\n위의 ＋ 집 짓기 (B) 에서 폴더를 열고 에이전트를 들여 보세요.\n\nherdr 에서 띄운 에이전트도 여기에 나타납니다."
-              : "아직 에이전트가 없습니다.\n\nherdr 에서 에이전트를 띄우면 여기에 나타납니다.";
+              ? [t("아직 에이전트가 없습니다."), t("위의 ＋ 집 짓기 (B) 에서 폴더를 열고 에이전트를 들여 보세요."), t("herdr 에서 띄운 에이전트도 여기에 나타납니다.")]
+              : [t("아직 에이전트가 없습니다."), t("herdr 에서 에이전트를 띄우면 여기에 나타납니다.")];
+      const why = paragraphs.join("\n\n");
       children.push(h("div", { class: "empty" }, why));
     }
     // 순서가 그대로면 DOM 을 건드리지 않는다 — 누르려던 행이 발밑에서 바뀌지 않게.
@@ -243,7 +245,7 @@ export class Hud {
 
   /** 되돌릴 수 있는 일을 알린다 — 단추를 누르면 undo 를 부른다. */
   undoToast(title: string, text: string, undo: () => void): void {
-    const btn = h("button", { type: "button" }, "되돌리기");
+    const btn = h("button", { type: "button" }, t("되돌리기"));
     const el = h("div", { class: "toast undo" }, h("b", {}, title), h("span", {}, text), btn);
     el.style.setProperty("--c", "var(--idle)");
     btn.addEventListener("click", () => {

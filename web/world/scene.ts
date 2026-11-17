@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 import type { AgentView, WorldSnapshot } from "../../shared/types.ts";
+import { t } from "../i18n.ts";
 import { Actor, PICK_LAYER } from "./actor.ts";
 import { Environment, type Theme } from "./environment.ts";
 import { labels } from "./labels.ts";
@@ -340,7 +341,7 @@ export class WorldScene {
       el.type = "button";
       el.className = "shell-tag";
       el.textContent = ">_";
-      el.title = `셸 ${pane.id}${pane.label ? ` · ${pane.label}` : ""}`;
+      el.title = `${t("셸 {id}", { id: pane.id })}${pane.label ? ` · ${pane.label}` : ""}`;
       el.addEventListener("click", () => this.callbacks.onSelect(pane.id));
       const tag = new THREE.Object3D();
       tag.position.set(0, 1.25, 0);

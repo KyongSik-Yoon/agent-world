@@ -1,4 +1,5 @@
 // 스냅샷을 한 번 만들어 표로 찍는다 — 서버를 띄우지 않고 데이터 결합을 확인할 때 쓴다.
+import { L, say } from "./text.ts";
 import { World } from "./world.ts";
 
 const world = new World(false, process.env.AGENT_WORLD_OUTSIDE === "1");
@@ -9,7 +10,7 @@ const t0 = performance.now();
 const snap = await world.snapshot();
 const ms = (performance.now() - t0).toFixed(1);
 
-console.log(`herdr=${snap.herdr}${snap.herdrError ? ` (${snap.herdrError})` : ""} workspaces=${snap.workspaces.length} agents=${snap.agents.length} (두 번째 스냅샷 ${ms}ms)`);
+console.log(`herdr=${snap.herdr}${snap.herdrError ? ` (${say(snap.herdrError)})` : ""} workspaces=${snap.workspaces.length} agents=${snap.agents.length} (${say(L("두 번째 스냅샷", "second snapshot"))} ${ms}ms)`);
 for (const a of snap.agents) {
   const act = a.activity ? `${a.activity.kind}${a.activity.name ? `:${a.activity.name}` : ""} ${a.activity.text.slice(0, 50)}` : "-";
   const ctx = a.contextTokens ? `${Math.round(a.contextTokens / 1000)}k` : "-";

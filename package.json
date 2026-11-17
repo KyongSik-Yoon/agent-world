@@ -1,5 +1,8 @@
 {
   "name": "agent-world",
+  "version": "0.1.0",
+  "description": "A 3D village for the coding agents running in herdr — see who needs you, talk to them, and build new workspaces from the browser.",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,6 +10,7 @@
     "dev": "AGENT_WORLD_DEV=1 bun --hot server/index.ts",
     "probe": "bun server/probe.ts",
     "url": "bun server/url.ts",
+    "i18n": "bun dev/i18n-check.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

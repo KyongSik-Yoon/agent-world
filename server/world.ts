@@ -9,7 +9,8 @@ import { agy } from "./adapters/agy.ts";
 import { claude } from "./adapters/claude.ts";
 import { codex } from "./adapters/codex.ts";
 import type { Harness, LogFile } from "./adapters/types.ts";
-import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName } from "./herdr.ts";
+import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
+import { asText, type Text } from "./text.ts";
 import { SeenStore } from "./seen.ts";
 import { currentPending, oneLine, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
@@ -280,11 +281,11 @@ export class World {
     this.used = new Set();
     await this.seen.load();
     let snap: HerdrSnapshot | undefined;
-    let herdrError: string | undefined;
+    let herdrError: Text | undefined;
     try {
       snap = await herdrSnapshot();
     } catch (e) {
-      herdrError = (e as Error).message;
+      herdrError = e instanceof HerdrError ? e.text : asText((e as Error).message);
     }
 
     const agents: AgentView[] = [];

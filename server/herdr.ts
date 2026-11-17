@@ -4,6 +4,8 @@ import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { L, asText, say, type Text } from "./text.ts";
+
 export function herdrDefaultSocket(): string {
   return join(homedir(), ".config", "herdr", "herdr.sock");
 }
@@ -28,11 +30,15 @@ export function herdrSessionTag(): string {
 }
 
 export class HerdrError extends Error {
+  /** 두 말로 적은 문장. herdr 가 돌려준 오류 문장은 옮길 수 없어 두 말에 그대로 실린다. */
+  readonly text: Text;
+
   constructor(
-    message: string,
+    message: Text | string,
     readonly code?: string,
   ) {
-    super(message);
+    super(say(message));
+    this.text = asText(message);
   }
 }
 
@@ -52,16 +58,16 @@ export function herdrRpc<T = unknown>(method: string, params: Record<string, unk
       if (err) reject(err);
       else resolve(value as T);
     };
-    const timer = setTimeout(() => finish(new HerdrError(`herdr ${method} 응답 시간 초과`, "timeout")), timeoutMs);
+    const timer = setTimeout(() => finish(new HerdrError(L(`herdr ${method} 응답 시간 초과`, `herdr ${method} timed out`), "timeout")), timeoutMs);
     const parse = () => {
       const text = Buffer.concat(chunks).toString("utf8").trim();
-      if (!text) return finish(new HerdrError(`herdr ${method} 응답 없음`));
+      if (!text) return finish(new HerdrError(L(`herdr ${method} 응답 없음`, `herdr ${method} sent no reply`)));
       try {
         const reply = JSON.parse(text.split("\n")[0]!) as { result?: T; error?: { code?: string; message?: string } };
-        if (reply.error) return finish(new HerdrError(reply.error.message || "herdr 오류", reply.error.code));
+        if (reply.error) return finish(new HerdrError(reply.error.message || L("herdr 오류", "herdr error"), reply.error.code));
         finish(null, reply.result as T);
       } catch (e) {
-        finish(new HerdrError(`herdr ${method} 응답을 읽지 못함: ${(e as Error).message}`));
+        finish(new HerdrError(L(`herdr ${method} 응답을 읽지 못함: ${(e as Error).message}`, `could not read the herdr ${method} reply: ${(e as Error).message}`)));
       }
     };
     socket.on("connect", () => socket.write(`${JSON.stringify({ id, method, params })}\n`));
@@ -70,7 +76,7 @@ export function herdrRpc<T = unknown>(method: string, params: Record<string, unk
       if (c[c.length - 1] === 0x0a) parse();
     });
     socket.on("end", parse);
-    socket.on("error", (e) => finish(new HerdrError(`herdr 소켓 연결 실패: ${e.message}`)));
+    socket.on("error", (e) => finish(new HerdrError(L(`herdr 소켓 연결 실패: ${e.message}`, `could not connect to the herdr socket: ${e.message}`))));
   });
 }
 

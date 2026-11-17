@@ -8,6 +8,7 @@ import { ApiError, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
 import { type Child, STATUS_VAR, h, prose, store, stored } from "./dom.ts";
 import { STATUS_LABEL, activityLine, bubbleText, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
+import { t } from "./i18n.ts";
 import { TermScreen } from "./term.ts";
 
 export type TargetKind = "workspace" | "tab" | "pane" | "agent";
@@ -31,15 +32,15 @@ export interface DetailCallbacks {
 // 글자 키는 raw(키보드로 친 바이트 그대로)로 보낸다. 그냥 text 로 보내면 herdr 가 붙여넣기로 감싸서,
 // 키 입력을 기다리는 대화상자(권한 확인 등)가 무시한다.
 const QUICK_KEYS: Array<{ label: string; title: string; keys?: string[]; text?: string; raw?: boolean }> = [
-  { label: "Esc", title: "하던 일 멈추기 / 대화상자 닫기", keys: ["esc"] },
+  { label: "Esc", title: t("하던 일 멈추기 / 대화상자 닫기"), keys: ["esc"] },
   { label: "⏎", title: "Enter", keys: ["enter"] },
-  { label: "↑", title: "위", keys: ["up"] },
-  { label: "↓", title: "아래", keys: ["down"] },
-  { label: "1", title: "1 누르기", text: "1", raw: true },
-  { label: "2", title: "2 누르기", text: "2", raw: true },
-  { label: "3", title: "3 누르기", text: "3", raw: true },
+  { label: "↑", title: t("위"), keys: ["up"] },
+  { label: "↓", title: t("아래"), keys: ["down"] },
+  { label: "1", title: t("{key} 누르기", { key: "1" }), text: "1", raw: true },
+  { label: "2", title: t("{key} 누르기", { key: "2" }), text: "2", raw: true },
+  { label: "3", title: t("{key} 누르기", { key: "3" }), text: "3", raw: true },
   { label: "Tab", title: "Tab", keys: ["tab"] },
-  { label: "⇧Tab", title: "Shift+Tab (권한 모드 바꾸기)", keys: ["shift+tab"] },
+  { label: "⇧Tab", title: t("Shift+Tab (권한 모드 바꾸기)"), keys: ["shift+tab"] },
   { label: "^C", title: "Ctrl+C", text: "\x03", raw: true },
 ];
 
@@ -63,8 +64,8 @@ export class DetailPanel {
   private readonly dock = h("div", { class: "d-dock" });
   private readonly quick = h("div", { class: "quick" });
   private readonly input = h("textarea", { rows: "1", spellcheck: "false" });
-  private readonly sendBtn = h("button", { class: "btn primary", type: "button" }, "보내기");
-  private readonly attachBtn = h("button", { class: "attach", type: "button", title: "이미지 붙이기 — 입력창에 붙여넣거나 끌어다 놓아도 됩니다", "aria-label": "이미지 붙이기" }, "＋");
+  private readonly sendBtn = h("button", { class: "btn primary", type: "button" }, t("보내기"));
+  private readonly attachBtn = h("button", { class: "attach", type: "button", title: t("이미지 붙이기 — 입력창에 붙여넣거나 끌어다 놓아도 됩니다"), "aria-label": t("이미지 붙이기") }, "＋");
   private readonly note = h("div", { class: "dock-note" });
   /** 보낼 말에 붙인 이미지들. id 는 서버가 맡아 준 뒤에 생긴다. */
   private readonly shotsEl = h("div", { class: "shots", hidden: "" });
@@ -95,7 +96,7 @@ export class DetailPanel {
       });
       keys.append(btn);
     }
-    const term = h("button", { type: "button", class: "wide", title: "터미널 크게 보기 (`)" }, "터미널 ⤢");
+    const term = h("button", { type: "button", class: "wide", title: t("터미널 크게 보기 (`)") }, t("터미널 ⤢"));
     term.addEventListener("click", () => this.docked && this.callbacks.act({ type: "terminal", paneId: this.docked.paneId }));
     this.quick.append(keys, term);
 
@@ -142,7 +143,7 @@ export class DetailPanel {
     this.dock.append(this.quick, this.shotsEl, h("div", { class: "compose" }, this.attachBtn, this.input, this.sendBtn), picker, this.note);
     this.root.replaceChildren(this.head, this.body, this.dock, this.grip());
     this.preview.el.classList.add("preview");
-    this.preview.el.title = "눌러서 크게 보기";
+    this.preview.el.title = t("눌러서 크게 보기");
     this.preview.el.addEventListener("click", () => {
       if (this.preview.pane && !window.getSelection()?.toString()) this.callbacks.act({ type: "terminal", paneId: this.preview.pane });
     });
@@ -183,7 +184,7 @@ export class DetailPanel {
    * 폭은 CSS 변수로만 건네고 위아래 한계는 스타일이 정한다(좁은 화면의 규칙이 그대로 이기도록).
    */
   private grip(): HTMLElement {
-    const grip = h("div", { class: "d-grip", title: "끌어서 폭 조절 · 두 번 눌러 처음 폭으로" });
+    const grip = h("div", { class: "d-grip", title: t("끌어서 폭 조절 · 두 번 눌러 처음 폭으로") });
     const saved = Number(stored(WIDTH_KEY));
     if (saved > 0) this.root.style.setProperty("--detail-w", `${saved}px`);
     let drag: { x: number; width: number; moved: boolean } | null = null;
@@ -327,8 +328,8 @@ export class DetailPanel {
     if (same || !target) return;
     this.setInput("");
     this.clearShots();
-    this.input.placeholder = target.agent ? "이 에이전트에게 보낼 말 — Enter 전송 · Shift+Enter 줄바꿈" : "명령을 치고 Enter — 이 셸에서 바로 실행합니다";
-    this.sendBtn.textContent = target.agent ? "보내기" : "실행";
+    this.input.placeholder = target.agent ? t("이 에이전트에게 보낼 말 — Enter 전송 · Shift+Enter 줄바꿈") : t("명령을 치고 Enter — 이 셸에서 바로 실행합니다");
+    this.sendBtn.textContent = target.agent ? t("보내기") : t("실행");
     this.setNote("", "");
   }
 
@@ -344,12 +345,12 @@ export class DetailPanel {
     if (!target?.agent) return;
     for (const file of files) {
       if (this.shots.length >= MAX_SHOTS) {
-        this.setNote(`이미지는 한 번에 ${MAX_SHOTS}장까지 붙일 수 있습니다.`, "err");
+        this.setNote(t("이미지는 한 번에 {n}장까지 붙일 수 있습니다.", { n: MAX_SHOTS }), "err");
         break;
       }
       const url = URL.createObjectURL(file);
-      const remove = h("button", { type: "button", title: "이미지 빼기", "aria-label": "이미지 빼기" }, "✕");
-      const shot: (typeof this.shots)[number] = { url, el: h("div", { class: "shot busy" }, h("img", { src: url, alt: "붙인 이미지" }), remove) };
+      const remove = h("button", { type: "button", title: t("이미지 빼기"), "aria-label": t("이미지 빼기") }, "✕");
+      const shot: (typeof this.shots)[number] = { url, el: h("div", { class: "shot busy" }, h("img", { src: url, alt: t("붙인 이미지") }), remove) };
       const drop = () => {
         this.shots = this.shots.filter((s) => s !== shot);
         shot.el.remove();
@@ -387,7 +388,7 @@ export class DetailPanel {
     const shots = target?.agent ? this.shots : [];
     if (!target || (!text.trim() && shots.length === 0) || this.busy) return;
     if (shots.some((s) => !s.id)) {
-      this.setNote("이미지를 올리는 중입니다. 잠시 뒤에 다시 보내 주세요.", "wait");
+      this.setNote(t("이미지를 올리는 중입니다. 잠시 뒤에 다시 보내 주세요."), "wait");
       return;
     }
     this.busy = true;
@@ -396,7 +397,7 @@ export class DetailPanel {
       if (target.agent) {
         await post("/api/prompt", { paneId: target.paneId, text, ...(shots.length ? { images: shots.map((s) => s.id) } : {}) });
         this.sent = { text, at: Date.now(), confirmed: false, before: this.snapshot?.agents.find((a) => a.paneId === target.paneId)?.lastPrompt };
-        this.setNote("보냈습니다. 에이전트가 받으면 여기에 표시됩니다…", "wait");
+        this.setNote(t("보냈습니다. 에이전트가 받으면 여기에 표시됩니다…"), "wait");
         if (this.docked === target) this.clearShots();
       } else {
         await sendInput(target.paneId, { text, keys: ["enter"] });
@@ -406,7 +407,7 @@ export class DetailPanel {
       if (this.docked === target) this.setInput("");
     } catch (e) {
       if (e instanceof ApiError && e.code === "agent_blocked") {
-        this.setNote("에이전트가 질문에 대한 답을 기다리는 중입니다. 화면의 선택지를 위 키로 먼저 눌러 주세요.", "err");
+        this.setNote(t("에이전트가 질문에 대한 답을 기다리는 중입니다. 화면의 선택지를 위 키로 먼저 눌러 주세요."), "err");
         this.open.screen = true;
       } else {
         this.setNote((e as Error).message, "err");
@@ -428,19 +429,19 @@ export class DetailPanel {
     const want = norm(sent.text).slice(0, 32);
     if (logged !== undefined && (want ? logged.startsWith(want) : a.lastPrompt !== sent.before)) {
       sent.confirmed = true;
-      this.setNote("✓ 에이전트가 받았습니다.", "ok");
+      this.setNote(t("✓ 에이전트가 받았습니다."), "ok");
     } else if (!a.hasLog && a.status === "working") {
       sent.confirmed = true;
-      this.setNote("✓ 에이전트가 일하기 시작했습니다.", "ok");
+      this.setNote(t("✓ 에이전트가 일하기 시작했습니다."), "ok");
     } else if (Date.now() - sent.at > 12_000) {
-      this.setNote("아직 받은 흔적이 없습니다. 터미널 화면에서 입력창에 그대로 남아 있는지 확인해 보세요.", "err");
+      this.setNote(t("아직 받은 흔적이 없습니다. 터미널 화면에서 입력창에 그대로 남아 있는지 확인해 보세요."), "err");
     }
   }
 
   // ── 에이전트 ───────────────────────────────────────────────────────────────────────────────
 
   private setHead(tile: Node, title: string, sub: string): void {
-    const close = h("button", { class: "btn icon close", type: "button", title: "닫기 (Esc)" }, "✕");
+    const close = h("button", { class: "btn icon close", type: "button", title: t("닫기 (Esc)") }, "✕");
     close.addEventListener("click", () => this.callbacks.act({ type: "select", id: null }));
     this.head.replaceChildren(tile, h("div", {}, h("h2", {}, title), h("p", {}, sub)), close);
   }
@@ -460,20 +461,20 @@ export class DetailPanel {
   /** 상태 창을 그리고, 실시간 미리보기를 붙일 pane id 를 돌려준다(없으면 null). */
   private renderAgent(a: AgentView): string | null {
     const brand = brandFor(a.vendor);
-    const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : `${a.workspaceLabel} (herdr 밖)`;
+    const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : t("{name} (herdr 밖)", { name: a.workspaceLabel });
     this.setHead(brandTile(a.vendor, 46), a.title, `${brand.name}${a.name ? ` “${a.name}”` : ""} · ${where}`);
 
-    const badge = h("span", { class: "badge" }, a.seen ? "확인함" : STATUS_LABEL[a.status]);
+    const badge = h("span", { class: "badge" }, a.seen ? t("확인함") : STATUS_LABEL[a.status]);
     badge.style.setProperty("--c", STATUS_VAR[a.status]);
     const statusLine = h(
       "div",
       { class: "status-line" },
       badge,
       h("span", { class: "age" }, statusAge(a)),
-      h("span", { class: "src" }, a.statusSource === "herdr" ? "herdr 가 알려준 상태" : "로그 시각으로 추정한 상태"),
+      h("span", { class: "src" }, a.statusSource === "herdr" ? t("herdr 가 알려준 상태") : t("로그 시각으로 추정한 상태")),
     );
     if (a.seen && a.paneId) {
-      const undo = this.button("되돌리기", () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: true }), { cls: "link" });
+      const undo = this.button(t("되돌리기"), () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: true }), { cls: "link" });
       statusLine.append(undo);
     }
 
@@ -486,14 +487,14 @@ export class DetailPanel {
 
     if (!a.hasLog) {
       const why = a.sessionId
-        ? "이 세션의 로그 파일을 아직 찾지 못했습니다. 모델과 활동은 로그가 생기면 채워집니다."
+        ? t("이 세션의 로그 파일을 아직 찾지 못했습니다. 모델과 활동은 로그가 생기면 채워집니다.")
         : a.readable
-          ? "herdr 가 아직 이 에이전트의 세션 id 를 알려 주지 않았습니다. 알려 주면 모델과 활동이 채워집니다."
-          : "이 하네스의 로그는 아직 읽지 못합니다. herdr 가 알려 준 제목과 상태만 보여 줍니다.";
+          ? t("herdr 가 아직 이 에이전트의 세션 id 를 알려 주지 않았습니다. 알려 주면 모델과 활동이 채워집니다.")
+          : t("이 하네스의 로그는 아직 읽지 못합니다. herdr 가 알려 준 제목과 상태만 보여 줍니다.");
       parts.push(h("p", { class: "note" }, why));
     }
-    if (a.lastPrompt) parts.push(this.textSection("마지막 지시", a.lastPrompt, "prompt"));
-    if (a.lastReply) parts.push(this.textSection("마지막 응답", a.lastReply, "reply"));
+    if (a.lastPrompt) parts.push(this.textSection(t("마지막 지시"), a.lastPrompt, "prompt"));
+    if (a.lastReply) parts.push(this.textSection(t("마지막 응답"), a.lastReply, "reply"));
     if (a.paneId && !blocked) parts.push(this.screenSection(a.paneId));
     if (a.recent.length > 0) parts.push(this.logSection(a));
     this.setBody(...parts);
@@ -502,10 +503,10 @@ export class DetailPanel {
 
   /** 확인 필요: 무엇을 묻는지 — 로그에 남은 요청과, 화면에 떠 있는 대화상자를 함께 보여 준다. */
   private askCard(a: AgentView): HTMLElement {
-    const big = this.button("크게 보기 ⤢", () => this.callbacks.act({ type: "terminal", paneId: a.paneId! }), { cls: "" });
-    const card = h("section", { class: "ask" }, h("h3", {}, "답을 기다리고 있어요", big));
+    const big = this.button(t("크게 보기 ⤢"), () => this.callbacks.act({ type: "terminal", paneId: a.paneId! }), { cls: "" });
+    const card = h("section", { class: "ask" }, h("h3", {}, t("답을 기다리고 있어요"), big));
     if (a.pending) card.append(this.pendingBlock(a.pending));
-    card.append(this.preview.el, h("p", { class: "hint" }, this.snapshot?.control ? "대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 크게 보기에서 직접 입력하세요." : "보기 전용이라 여기서는 답할 수 없습니다. herdr 에서 열어 답해 주세요."));
+    card.append(this.preview.el, h("p", { class: "hint" }, this.snapshot?.control ? t("대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 크게 보기에서 직접 입력하세요.") : t("보기 전용이라 여기서는 답할 수 없습니다. herdr 에서 열어 답해 주세요.")));
     return card;
   }
 
@@ -528,30 +529,30 @@ export class DetailPanel {
       return h("div", { class: opts.wide ? "stat wide" : "stat" }, h("dt", {}, label), dd);
     };
     const dl = h("dl", { class: "stats" });
-    dl.append(stat("모델", a.model ?? "—", { title: a.model }));
+    dl.append(stat(t("모델"), a.model ?? "—", { title: a.model }));
 
     const level = effortLevel(a.effort);
     const pips = h("span", { class: "pips" });
     for (let i = 1; i <= 5; i += 1) pips.append(h("i", i <= level ? { class: "on" } : {}));
-    dl.append(stat("EFFORT", a.effort ? h("span", {}, level > 0 ? pips : null, a.effort) : "—"));
+    dl.append(stat(t("EFFORT"), a.effort ? h("span", {}, level > 0 ? pips : null, a.effort) : "—"));
 
     if (a.contextTokens) {
-      const dd = h("span", {}, a.contextWindow ? `${tokens(a.contextTokens)} / ${tokens(a.contextWindow)}` : `${tokens(a.contextTokens)} 토큰`);
-      const cell = stat("컨텍스트", dd);
+      const dd = h("span", {}, a.contextWindow ? `${tokens(a.contextTokens)} / ${tokens(a.contextWindow)}` : t("{n} 토큰", { n: tokens(a.contextTokens) }));
+      const cell = stat(t("컨텍스트"), dd);
       if (a.contextWindow) {
         const bar = h("i");
         bar.style.width = `${Math.min(100, (a.contextTokens / a.contextWindow) * 100).toFixed(1)}%`;
         cell.append(h("div", { class: "meter" }, bar));
       }
       dl.append(cell);
-    } else dl.append(stat("컨텍스트", "—"));
+    } else dl.append(stat(t("컨텍스트"), "—"));
 
-    dl.append(stat("권한 모드", a.permissionMode ?? "—"));
-    if (a.branch) dl.append(stat("브랜치", a.branch, { mono: true, title: a.branch }));
-    if (a.subagents > 0) dl.append(stat("서브에이전트", `${a.subagents}개 실행 중`));
-    if (a.harnessVersion) dl.append(stat("하네스", `${brandFor(a.vendor).name} ${a.harnessVersion}`));
-    if (a.paneId) dl.append(stat("PANE", a.tabLabel ? `${a.paneId} · ${a.tabLabel}` : a.paneId, { mono: true, title: a.tabLabel }));
-    if (a.cwd) dl.append(stat("작업 폴더", shortPath(a.cwd), { wide: true, mono: true, title: a.cwd }));
+    dl.append(stat(t("권한 모드"), a.permissionMode ?? "—"));
+    if (a.branch) dl.append(stat(t("브랜치"), a.branch, { mono: true, title: a.branch }));
+    if (a.subagents > 0) dl.append(stat(t("서브에이전트"), t("{n}개 실행 중", { n: a.subagents })));
+    if (a.harnessVersion) dl.append(stat(t("하네스"), `${brandFor(a.vendor).name} ${a.harnessVersion}`));
+    if (a.paneId) dl.append(stat(t("PANE"), a.tabLabel ? `${a.paneId} · ${a.tabLabel}` : a.paneId, { mono: true, title: a.tabLabel }));
+    if (a.cwd) dl.append(stat(t("작업 폴더"), shortPath(a.cwd), { wide: true, mono: true, title: a.cwd }));
     return dl;
   }
 
@@ -559,27 +560,27 @@ export class DetailPanel {
     const control = this.snapshot?.control === true;
     const main = h("div", { class: "actions" });
     if (a.status === "done" && a.paneId && control) {
-      main.append(this.button("확인 완료 ✓", () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: false }), { cls: "btn primary", title: "읽었다고 표시하고 집으로 돌려보냅니다 (D)" }));
+      main.append(this.button(t("확인 완료 ✓"), () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: false }), { cls: "btn primary", title: t("읽었다고 표시하고 집으로 돌려보냅니다 (D)") }));
     }
     main.append(
-      this.button("herdr 에서 열기 ↵", () => this.callbacks.act({ type: "open-herdr", agent: a }), {
+      this.button(t("herdr 에서 열기 ↵"), () => this.callbacks.act({ type: "open-herdr", agent: a }), {
         cls: a.status === "done" && control ? "btn" : "btn primary",
         disabled: !a.paneId || !control,
-        title: !a.paneId ? "herdr 밖에서 도는 세션이라 옮겨 갈 pane 이 없습니다." : control ? "herdr 화면을 이 pane 으로 옮깁니다 (Enter)" : "보기 전용으로 띄운 서버라 herdr 화면을 옮기지 않습니다.",
+        title: !a.paneId ? t("herdr 밖에서 도는 세션이라 옮겨 갈 pane 이 없습니다.") : control ? t("herdr 화면을 이 pane 으로 옮깁니다 (Enter)") : t("보기 전용으로 띄운 서버라 herdr 화면을 옮기지 않습니다."),
       }),
     );
     const more = h("div", { class: "actions minor" });
     more.append(
-      this.button("세션 ID 복사", () => void navigator.clipboard.writeText(a.sessionId ?? "").then(() => this.callbacks.toast("복사했습니다", a.sessionId ?? "", "var(--accent)")), {
+      this.button(t("세션 ID 복사"), () => void navigator.clipboard.writeText(a.sessionId ?? "").then(() => this.callbacks.toast(t("복사했습니다"), a.sessionId ?? "", "var(--accent)")), {
         disabled: !a.sessionId,
       }),
     );
     if (a.paneId && control) {
       const paneId = a.paneId;
       more.append(
-        this.button("이름", () => this.callbacks.act({ type: "rename", kind: "pane", id: paneId, current: a.paneLabel ?? "", what: "pane 이름" }), { title: "이 pane 의 이름을 바꿉니다" }),
-        this.button("집 보기", () => this.callbacks.act({ type: "select", id: workspaceKey(a.workspaceId) })),
-        this.button("닫기", () => this.callbacks.act({ type: "close", kind: "pane", id: paneId }), { cls: "btn danger", title: "이 pane 을 닫습니다 — 에이전트도 함께 꺼집니다" }),
+        this.button(t("이름"), () => this.callbacks.act({ type: "rename", kind: "pane", id: paneId, current: a.paneLabel ?? "", what: t("pane 이름") }), { title: t("이 pane 의 이름을 바꿉니다") }),
+        this.button(t("집 보기"), () => this.callbacks.act({ type: "select", id: workspaceKey(a.workspaceId) })),
+        this.button(t("닫기"), () => this.callbacks.act({ type: "close", kind: "pane", id: paneId }), { cls: "btn danger", title: t("이 pane 을 닫습니다 — 에이전트도 함께 꺼집니다") }),
       );
     }
     return h("div", {}, main, more);
@@ -595,7 +596,7 @@ export class DetailPanel {
     const head = h("h3", {}, title);
     if (long) {
       head.append(
-        this.button(this.open[key] ? "접기" : "펼치기", () => {
+        this.button(this.open[key] ? t("접기") : t("펼치기"), () => {
           this.open[key] = !this.open[key];
           this.rerender();
         }, { cls: "" }),
@@ -609,24 +610,24 @@ export class DetailPanel {
     [...a.recent].reverse().forEach((item, i) => {
       const cls = [item.error ? "err" : "", i === 0 ? "latest" : ""].filter(Boolean).join(" ");
       const line = activityLine(item);
-      const text = h("span", {}, item.error ? `${line} — 실패` : line);
+      const text = h("span", {}, item.error ? t("{line} — 실패", { line }) : line);
       text.title = line;
       list.append(h("li", cls ? { class: cls } : {}, h("time", {}, clock(item.at)), text));
     });
-    return h("section", {}, h("h3", {}, "활동 로그"), list);
+    return h("section", {}, h("h3", {}, t("활동 로그")), list);
   }
 
   private screenSection(paneId: string): HTMLElement {
-    const head = h("h3", {}, "터미널 화면");
+    const head = h("h3", {}, t("터미널 화면"));
     head.append(
-      this.button(this.open.screen ? "숨기기" : "보기", () => {
+      this.button(this.open.screen ? t("숨기기") : t("보기"), () => {
         this.open.screen = !this.open.screen;
         this.rerender();
       }, { cls: "" }),
     );
     const section = h("section", {}, head);
     if (this.open.screen) {
-      const big = this.button("크게 보기 ⤢", () => this.callbacks.act({ type: "terminal", paneId }), { cls: "" });
+      const big = this.button(t("크게 보기 ⤢"), () => this.callbacks.act({ type: "terminal", paneId }), { cls: "" });
       big.style.marginLeft = "10px";
       head.append(big);
       section.append(this.preview.el);
@@ -643,12 +644,12 @@ export class DetailPanel {
   private renderShell(p: PaneView): string {
     const snap = this.snapshot!;
     const ws = snap.workspaces.find((w) => w.id === p.workspaceId);
-    const tab = snap.tabs.find((t) => t.id === p.tabId);
-    this.setHead(h("span", { class: "shell-tile big" }, ">_"), p.label || p.title || "터미널", `셸 · ${ws ? `${ws.number} · ${ws.label}` : p.workspaceId}`);
+    const tab = snap.tabs.find((tb) => tb.id === p.tabId);
+    this.setHead(h("span", { class: "shell-tile big" }, ">_"), p.label || p.title || t("터미널"), t("셸 · {where}", { where: ws ? `${ws.number} · ${ws.label}` : p.workspaceId }));
     const dl = h("dl", { class: "stats" });
     const stat = (label: string, value: string, wide = false) => h("div", { class: wide ? "stat wide" : "stat" }, h("dt", {}, label), h("dd", { class: "mono", title: value }, value));
-    dl.append(stat("PANE", tab?.label ? `${p.id} · ${tab.label}` : p.id), stat("크기", p.cols && p.rows ? `${p.cols} × ${p.rows}` : "—"));
-    if (p.cwd) dl.append(stat("작업 폴더", shortPath(p.cwd), true));
+    dl.append(stat(t("PANE"), tab?.label ? `${p.id} · ${tab.label}` : p.id), stat(t("크기"), p.cols && p.rows ? `${p.cols} × ${p.rows}` : "—"));
+    if (p.cwd) dl.append(stat(t("작업 폴더"), shortPath(p.cwd), true));
     const parts: Child[] = [dl];
     if (snap.control) {
       parts.push(
@@ -658,21 +659,21 @@ export class DetailPanel {
           h(
             "div",
             { class: "actions" },
-            this.button("여기서 에이전트 시작", () => this.callbacks.act({ type: "new-agent", workspaceId: p.workspaceId, paneId: p.id }), { cls: "btn primary" }),
-            this.button("터미널 크게 ⤢", () => this.callbacks.act({ type: "terminal", paneId: p.id })),
+            this.button(t("여기서 에이전트 시작"), () => this.callbacks.act({ type: "new-agent", workspaceId: p.workspaceId, paneId: p.id }), { cls: "btn primary" }),
+            this.button(t("터미널 크게 ⤢"), () => this.callbacks.act({ type: "terminal", paneId: p.id })),
           ),
           h(
             "div",
             { class: "actions minor" },
-            this.button("이름", () => this.callbacks.act({ type: "rename", kind: "pane", id: p.id, current: p.label ?? "", what: "pane 이름" })),
-            this.button("옆으로 나누기", () => this.callbacks.act({ type: "split", paneId: p.id, direction: "right" })),
-            this.button("아래로 나누기", () => this.callbacks.act({ type: "split", paneId: p.id, direction: "down" })),
-            this.button("닫기", () => this.callbacks.act({ type: "close", kind: "pane", id: p.id }), { cls: "btn danger" }),
+            this.button(t("이름"), () => this.callbacks.act({ type: "rename", kind: "pane", id: p.id, current: p.label ?? "", what: t("pane 이름") })),
+            this.button(t("옆으로 나누기"), () => this.callbacks.act({ type: "split", paneId: p.id, direction: "right" })),
+            this.button(t("아래로 나누기"), () => this.callbacks.act({ type: "split", paneId: p.id, direction: "down" })),
+            this.button(t("닫기"), () => this.callbacks.act({ type: "close", kind: "pane", id: p.id }), { cls: "btn danger" }),
           ),
         ),
       );
     }
-    parts.push(h("section", {}, h("h3", {}, "터미널 화면"), this.preview.el));
+    parts.push(h("section", {}, h("h3", {}, t("터미널 화면")), this.preview.el));
     this.setBody(...parts);
     return p.id;
   }
@@ -683,13 +684,13 @@ export class DetailPanel {
     const snap = this.snapshot!;
     const agents = snap.agents.filter((a) => a.workspaceId === ws.id);
     const panes = snap.panes.filter((p) => p.workspaceId === ws.id);
-    const sub = ws.managed ? `스페이스 ${ws.number}${ws.repo ? ` · ${ws.repo}` : ""}${ws.worktree?.linked ? " · 워크트리" : ""}` : "herdr 밖의 세션들";
+    const sub = ws.managed ? `${t("스페이스 {n}", { n: ws.number })}${ws.repo ? ` · ${ws.repo}` : ""}${ws.worktree?.linked ? ` · ${t("워크트리")}` : ""}` : t("herdr 밖의 세션들");
     this.setHead(h("span", { class: "house-tile" }, "🏠"), ws.label, sub);
 
     const parts: Child[] = [];
     if (ws.topic) parts.push(h("div", { class: "now" }, ws.topic));
     if (ws.worktree?.path) {
-      parts.push(h("dl", { class: "stats" }, h("div", { class: "stat wide" }, h("dt", {}, "체크아웃"), h("dd", { class: "mono", title: ws.worktree.path }, shortPath(ws.worktree.path)))));
+      parts.push(h("dl", { class: "stats" }, h("div", { class: "stat wide" }, h("dt", {}, t("체크아웃")), h("dd", { class: "mono", title: ws.worktree.path }, shortPath(ws.worktree.path)))));
     }
     if (ws.managed && snap.control) {
       parts.push(
@@ -699,14 +700,14 @@ export class DetailPanel {
           h(
             "div",
             { class: "actions" },
-            this.button("＋ 새 주민", () => this.callbacks.act({ type: "new-agent", workspaceId: ws.id }), { cls: "btn primary", title: "이 집에 에이전트를 하나 더 들입니다" }),
-            this.button("＋ 새 탭", () => this.callbacks.act({ type: "new-tab", workspaceId: ws.id }), { title: "셸만 있는 새 탭을 엽니다" }),
+            this.button(t("＋ 새 주민"), () => this.callbacks.act({ type: "new-agent", workspaceId: ws.id }), { cls: "btn primary", title: t("이 집에 에이전트를 하나 더 들입니다") }),
+            this.button(t("＋ 새 탭"), () => this.callbacks.act({ type: "new-tab", workspaceId: ws.id }), { title: t("셸만 있는 새 탭을 엽니다") }),
           ),
           h(
             "div",
             { class: "actions minor" },
-            this.button("이름", () => this.callbacks.act({ type: "rename", kind: "workspace", id: ws.id, current: ws.label, what: "집 이름" })),
-            this.button("철거", () => this.callbacks.act({ type: "close", kind: "workspace", id: ws.id }), { cls: "btn danger", title: "이 스페이스를 닫습니다" }),
+            this.button(t("이름"), () => this.callbacks.act({ type: "rename", kind: "workspace", id: ws.id, current: ws.label, what: t("집 이름") })),
+            this.button(t("철거"), () => this.callbacks.act({ type: "close", kind: "workspace", id: ws.id }), { cls: "btn danger", title: t("이 스페이스를 닫습니다") }),
           ),
         ),
       );
@@ -719,24 +720,24 @@ export class DetailPanel {
       return el;
     };
     if (ws.managed) {
-      for (const tab of snap.tabs.filter((t) => t.workspaceId === ws.id)) {
-        const head = h("h3", {}, `탭 ${tab.number}${tab.label ? ` · ${tab.label}` : ""}`);
+      for (const tab of snap.tabs.filter((tb) => tb.workspaceId === ws.id)) {
+        const head = h("h3", {}, `${t("탭 {n}", { n: tab.number })}${tab.label ? ` · ${tab.label}` : ""}`);
         if (snap.control) {
           head.append(
-            this.button("이름", () => this.callbacks.act({ type: "rename", kind: "tab", id: tab.id, current: tab.label, what: "탭 이름" }), { cls: "" }),
-            this.button("닫기", () => this.callbacks.act({ type: "close", kind: "tab", id: tab.id }), { cls: "" }),
+            this.button(t("이름"), () => this.callbacks.act({ type: "rename", kind: "tab", id: tab.id, current: tab.label, what: t("탭 이름") }), { cls: "" }),
+            this.button(t("닫기"), () => this.callbacks.act({ type: "close", kind: "tab", id: tab.id }), { cls: "" }),
           );
         }
         const section = h("section", { class: "tab" }, head);
         for (const p of panes.filter((x) => x.tabId === tab.id)) {
           const a = p.agentId ? agents.find((x) => x.id === p.agentId) : undefined;
-          if (a) section.append(row(brandTile(a.vendor, 26), a.title, `${a.seen ? "확인함" : STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
-          else section.append(row(h("span", { class: "shell-tile" }, ">_"), p.label || p.title || "터미널", `셸 · ${shortPath(p.cwd)}`, p.id));
+          if (a) section.append(row(brandTile(a.vendor, 26), a.title, `${a.seen ? t("확인함") : STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
+          else section.append(row(h("span", { class: "shell-tile" }, ">_"), p.label || p.title || t("터미널"), t("셸 · {where}", { where: shortPath(p.cwd) }), p.id));
         }
         parts.push(section);
       }
     } else {
-      const section = h("section", {}, h("h3", {}, "세션"));
+      const section = h("section", {}, h("h3", {}, t("세션")));
       for (const a of agents) section.append(row(brandTile(a.vendor, 26), a.title, `${STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
       parts.push(section);
     }

@@ -1,12 +1,13 @@
 // 스냅샷의 값을 사람이 읽는 한국어 문구로 바꾼다 — 말풍선, 로스터, 상세 패널이 같이 쓴다.
 import type { Activity, AgentStatus, AgentView } from "../shared/types.ts";
+import { lang, t } from "./i18n.ts";
 
 export const STATUS_LABEL: Record<AgentStatus, string> = {
-  blocked: "확인 필요",
-  done: "완료",
-  working: "작업 중",
-  idle: "대기",
-  unknown: "알 수 없음",
+  blocked: t("확인 필요"),
+  done: t("완료"),
+  working: t("작업 중"),
+  idle: t("대기"),
+  unknown: t("알 수 없음"),
 };
 
 /** 내가 먼저 봐야 하는 순서. */
@@ -16,16 +17,17 @@ export function needsAttention(status: AgentStatus): boolean {
   return status === "blocked" || status === "done";
 }
 
+// 활동 줄 틀: {what} 자리에 대상이 들어간다(영어는 동사가 앞에 와서 문장째로 풀어야 한다). 빈 틀이면 icon 과 대상만 쓴다.
 const VERBS: Array<[RegExp, string, string]> = [
   [/^(bash|shell|exec|run_command|local_shell|command_status|send_command_input)/i, "⚡", ""],
-  [/^(read|view_file|view_|list_dir|ls$|notebookread)/i, "📖", "읽는 중"],
-  [/^(edit|write|multiedit|notebookedit|apply_patch|write_to_file|replace_file_content|multi_replace)/i, "✏️", "고치는 중"],
-  [/^(grep|glob|grep_search|find|codebase_search|toolsearch)/i, "🔍", "찾는 중"],
-  [/^(agent|task$|taskcreate|browser_subagent|workflow)/i, "🤝", "맡기는 중"],
+  [/^(read|view_file|view_|list_dir|ls$|notebookread)/i, "📖", t("{what} 읽는 중")],
+  [/^(edit|write|multiedit|notebookedit|apply_patch|write_to_file|replace_file_content|multi_replace)/i, "✏️", t("{what} 고치는 중")],
+  [/^(grep|glob|grep_search|find|codebase_search|toolsearch)/i, "🔍", t("{what} 찾는 중")],
+  [/^(agent|task$|taskcreate|browser_subagent|workflow)/i, "🤝", t("{what} 맡기는 중")],
   [/^(webfetch|websearch|search_web|read_url)/i, "🌐", ""],
-  [/^(todowrite|update_plan|task)/i, "📝", "계획 정리"],
-  [/^skill/i, "🎓", "스킬"],
-  [/^advisor/i, "🧭", "조언 구하는 중"],
+  [/^(todowrite|update_plan|task)/i, "📝", t("{what} 계획 정리")],
+  [/^skill/i, "🎓", t("{what} 스킬")],
+  [/^advisor/i, "🧭", t("{what} 조언 구하는 중")],
 ];
 
 function toolName(name: string): string {
@@ -37,7 +39,7 @@ function toolName(name: string): string {
 export function activityLine(a: Activity): string {
   switch (a.kind) {
     case "thinking":
-      return "💭 생각 중…";
+      return t("💭 생각 중…");
     case "text":
       return `💬 ${plain(a.text)}`;
     case "user":
@@ -49,7 +51,7 @@ export function activityLine(a: Activity): string {
       for (const [re, icon, verb] of VERBS) {
         if (!re.test(a.name)) continue;
         const what = a.text || a.name;
-        return verb ? `${icon} ${what} ${verb}`.trim() : `${icon} ${what}`;
+        return `${icon} ${verb ? verb.replace("{what}", what) : what}`;
       }
       return `🔧 ${a.name}${a.text ? ` · ${a.text}` : ""}`;
     }
@@ -77,18 +79,18 @@ function firstLine(text: string | undefined): string {
 export function bubbleText(a: AgentView, full = true): string | null {
   switch (a.status) {
     case "working":
-      return a.activity ? activityLine(a.activity) : "⏳ 일하는 중…";
+      return a.activity ? activityLine(a.activity) : t("⏳ 일하는 중…");
     case "done": {
       const line = full ? firstLine(a.lastReply) : "";
-      return `✅ ${line || "다 했어요!"}`;
+      return `✅ ${line || t("다 했어요!")}`;
     }
     case "blocked": {
       // 무엇을 기다리는지 로그에서 읽혔으면 그것을 말한다.
       const p = a.pending;
-      if (!p) return "🙋 확인이 필요해요";
+      if (!p) return t("🙋 확인이 필요해요");
       const what = (p.questions?.[0]?.question || p.detail).split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? "";
       const line = what.length > 60 ? `${what.slice(0, 59)}…` : what;
-      return p.asksUser ? `🙋 ${line || "질문이 있어요"}` : `🔐 ${p.tool}${line ? ` · ${line}` : ""}`;
+      return p.asksUser ? `🙋 ${line || t("질문이 있어요")}` : `🔐 ${p.tool}${line ? ` · ${line}` : ""}`;
     }
     default:
       return null;
@@ -97,28 +99,28 @@ export function bubbleText(a: AgentView, full = true): string | null {
 
 export function ago(ms: number, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - ms) / 1000));
-  if (s < 5) return "방금";
-  if (s < 60) return `${s}초 전`;
+  if (s < 5) return t("방금");
+  if (s < 60) return t("{n}초 전", { n: s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}분 전`;
+  if (m < 60) return t("{n}분 전", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}시간 ${m % 60 ? `${m % 60}분 ` : ""}전`;
-  return `${Math.floor(h / 24)}일 전`;
+  if (h < 24) return m % 60 ? t("{h}시간 {m}분 전", { h, m: m % 60 }) : t("{h}시간 전", { h });
+  return t("{n}일 전", { n: Math.floor(h / 24) });
 }
 
 export function duration(ms: number, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - ms) / 1000));
-  if (s < 60) return `${s}초`;
+  if (s < 60) return t("{n}초", { n: s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}분`;
+  if (m < 60) return t("{n}분", { n: m });
   const h = Math.floor(m / 60);
-  return h < 24 ? `${h}시간 ${m % 60}분` : `${Math.floor(h / 24)}일`;
+  return h < 24 ? t("{h}시간 {m}분", { h, m: m % 60 }) : t("{n}일", { n: Math.floor(h / 24) });
 }
 
 /** 상태 옆에 붙는 시간 문구: "12분째", "3분 전". */
 export function statusAge(a: AgentView, now = Date.now()): string {
   if (!a.statusSince) return "";
-  return a.status === "working" || a.status === "blocked" ? `${duration(a.statusSince, now)}째` : ago(a.statusSince, now);
+  return a.status === "working" || a.status === "blocked" ? t("{time}째", { time: duration(a.statusSince, now) }) : ago(a.statusSince, now);
 }
 
 export function tokens(n: number): string {
@@ -128,7 +130,7 @@ export function tokens(n: number): string {
 export function clock(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString(lang === "en" ? "en-GB" : "ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 }
 
 const EFFORT_LEVEL: Record<string, number> = { minimal: 1, low: 1, medium: 2, high: 3, xhigh: 4, max: 5 };

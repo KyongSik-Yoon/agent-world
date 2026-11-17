@@ -14,8 +14,11 @@ import { controlRoutes } from "./control.ts";
 import { MAX_IMAGE_BYTES } from "./images.ts";
 import { herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag, herdrSocketPath } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
-import { addressFile } from "./seen.ts";
+import { addressFile, type Address } from "./address.ts";
+import { DEFAULT_LANG, L, langOf, say } from "./text.ts";
 import { World } from "./world.ts";
+
+const NO_PANE = L("그 pane 은 지금 herdr 에 없습니다.", "That pane no longer exists in herdr.");
 
 /** 포트를 직접 정해 줬는지. 정해 줬으면 그 포트만 쓰고, 아니면 이 herdr 세션의 자리부터 빈 포트를 찾는다. */
 const PORT_GIVEN = Boolean(process.env.AGENT_WORLD_PORT);
@@ -33,7 +36,7 @@ function sessionPort(): number {
   return tag ? 4781 + (Number.parseInt(tag.slice(0, 6), 16) % 99) : 4780;
 }
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
-  console.error(`AGENT_WORLD_PORT 가 포트 번호가 아닙니다: ${process.env.AGENT_WORLD_PORT}`);
+  console.error(say(L(`AGENT_WORLD_PORT 가 포트 번호가 아닙니다: ${process.env.AGENT_WORLD_PORT}`, `AGENT_WORLD_PORT is not a port number: ${process.env.AGENT_WORLD_PORT}`)));
   process.exit(1);
 }
 const TICK_MS = 1000;
@@ -128,7 +131,7 @@ async function tick(force = false): Promise<void> {
     // 달라진 것이 없으면 아무것도 보내지 않는다 — 조용한 동안에는 브라우저가 아무 일도 하지 않는다.
     publish(snapshot);
   } catch (e) {
-    console.error("스냅샷 실패:", e);
+    console.error(say(L("스냅샷 실패:", "Snapshot failed:")), e);
   } finally {
     ticking = false;
     if (again) {
@@ -150,13 +153,14 @@ setInterval(() => broadcast(encoder.encode(": keepalive\n\n")), HEARTBEAT_MS);
 async function bundledPage(): Promise<Record<string, { GET: (req: Request) => Response }>> {
   const built = await Bun.build({ entrypoints: [join(import.meta.dir, "..", "web", "index.html")], minify: true });
   if (!built.success) {
-    console.error("화면을 묶지 못했습니다:", built.logs.join("\n"));
+    console.error(say(L("화면을 묶지 못했습니다:", "Could not bundle the page:")), built.logs.join("\n"));
     process.exit(1);
   }
   const routes: Record<string, { GET: (req: Request) => Response }> = {};
   for (const out of built.outputs) {
     const isPage = out.path.endsWith(".html");
-    const raw = new Uint8Array(await out.arrayBuffer());
+    // 문서에 서버의 기본 말을 적어 준다 — 화면은 따로 고른 말이 없을 때 이것을 따른다.
+    const raw = isPage ? new TextEncoder().encode((await out.text()).replace(/<html lang="[^"]*"/, `<html lang="${DEFAULT_LANG}"`)) : new Uint8Array(await out.arrayBuffer());
     const br = new Uint8Array(brotliCompressSync(raw, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 } }));
     const gz = Bun.gzipSync(raw, { level: 9 });
     const base: Record<string, string> = {
@@ -211,7 +215,10 @@ function tailnetOwner(): Promise<string | null> {
       const status = (await new Response(proc.stdout).json()) as { Self?: { UserID?: number }; User?: Record<string, { LoginName?: string }> };
       return status.User?.[String(status.Self?.UserID)]?.LoginName ?? null;
     } catch (e) {
-      console.error("tailscale 에서 이 PC 의 계정을 알아내지 못했습니다(tailnet 으로 온 요청은 거절됩니다):", (e as Error).message);
+      console.error(
+        say(L("tailscale 에서 이 PC 의 계정을 알아내지 못했습니다(tailnet 으로 온 요청은 거절됩니다):", "Could not find this machine's tailscale account (requests arriving over the tailnet are refused):")),
+        (e as Error).message,
+      );
       return null;
     }
   })();
@@ -264,9 +271,10 @@ async function announce(at: number): Promise<void> {
   const path = addressFile(READONLY);
   try {
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, `${JSON.stringify({ url: `http://127.0.0.1:${at}`, port: at, pid: process.pid, socket: identity.socket, session: herdrSessionName() ?? null, readonly: READONLY })}\n`);
+    const address: Address = { url: `http://127.0.0.1:${at}`, port: at, pid: process.pid, socket: identity.socket, session: herdrSessionName() ?? null, readonly: READONLY };
+    await writeFile(path, `${JSON.stringify(address)}\n`);
   } catch (e) {
-    console.error("주소를 적어 두지 못했습니다:", (e as Error).message);
+    console.error(say(L("주소를 적어 두지 못했습니다:", "Could not record the address:")), (e as Error).message);
     return;
   }
   const forget = (): void => {
@@ -304,24 +312,28 @@ async function start() {
       return listen(at);
     } catch (e) {
       if ((e as { code?: string }).code !== "EADDRINUSE") {
-        console.error(`서버를 띄우지 못했습니다: ${(e as Error).message}`);
+        console.error(say(L(`서버를 띄우지 못했습니다: ${(e as Error).message}`, `Could not start the server: ${(e as Error).message}`)));
         process.exit(1);
       }
       const other = await identify(at);
       if (other?.socket === identity.socket && other.readonly === identity.readonly) {
-        console.log(`Agent World 가 이미 떠 있습니다 → http://127.0.0.1:${at}`);
+        console.log(say(L(`Agent World 가 이미 떠 있습니다 → http://127.0.0.1:${at}`, `Agent World is already running → http://127.0.0.1:${at}`)));
         process.exit(0);
       }
-      const who = other ? "다른 herdr 세션(또는 다른 모드)의 Agent World 가" : "다른 프로그램이";
+      const held = other
+        ? L(`${at}번 포트는 다른 herdr 세션(또는 다른 모드)의 Agent World 가 쓰고 있습니다.`, `Port ${at} is in use by an Agent World for another herdr session (or mode).`)
+        : L(`${at}번 포트는 다른 프로그램이 쓰고 있습니다.`, `Port ${at} is in use by another program.`);
       if (PORT_GIVEN || at >= PORT + PORT_TRIES - 1 || at >= 65535) {
         console.error(
-          PORT_GIVEN
-            ? `${at}번 포트는 ${who} 쓰고 있습니다. AGENT_WORLD_PORT 로 다른 포트를 주세요.`
-            : `${PORT}~${at}번 포트가 모두 차 있습니다. AGENT_WORLD_PORT 로 빈 포트를 주세요.`,
+          say(
+            PORT_GIVEN
+              ? L(`${held.ko} AGENT_WORLD_PORT 로 다른 포트를 주세요.`, `${held.en} Set AGENT_WORLD_PORT to another port.`)
+              : L(`${PORT}~${at}번 포트가 모두 차 있습니다. AGENT_WORLD_PORT 로 빈 포트를 주세요.`, `Ports ${PORT}–${at} are all in use. Set AGENT_WORLD_PORT to a free port.`),
+          ),
         );
         process.exit(1);
       }
-      console.log(`${at}번 포트는 ${who} 쓰고 있어 다음 포트를 봅니다.`);
+      console.log(say(L(`${held.ko} 다음 포트를 봅니다.`, `${held.en} Trying the next one.`)));
     }
   }
 }
@@ -375,7 +387,7 @@ const listen = (at: number) =>
       GET: guarded(async (req) => {
         const paneId = new URL(req.url).searchParams.get("pane") ?? "";
         try {
-          if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
+          if (!(await world.hasPane(paneId))) return json({ error: say(NO_PANE, langOf(req)) }, 404);
           return json({ text: await herdrScreen(paneId) });
         } catch (e) {
           return json({ error: (e as Error).message }, 502);
@@ -385,16 +397,16 @@ const listen = (at: number) =>
     "/api/focus": {
       POST: guarded(async (req) => {
         // herdr 의 화면을 옮기고(그 pane 의 완료 표시도 풀린다) 터미널 창을 앞으로 가져오므로, 보는 것이 아니라 바꾸는 요청이다.
-        if (READONLY) return json({ error: "보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", code: "readonly" }, 403);
+        if (READONLY) return json({ error: say(L("보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", "This server is read-only (AGENT_WORLD_READONLY=1)."), langOf(req)), code: "readonly" }, 403);
         let paneId = "";
         try {
           paneId = String(((await req.json()) as { paneId?: unknown }).paneId ?? "");
         } catch {
-          return json({ error: "요청 본문이 JSON 이 아닙니다." }, 400);
+          return json({ error: say(L("요청 본문이 JSON 이 아닙니다.", "The request body is not JSON."), langOf(req)) }, 400);
         }
         // 화면을 옮기는 요청이므로, 지금 herdr 에 실제로 있는 pane 일 때만 보낸다.
         try {
-          if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
+          if (!(await world.hasPane(paneId))) return json({ error: say(NO_PANE, langOf(req)) }, 404);
           await herdrFocus(paneId);
         } catch (e) {
           return json({ error: (e as Error).message }, 502);
@@ -411,6 +423,8 @@ const listen = (at: number) =>
 const server = await start();
 
 const session = herdrSessionName();
-console.log(`Agent World → http://127.0.0.1:${server.port}${READONLY ? " (보기 전용)" : ""}${session ? ` · herdr 세션 ${session}` : ""}`);
+console.log(
+  `Agent World → http://127.0.0.1:${server.port}${READONLY ? say(L(" (보기 전용)", " (read-only)")) : ""}${session ? say(L(` · herdr 세션 ${session}`, ` · herdr session ${session}`)) : ""}`,
+);
 void announce(server.port ?? port);
-for (const host of TAILNET_HOSTS) console.log(`  tailnet 에서도 받음(이 PC 의 계정만) → https://${host}`);
+for (const host of TAILNET_HOSTS) console.log(say(L(`  tailnet 에서도 받음(이 PC 의 계정만) → https://${host}`, `  also served on the tailnet (this machine's account only) → https://${host}`)));

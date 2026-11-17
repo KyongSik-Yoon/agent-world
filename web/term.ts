@@ -4,6 +4,7 @@
 // 터미널 에뮬레이터 없이 줄마다 span 으로 그리면 된다. 표와 테두리가 어긋나지 않도록 한글 같은
 // 전각 문자는 2칸, 글꼴에 없을 법한 기호는 1칸 너비의 상자에 넣는다.
 import { get, sendInput } from "./api.ts";
+import { t } from "./i18n.ts";
 
 interface TermTheme {
   background: string;
@@ -270,7 +271,7 @@ export class TermScreen {
 
   constructor(private readonly options: ScreenOptions = {}) {
     this.el.className = "term";
-    this.el.textContent = "화면을 읽는 중…";
+    this.el.textContent = t("화면을 읽는 중…");
   }
 
   get pane(): string {
@@ -291,7 +292,7 @@ export class TermScreen {
     // 같은 화면에 다시 붙는 것이면, 새 화면이 올 때까지 보던 것을 그대로 둔다.
     if (!same || !this.raw) {
       this.raw = undefined;
-      this.clear("화면을 읽는 중…");
+      this.clear(t("화면을 읽는 중…"));
     }
     const source = new EventSource(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}${this.options.live ? "&live=1" : ""}`);
     this.source = source;
@@ -305,12 +306,16 @@ export class TermScreen {
       this.redraw();
     });
     // herdr 가 읽기에 답하지 않으면 서버가 알려 준다. 멈춘 화면을 살아 있는 것처럼 두지 않는다.
-    source.addEventListener("stalled", () => this.el.classList.add("stalled"));
+    source.addEventListener("stalled", () => {
+      // 안내 글은 CSS 가 data-stalled 에서 읽는다(글을 스타일시트에 두지 않으려고).
+      this.el.dataset.stalled = t("herdr 가 답하지 않습니다 — 다시 읽는 중…");
+      this.el.classList.add("stalled");
+    });
     source.addEventListener("resumed", () => this.el.classList.remove("stalled"));
     const gone = () => {
       this.stop();
       this.raw = undefined;
-      this.clear("이 pane 은 닫혔습니다.");
+      this.clear(t("이 pane 은 닫혔습니다."));
       this.onGone?.();
     };
     source.addEventListener("gone", gone);
@@ -512,7 +517,7 @@ export class TermOverlay {
     const head = document.createElement("header");
     const hint = document.createElement("span");
     hint.className = "hint";
-    hint.textContent = "입력은 그대로 터미널로 갑니다 · Shift+Esc 닫기";
+    hint.textContent = t("입력은 그대로 터미널로 갑니다 · Shift+Esc 닫기");
     this.backBtn.type = "button";
     this.backBtn.className = "btn";
     this.backBtn.addEventListener("click", () => this.toggleBack());
@@ -520,7 +525,7 @@ export class TermOverlay {
     close.type = "button";
     close.className = "btn icon";
     close.textContent = "✕";
-    close.title = "닫기 (Shift+Esc)";
+    close.title = t("닫기 (Shift+Esc)");
     close.addEventListener("click", () => this.close());
     const names = document.createElement("div");
     names.className = "names";
@@ -544,14 +549,14 @@ export class TermOverlay {
     const keyboard = document.createElement("button");
     keyboard.type = "button";
     keyboard.textContent = "⌨";
-    keyboard.title = "자판 열기";
+    keyboard.title = t("자판 열기");
     keyboard.addEventListener("click", () => this.ime.focus());
     soft.append(keyboard);
 
     this.ime.className = "ime";
-    this.ime.setAttribute("aria-label", "터미널 입력");
+    this.ime.setAttribute("aria-label", t("터미널 입력"));
     // 터치 기기에서는 이 입력란이 화면 아래에 보인다(조합 중인 글자를 볼 수 있게).
-    this.ime.placeholder = "여기에 치면 터미널로 들어갑니다";
+    this.ime.placeholder = t("여기에 치면 터미널로 들어갑니다");
     this.ime.rows = 1;
     this.ime.autocapitalize = "off";
     this.ime.spellcheck = false;
@@ -640,7 +645,7 @@ export class TermOverlay {
 
   private syncBack(): void {
     const on = this.screen.scrollback > 0;
-    this.backBtn.textContent = on ? "지금 화면으로" : "지난 출력 보기";
+    this.backBtn.textContent = on ? t("지금 화면으로") : t("지난 출력 보기");
     this.screen.el.classList.toggle("back", on);
   }
 

@@ -8,16 +8,11 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { herdrSessionTag } from "./herdr.ts";
+import { L, say } from "./text.ts";
 
 /** 이 사용자의 Agent World 가 상태를 적어 두는 폴더. */
 export function stateDir(): string {
   return join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "agent-world");
-}
-
-/** 떠 있는 서버가 제 주소를 적어 두는 파일 — herdr 세션마다, 그리고 조작용과 보기 전용이 따로. */
-export function addressFile(readonly: boolean): string {
-  const tag = herdrSessionTag();
-  return join(stateDir(), `server${tag ? `-${tag}` : ""}${readonly ? ".readonly" : ""}.json`);
 }
 
 /**
@@ -111,6 +106,6 @@ export class SeenStore {
         const info = await stat(path);
         this.stamp = `${info.mtimeMs}:${info.size}`;
       })
-      .catch((e) => console.error("확인 기록 저장 실패:", e));
+      .catch((e) => console.error(say(L("확인 기록 저장 실패:", "Could not save the seen marks:")), e));
   }
 }

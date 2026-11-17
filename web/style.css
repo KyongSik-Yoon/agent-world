@@ -1045,6 +1045,25 @@ kbd {
   z-index: 10;
 }
 
+.btn.lang {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* 위 막대가 빠듯해지는 폭: 칩은 점과 숫자만 남긴다(이름은 올려놓으면 뜬다). 영어 이름이 더 길어 더 일찍 접는다. */
+@media (max-width: 1180px) {
+  html[lang="en"] .chip-label {
+    display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .chip-label {
+    display: none;
+  }
+}
+
 /* 화면 절반에 띄운 창쯤의 폭: 위 막대의 글을 줄여 단추가 모두 들어오게 한다. */
 @media (max-width: 940px) {
   .brand-name {
@@ -1124,7 +1143,7 @@ kbd {
 }
 
 .term.stalled::before {
-  content: "herdr 가 답하지 않습니다 — 다시 읽는 중…";
+  content: attr(data-stalled);
   position: sticky;
   top: 0;
   left: 0;
@@ -1906,12 +1925,32 @@ dialog.dlg .warn {
     display: none;
   }
 
-  /* 상태 칩은 둘째 줄로 내려 가로로 민다. */
+  /* 상태 칩은 둘째 줄로 내려 가로로 민다. 말 바꾸는 단추도 그 줄 끝에 둔다 — 첫 줄에는 자리가 없다. */
   #chips {
     order: 10;
-    flex-basis: 100%;
+    flex: 1 1 0;
+    min-width: 0;
     overflow-x: auto;
     scrollbar-width: none;
+  }
+
+  #btn-lang {
+    order: 11;
+  }
+
+  /* 첫 줄과 둘째 줄을 가른다. */
+  #topbar::after {
+    content: "";
+    order: 9;
+    flex-basis: 100%;
+    height: 0;
+    margin: -3px 0;
+  }
+
+  /* 영어 단추 이름은 더 길다. 첫 줄에 다 들어오게 조금 줄인다. */
+  html[lang="en"] #topbar .btn:not(.icon) {
+    padding-inline: 9px;
+    font-size: 12px;
   }
 
   #chips .chip {
@@ -2012,4 +2051,14 @@ dialog.dlg .warn {
   top: 0;
   left: 0;
   will-change: transform;
+}
+
+/* 아주 좁은 휴대폰: 로고를 접어 위 막대의 단추들이 한 줄에 들어오게 한다. */
+@media (max-width: 380px) {
+  .brand {
+    display: none;
+  }
+  #topbar .btn:not(.icon) {
+    padding-inline: 8px;
+  }
 }

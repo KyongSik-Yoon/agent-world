@@ -118,7 +118,8 @@ export interface WorldSnapshot {
   at: number;
   /** herdr 소켓에 닿았는지. false 면 로그만으로 만든 스냅샷이다. */
   herdr: boolean;
-  herdrError?: string;
+  /** 닿지 못한 까닭. 화면마다 고른 말이 다를 수 있어 두 말로 싣는다. */
+  herdrError?: { ko: string; en: string };
   /** 이 서버가 붙은 herdr 세션의 이름. 기본 세션이면 비어 있다 — 세션을 여럿 쓸 때 어느 화면인지 가리는 데 쓴다. */
   session?: string;
   /** 조작(지시·키 입력·만들기·닫기)을 받는 서버인지. AGENT_WORLD_READONLY=1 이면 false. */

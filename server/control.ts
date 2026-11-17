@@ -29,6 +29,7 @@ import {
 } from "./herdr.ts";
 import { MAX_IMAGE_BYTES, MAX_IMAGES, imagePath, saveImage } from "./images.ts";
 import { termTheme } from "./termtheme.ts";
+import { L, asText, langOf, say, type Text } from "./text.ts";
 import type { World } from "./world.ts";
 
 // herdr 는 화면을 밀어 주지 않아(읽기 요청에만 답한다) 주기적으로 읽어야 한다. 늘 빠르게 읽으면 herdr 에 짐이 되고
@@ -70,24 +71,31 @@ export interface ControlDeps {
 }
 
 class Reject extends Error {
+  readonly text: Text;
+
   constructor(
-    message: string,
+    message: Text | string,
     readonly status: number,
     readonly code?: string,
   ) {
-    super(message);
+    super(say(message));
+    this.text = asText(message);
   }
 }
 
-function reject(message: string, status: number): never {
+function reject(message: Text, status: number): never {
   throw new Reject(message, status);
 }
+
+const READONLY_TEXT = L("보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", "This server is read-only (AGENT_WORLD_READONLY=1).");
+const NOT_JSON = L("요청 본문이 JSON 이 아닙니다.", "The request body is not JSON.");
+const NO_PANE = L("그 pane 은 지금 herdr 에 없습니다.", "That pane no longer exists in herdr.");
 
 function text(body: Body, key: string, max = 400): string {
   const v = body[key];
   if (v === undefined || v === null) return "";
-  if (typeof v !== "string") throw new Reject(`${key} 는 문자열이어야 합니다.`, 400);
-  if (v.length > max) throw new Reject(`${key} 가 너무 깁니다.`, 400);
+  if (typeof v !== "string") throw new Reject(L(`${key} 는 문자열이어야 합니다.`, `${key} must be a string.`), 400);
+  if (v.length > max) throw new Reject(L(`${key} 가 너무 깁니다.`, `${key} is too long.`), 400);
   return v;
 }
 
@@ -98,11 +106,11 @@ function expandHome(path: string): string {
 
 async function directory(path: string): Promise<string> {
   const full = resolve(expandHome(path.trim()));
-  if (!path.trim()) throw new Reject("폴더를 정해 주세요.", 400);
+  if (!path.trim()) throw new Reject(L("폴더를 정해 주세요.", "Choose a folder."), 400);
   try {
     if (!(await stat(full)).isDirectory()) throw new Error();
   } catch {
-    throw new Reject(`폴더가 없습니다: ${full}`, 400);
+    throw new Reject(L(`폴더가 없습니다: ${full}`, `No such folder: ${full}`), 400);
   }
   return full;
 }
@@ -130,31 +138,32 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
   let keysRefresh: ReturnType<typeof setTimeout> | undefined;
 
   const need = async (kind: Kind, id: string): Promise<string> => {
-    if (!(await world.has(kind, id))) throw new Reject(`지금 herdr 에 없는 대상입니다: ${id || "(비어 있음)"}`, 404);
+    if (!(await world.has(kind, id))) throw new Reject(L(`지금 herdr 에 없는 대상입니다: ${id || "(비어 있음)"}`, `No longer in herdr: ${id || "(empty)"}`), 404);
     return id;
   };
 
   /** 바꾸는 요청 하나. 본문을 읽고, 실패를 구분할 수 있는 모양으로 돌려준다. */
   const mutate = (run: (body: Body) => Promise<unknown>, after: () => void = refresh): Record<string, Handler> => ({
     POST: guarded(async (req) => {
-      if (readonly) return json({ error: "보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", code: "readonly" }, 403);
+      const lang = langOf(req);
+      if (readonly) return json({ error: say(READONLY_TEXT, lang), code: "readonly" }, 403);
       let body: Body;
       try {
         body = (await req.json()) as Body;
         if (typeof body !== "object" || body === null) throw new Error();
       } catch {
-        return json({ error: "요청 본문이 JSON 이 아닙니다." }, 400);
+        return json({ error: say(NOT_JSON, lang) }, 400);
       }
       try {
         const result = await run(body);
         after();
         return json({ ok: true, ...(typeof result === "object" && result !== null ? result : {}) });
       } catch (e) {
-        if (e instanceof Reject) return json({ error: e.message, code: e.code }, e.status);
-        if (e instanceof HerdrError) return json({ error: e.message, code: e.code }, 502);
+        if (e instanceof Reject) return json({ error: say(e.text, lang), code: e.code }, e.status);
+        if (e instanceof HerdrError) return json({ error: say(e.text, lang), code: e.code }, 502);
         // 예상하지 못한 실패도 화면이 읽을 수 있는 모양으로 돌려준다.
-        console.error("조작 요청 실패:", e);
-        return json({ error: `서버 안에서 실패했습니다: ${(e as Error).message}` }, 500);
+        console.error(say(L("조작 요청 실패:", "Control request failed:")), e);
+        return json({ error: say(L(`서버 안에서 실패했습니다: ${(e as Error).message}`, `The server failed: ${(e as Error).message}`), lang) }, 500);
       }
     }),
   });
@@ -168,13 +177,21 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       await herdrPrompt(paneId, prompt);
     } catch (e) {
       if (e instanceof HerdrError && e.code === "timeout") {
-        throw new Reject("herdr 가 제때 답하지 않았습니다. 지시가 들어갔을 수도 있으니, 다시 보내기 전에 터미널 화면을 확인해 주세요.", 504, "prompt_unconfirmed");
+        throw new Reject(
+          L(
+            "herdr 가 제때 답하지 않았습니다. 지시가 들어갔을 수도 있으니, 다시 보내기 전에 터미널 화면을 확인해 주세요.",
+            "herdr did not answer in time. The prompt may still have gone through — check the terminal before sending it again.",
+          ),
+          504,
+          "prompt_unconfirmed",
+        );
       }
       throw e;
     }
   };
 
-  const herdrDown = (e: unknown): Response => json({ error: (e as Error).message, code: (e as HerdrError).code }, 502);
+  const herdrDown = (e: unknown, req: Request): Response =>
+    json({ error: e instanceof HerdrError ? say(e.text, langOf(req)) : (e as Error).message, code: (e as HerdrError).code }, 502);
 
   return {
     // ── 터미널 미러 ──────────────────────────────────────────────────────────────────────────────
@@ -186,9 +203,9 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         // 크게 보는 화면만 흐르는 출력을 촘촘히 따라간다. 종일 열려 있는 미리보기까지 그러면 herdr 를 쉬지 않고 읽게 된다.
         const live = url.searchParams.get("live") === "1";
         try {
-          if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
+          if (!(await world.hasPane(paneId))) return json({ error: say(NO_PANE, langOf(req)) }, 404);
         } catch (e) {
-          return herdrDown(e);
+          return herdrDown(e, req);
         }
         const encoder = new TextEncoder();
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -292,13 +309,14 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
     // ── 말 걸기와 키 입력 ────────────────────────────────────────────────────────────────────────
     "/api/image": {
       POST: guarded(async (req) => {
-        if (readonly) return json({ error: "보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", code: "readonly" }, 403);
+        if (readonly) return json({ error: say(READONLY_TEXT, langOf(req)), code: "readonly" }, 403);
         try {
-          if (!(await world.has("agent", new URL(req.url).searchParams.get("pane") ?? ""))) return json({ error: "지금 herdr 에 없는 에이전트입니다." }, 404);
+          if (!(await world.has("agent", new URL(req.url).searchParams.get("pane") ?? ""))) return json({ error: say(L("지금 herdr 에 없는 에이전트입니다.", "That agent no longer exists in herdr."), langOf(req)) }, 404);
         } catch (e) {
-          return herdrDown(e);
+          return herdrDown(e, req);
         }
-        const tooBig = () => json({ error: `이미지가 너무 큽니다(최대 ${MAX_IMAGE_BYTES / 1024 / 1024}MB).`, code: "too_large" }, 413);
+        const tooBig = () =>
+          json({ error: say(L(`이미지가 너무 큽니다(최대 ${MAX_IMAGE_BYTES / 1024 / 1024}MB).`, `The image is too large (max ${MAX_IMAGE_BYTES / 1024 / 1024}MB).`), langOf(req)), code: "too_large" }, 413);
         if (Number(req.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) return tooBig();
         const bytes = new Uint8Array(await req.arrayBuffer());
         if (bytes.length > MAX_IMAGE_BYTES) return tooBig();
@@ -306,24 +324,24 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         try {
           id = await saveImage(bytes);
         } catch (e) {
-          return json({ error: `이미지를 저장하지 못했습니다: ${(e as Error).message}` }, 500);
+          return json({ error: say(L(`이미지를 저장하지 못했습니다: ${(e as Error).message}`, `Could not save the image: ${(e as Error).message}`), langOf(req)) }, 500);
         }
-        return id ? json({ ok: true, id }) : json({ error: "PNG·JPEG·GIF·WebP 이미지만 붙일 수 있습니다.", code: "not_image" }, 415);
+        return id ? json({ ok: true, id }) : json({ error: say(L("PNG·JPEG·GIF·WebP 이미지만 붙일 수 있습니다.", "Only PNG, JPEG, GIF and WebP images can be attached."), langOf(req)), code: "not_image" }, 415);
       }),
     },
     "/api/prompt": mutate(async (body) => {
       const paneId = await need("agent", text(body, "paneId"));
       const prompt = text(body, "text", MAX_TEXT);
       const ids = Array.isArray(body.images) ? body.images : [];
-      if (ids.length > MAX_IMAGES) throw new Reject(`이미지는 한 번에 ${MAX_IMAGES}장까지 보낼 수 있습니다.`, 400);
+      if (ids.length > MAX_IMAGES) throw new Reject(L(`이미지는 한 번에 ${MAX_IMAGES}장까지 보낼 수 있습니다.`, `You can send up to ${MAX_IMAGES} images at once.`), 400);
       const images: string[] = [];
-      for (const id of ids) images.push((typeof id === "string" && (await imagePath(id))) || reject("붙인 이미지를 찾지 못했습니다. 다시 붙여 주세요.", 400));
-      if (!prompt.trim() && images.length === 0) throw new Reject("보낼 말이 비어 있습니다.", 400);
+      for (const id of ids) images.push((typeof id === "string" && (await imagePath(id))) || reject(L("붙인 이미지를 찾지 못했습니다. 다시 붙여 주세요.", "The attached image is gone. Attach it again."), 400));
+      if (!prompt.trim() && images.length === 0) throw new Reject(L("보낼 말이 비어 있습니다.", "There is nothing to send."), 400);
       if (images.length === 0) await deliver(paneId, prompt);
       else {
         const pane = (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId);
         // 질문에 막혀 있으면 붙여넣은 경로가 대화상자로 들어간다. agent.prompt 가 거절하는 것과 같은 이유로 먼저 막는다.
-        if (pane?.agent_status === "blocked") throw new Reject("에이전트가 질문에 대한 답을 기다리는 중입니다.", 409, "agent_blocked");
+        if (pane?.agent_status === "blocked") throw new Reject(L("에이전트가 질문에 대한 답을 기다리는 중입니다.", "The agent is waiting for an answer to its question."), 409, "agent_blocked");
         if (pane?.agent === "claude") {
           // Claude Code 는 경로만 붙여넣으면 그 파일을 읽어 [Image #N] 으로 단다. 새 번호가 장수만큼 보인 뒤에만 보낸다 —
           // 붙지 않았다면 입력창이 아닌 무언가(herdr 가 못 알아본 대화상자 등)가 떠 있는 것이라, Enter 가 엉뚱한 것을 누른다.
@@ -335,7 +353,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
             await Bun.sleep(120);
             attached = [...(await marks())].filter((m) => !before.has(m)).length >= images.length;
           }
-          if (!attached) throw new Reject("이미지가 에이전트 입력창에 붙지 않았습니다. 터미널 화면을 확인해 주세요.", 409, "image_not_attached");
+          if (!attached) throw new Reject(L("이미지가 에이전트 입력창에 붙지 않았습니다. 터미널 화면을 확인해 주세요.", "The image did not attach to the agent's input. Check the terminal."), 409, "image_not_attached");
           if (prompt.trim()) await deliver(paneId, prompt);
           else await herdrInput(paneId, undefined, ["enter"]);
         } else {
@@ -355,8 +373,8 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         if (!watched(paneId)) await need("pane", paneId);
         const input = text(body, "text", MAX_TEXT);
         const keys = Array.isArray(body.keys) ? body.keys : [];
-        if (keys.length > 64 || keys.some((k) => typeof k !== "string" || k.length === 0 || k.length > 32)) throw new Reject("keys 가 올바르지 않습니다.", 400);
-        if (!input && keys.length === 0) throw new Reject("보낼 입력이 없습니다.", 400);
+        if (keys.length > 64 || keys.some((k) => typeof k !== "string" || k.length === 0 || k.length > 32)) throw new Reject(L("keys 가 올바르지 않습니다.", "keys is not valid."), 400);
+        if (!input && keys.length === 0) throw new Reject(L("보낼 입력이 없습니다.", "There is no input to send."), 400);
         // raw 는 제어 문자·이스케이프 시퀀스를 그대로 넣을 때 쓴다(herdr 에 논리 키가 없는 Home, PageUp 등).
         if (body.raw === true) await herdrRaw(paneId, input);
         else await herdrInput(paneId, input || undefined, keys as string[]);
@@ -395,25 +413,25 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       const paneId = await need("pane", text(body, "paneId"));
       const kind = text(body, "kind", 40);
       const name = text(body, "name", 40);
-      if (!/^[a-z][a-z0-9_-]*$/.test(kind)) throw new Reject("에이전트 종류가 올바르지 않습니다.", 400);
-      if (!AGENT_NAME.test(name)) throw new Reject("이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 32자까지 쓸 수 있습니다.", 400);
+      if (!/^[a-z][a-z0-9_-]*$/.test(kind)) throw new Reject(L("에이전트 종류가 올바르지 않습니다.", "That agent kind is not valid."), 400);
+      if (!AGENT_NAME.test(name)) throw new Reject(L("이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 32자까지 쓸 수 있습니다.", "A name starts with a lowercase letter and may use lowercase letters, digits, - and _ (32 characters at most)."), 400);
       const args = Array.isArray(body.args) ? body.args : [];
-      if (args.length > 32 || args.some((a) => typeof a !== "string" || a.length > 2000)) throw new Reject("args 가 올바르지 않습니다.", 400);
+      if (args.length > 32 || args.some((a) => typeof a !== "string" || a.length > 2000)) throw new Reject(L("args 가 올바르지 않습니다.", "args is not valid."), 400);
       await herdrStartAgent(paneId, kind, name, args as string[]);
     }),
 
     // ── 관리 ─────────────────────────────────────────────────────────────────────────────────────
     "/api/rename": mutate(async (body) => {
       const kind = text(body, "kind") as Kind;
-      if (!KINDS.has(kind)) throw new Reject("kind 가 올바르지 않습니다.", 400);
+      if (!KINDS.has(kind)) throw new Reject(L("kind 가 올바르지 않습니다.", "kind is not valid."), 400);
       const label = text(body, "label", 120).trim();
-      if (kind === "agent" && label && !AGENT_NAME.test(label)) throw new Reject("에이전트 이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 쓸 수 있습니다.", 400);
-      if ((kind === "workspace" || kind === "tab") && !label) throw new Reject("이름이 비어 있습니다.", 400);
+      if (kind === "agent" && label && !AGENT_NAME.test(label)) throw new Reject(L("에이전트 이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 쓸 수 있습니다.", "An agent name starts with a lowercase letter and may use lowercase letters, digits, - and _."), 400);
+      if ((kind === "workspace" || kind === "tab") && !label) throw new Reject(L("이름이 비어 있습니다.", "The name is empty."), 400);
       await herdrRename(kind, await need(kind, text(body, "id")), label);
     }),
     "/api/close": mutate(async (body) => {
       const kind = text(body, "kind") as Kind;
-      if (!KINDS.has(kind) || kind === "agent") throw new Reject("kind 가 올바르지 않습니다.", 400);
+      if (!KINDS.has(kind) || kind === "agent") throw new Reject(L("kind 가 올바르지 않습니다.", "kind is not valid."), 400);
       await herdrClose(kind, await need(kind, text(body, "id")), {
         group: body.group === true,
         removeWorktree: body.removeWorktree === true,
