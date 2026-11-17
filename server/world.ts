@@ -202,7 +202,7 @@ export class World {
       view.workspaceLabel;
 
     // 상태는 herdr 가 정본이다. 하나만 덧쓴다: desk-look·desk-plan 이 엔진 대화상자 대신 띄운 카드는 도구가 도는 중이라
-    // herdr 가 working 으로 본다. 그 카드가 답을 기다리는 것을 표식 파일이나 프로세스로 확인했으면 확인 필요로 올린다(asking.ts).
+    // herdr 가 working 으로 본다. 그 카드가 답을 기다리는 것을 desk-look 의 표식 파일로 확인했으면 확인 필요로 올린다(asking.ts).
     if (status === "working" && asking.has(pane.pane_id)) {
       status = "blocked";
       view.statusSource = "card";
