@@ -7,6 +7,17 @@ import { PLAZA_RADIUS, type Layout, type Plot } from "./layout.ts";
 
 export type Theme = "day" | "night";
 
+/**
+ * 잔디(0) 위에 겹쳐 까는 평평한 층들의 높이.
+ *
+ * 색이 다른 층이 겹치는 곳은 층마다 높이가 달라야 하고, 그 차이는 가장 멀리서 볼 때의 깊이 정밀도
+ * (거리 130 에서 약 0.002)보다 넉넉해야 한다. 모자라면 겹친 자리가 카메라를 움직일 때마다 줄무늬로 깜빡인다.
+ */
+const GROUND_STEP = 0.008;
+const GROUND = { step: GROUND_STEP, patch: GROUND_STEP, patchLight: GROUND_STEP * 2, path: GROUND_STEP * 3, yard: GROUND_STEP * 4 };
+/** 광장 바닥돌의 윗면. */
+const PLAZA_TOP = 0.13;
+
 /** 결정적 난수 — 새로 고쳐도 나무가 같은 자리에 선다. */
 function mulberry(seed: number): () => number {
   let a = seed;
@@ -229,6 +240,7 @@ export class Environment {
     under.rotation.x = Math.PI;
 
     // 잔디 얼룩 — 넓은 평면이 밋밋해 보이지 않게.
+    // 색이 다른 얼룩끼리는 높이를 달리한다. 같은 높이에서 겹치면 어느 쪽이 앞인지가 화소마다 갈려, 카메라를 움직일 때 깜빡인다.
     const rng = mulberry(7);
     const patchMat = this.mat("#7CBF5C", "#2A524E");
     const patchMat2 = this.mat("#9DD67B", "#36645C");
@@ -237,7 +249,7 @@ export class Environment {
       const a = rng() * Math.PI * 2;
       const patch = this.mesh(new THREE.CircleGeometry(0.9 + rng() * 2.2, 9), i % 2 ? patchMat : patchMat2, this.staticGroup, { cast: false, receive: true });
       patch.rotation.x = -Math.PI / 2;
-      patch.position.set(Math.cos(a) * r, 0.012, Math.sin(a) * r);
+      patch.position.set(Math.cos(a) * r, i % 2 ? GROUND.patch : GROUND.patchLight, Math.sin(a) * r);
     }
   }
 
@@ -246,7 +258,7 @@ export class Environment {
     const stone = this.mat("#E8DFCF", "#55506B");
     const stoneDark = this.mat("#CFC3AE", "#454059");
     const base = this.mesh(new THREE.CylinderGeometry(PLAZA_RADIUS, PLAZA_RADIUS + 0.25, 0.16, 48), stone, g, { cast: false, receive: true });
-    base.position.y = 0.05;
+    base.position.y = PLAZA_TOP - 0.08;
     for (const [inner, outer] of [
       [2.3, 2.55],
       [4.9, 5.1],
@@ -254,7 +266,7 @@ export class Environment {
     ] as const) {
       const ring = this.mesh(new THREE.RingGeometry(inner, outer, 48), stoneDark, g, { cast: false, receive: true });
       ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.135;
+      ring.position.y = PLAZA_TOP + GROUND.step;
     }
     // 가운데 기단과 수정.
     const plinth = this.mesh(new THREE.CylinderGeometry(0.95, 1.2, 0.5, 8), stoneDark, g, { receive: true });
@@ -283,7 +295,7 @@ export class Environment {
     // 마당.
     const yard = this.mesh(new THREE.CircleGeometry(3.5, 20), this.mat("#DCCB9C", "#565470"), g, { cast: false, receive: true });
     yard.rotation.x = -Math.PI / 2;
-    yard.position.set(0, 0.02, 0.5);
+    yard.position.set(0, GROUND.yard, 0.5);
 
     // 집.
     const house = new THREE.Group();
@@ -348,7 +360,7 @@ export class Environment {
     const pathLen = plot.center.length() - PLAZA_RADIUS - 3.2;
     const path = this.mesh(new THREE.PlaneGeometry(1.5, pathLen), this.mat("#E3D6B4", "#5F5C78"), g, { cast: false, receive: true });
     path.rotation.x = -Math.PI / 2;
-    path.position.set(0, 0.018, 3.4 + pathLen / 2);
+    path.position.set(0, GROUND.path, 3.4 + pathLen / 2);
 
     // 문패.
     const post = this.mesh(new THREE.BoxGeometry(0.1, 1.1, 0.1), woodDark, g);
