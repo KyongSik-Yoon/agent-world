@@ -17,6 +17,33 @@ const STATUS_COLOR: Record<AgentStatus, string> = {
 
 const WALK_SPEED = 1.9;
 const RUN_SPEED = 5.2;
+const PILLAR_HEIGHT = 6.5;
+
+let beam: THREE.CanvasTexture | undefined;
+
+/** 빛기둥의 세로 농도: 바닥에서 부드럽게 차올라 캐릭터 키 언저리에서 가장 짙고, 위로 갈수록 사라진다. */
+function beamTexture(): THREE.CanvasTexture {
+  if (beam) return beam;
+  const canvas = document.createElement("canvas");
+  canvas.width = 4;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d")!;
+  // 캔버스의 아래쪽이 기둥의 바닥이다.
+  const fade = ctx.createLinearGradient(0, 256, 0, 0);
+  fade.addColorStop(0, "rgba(255,255,255,0)");
+  fade.addColorStop(0.04, "rgba(255,255,255,0.7)");
+  fade.addColorStop(0.2, "rgba(255,255,255,0.5)");
+  fade.addColorStop(0.6, "rgba(255,255,255,0.16)");
+  fade.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = fade;
+  ctx.fillRect(0, 0, 4, 256);
+  beam = new THREE.CanvasTexture(canvas);
+  beam.colorSpace = THREE.SRGBColorSpace;
+  return beam;
+}
+
+/** 제 자리에서 이만큼 안으로 들어오면 "거의 다 왔다"고 본다. */
+const TRANSIT_DISTANCE = 1.5;
 const MAX_FOLLOWERS = 4;
 /** 완료 직후 이 시간 동안은 응답 첫 줄을 말풍선에 그대로 보여 준다. */
 const FRESH_DONE_MS = 90_000;
@@ -71,6 +98,7 @@ export class Actor {
   private placed = false;
   private dim = 0;
   private arrivedAt = 0;
+  private inTransit = false;
 
   constructor(view: AgentView, onSelect: (id: string) => void, onHover: (id: string | null) => void) {
     this.view = view;
@@ -96,17 +124,20 @@ export class Actor {
     this.ring.position.y = 0.16;
     this.group.add(this.ring);
 
-    // 멀리서도 보이는 빛기둥 — 완료와 확인 필요만 세운다.
+    // 멀리서도 보이는 빛기둥 — 완료와 확인 필요만 세운다. 발밑에서 올라와 위로 갈수록 옅어진다.
+    // (머리 위 허공에서 시작하면 캐릭터와 따로 떠 있는 막대처럼 보인다.)
     this.pillarMat = new THREE.MeshBasicMaterial({
       color: STATUS_COLOR[view.status],
+      map: beamTexture(),
       transparent: true,
-      opacity: 0.1,
+      opacity: 0.3,
       depthWrite: false,
+      side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     });
-    this.pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.42, 7, 16, 1, true), this.pillarMat);
-    // 머리 위에서 시작한다 — 캐릭터 얼굴을 빛이 덮지 않게.
-    this.pillar.position.y = 6.0;
+    this.pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.78, PILLAR_HEIGHT, 24, 1, true), this.pillarMat);
+    this.pillar.position.y = PILLAR_HEIGHT / 2 + 0.05;
+    this.pillar.renderOrder = 2;
     this.group.add(this.pillar);
 
     this.tag = document.createElement("div");
@@ -195,7 +226,10 @@ export class Actor {
           this.spotIndex = (this.spotIndex + 1 + Math.floor(hash(`${this.view.id}${Math.floor(t)}`) * 2)) % spots.length;
           this.nextWanderAt = t + 7 + hash(`${this.view.id}w${Math.floor(t)}`) * 9;
         }
-        return spots[(this.spotIndex + this.placement.inPlot) % spots.length]!;
+        const spot = spots[(this.spotIndex + this.placement.inPlot) % spots.length]!;
+        // 일터보다 일꾼이 많으면 같은 일터의 옆자리에 선다.
+        const extra = Math.floor(this.placement.inPlot / spots.length);
+        return extra === 0 ? spot : { pos: spot.pos.clone().addScaledVector(plot.side, extra * 1.35), look: spot.look };
       }
       default:
         return { pos: restSpot(plot, this.placement.inPlot), look: center };
@@ -213,6 +247,7 @@ export class Actor {
     const dx = goal.pos.x - pos.x;
     const dz = goal.pos.z - pos.z;
     const dist = Math.hypot(dx, dz);
+    this.inTransit = dist > TRANSIT_DISTANCE;
     let pose: Pose;
     let face: number;
     const status = this.view.status;
@@ -260,7 +295,7 @@ export class Actor {
     this.ring.scale.setScalar((this.selected ? 1.18 : 1) + (status === "blocked" ? pulse * 0.16 : status === "done" ? pulse * 0.07 : 0));
     this.ringMat.opacity = this.muted ? 0.15 : this.selected ? 0.95 : status === "working" ? 0.45 + pulse * 0.25 : 0.55 + pulse * 0.35;
     this.ring.rotation.z = t * 0.6;
-    if (this.pillar.visible) this.pillarMat.opacity = this.muted ? 0.02 : (status === "blocked" ? 0.2 : 0.11) + pulse * 0.1;
+    if (this.pillar.visible) this.pillarMat.opacity = this.muted ? 0.04 : (status === "blocked" ? 0.3 : 0.2) + pulse * 0.1;
 
     this.followers.forEach((f, i) => {
       const a = t * 1.3 + (i / Math.max(1, this.followers.length)) * Math.PI * 2;
@@ -274,6 +309,14 @@ export class Actor {
     this.tag.classList.toggle("hovered", this.hovered);
     this.tag.classList.toggle("selected", this.selected);
     this.tag.classList.toggle("muted", this.muted);
+  }
+
+  /**
+   * 제 자리로 가는 길 위에 있는지. 자리에 닿았거나 거의 닿은 배우는 서로 밀지 않는다 — 자리끼리 가까우면
+   * 밀려났다가 되돌아오기를 끝없이 되풀이해, 제자리에서 떠는 것처럼 보이기 때문이다.
+   */
+  get transit(): boolean {
+    return this.inTransit;
   }
 
   /** 다른 배우와 겹치지 않게 살짝 밀려난다(씬이 쌍마다 부른다). */

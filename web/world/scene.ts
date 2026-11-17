@@ -304,18 +304,21 @@ export class WorldScene {
 
     const actors = [...this.actors.values()];
     for (const actor of actors) actor.update(t, dt, this.layout, this.camera);
-    // 서로 겹치지 않게 살짝 밀어낸다.
+    // 걸어가는 동안에는 서로 겹치지 않게 살짝 비켜 간다. 자리에 닿은 배우는 밀지도 밀리지도 않는다.
     for (let i = 0; i < actors.length; i += 1) {
       for (let j = i + 1; j < actors.length; j += 1) {
+        const moving = Number(actors[i]!.transit) + Number(actors[j]!.transit);
+        if (moving === 0) continue;
         const a = actors[i]!.group.position;
         const b = actors[j]!.group.position;
         const dx = b.x - a.x;
         const dz = b.z - a.z;
         const d = Math.hypot(dx, dz);
         if (d >= 1.25 || d < 1e-4) continue;
-        const push = ((1.25 - d) / d) * 0.5 * Math.min(1, dt * 8);
-        actors[i]!.nudge(-dx * push, -dz * push);
-        actors[j]!.nudge(dx * push, dz * push);
+        // 한쪽만 걷는 중이면 걷는 쪽이 다 비킨다.
+        const push = (((1.25 - d) / d) * Math.min(1, dt * 8)) / moving;
+        if (actors[i]!.transit) actors[i]!.nudge(-dx * push, -dz * push);
+        if (actors[j]!.transit) actors[j]!.nudge(dx * push, dz * push);
       }
     }
 

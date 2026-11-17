@@ -83,7 +83,7 @@ export function workSpots(plot: Plot): Spot[] {
 /** 집 옆 쉼터. 같은 집터의 k 번째 대기 에이전트 자리 — 집 양옆으로 번갈아 앉는다. */
 export function restSpot(plot: Plot, k: number): THREE.Vector3 {
   const sideSign = k % 2 === 0 ? -1 : 1;
-  return at(plot, 1.7 - Math.floor(k / 4) * 1.25, sideSign * (2.45 + Math.floor((k % 4) / 2) * 1.05));
+  return at(plot, 1.7 - Math.floor(k / 4) * 1.35, sideSign * (2.45 + Math.floor((k % 4) / 2) * 1.35));
 }
 
 /** 셸 pane 의 단말기가 서는 자리 — 마당 앞쪽 가장자리에 나란히. */
@@ -93,7 +93,7 @@ export function shellSpot(plot: Plot, k: number): THREE.Vector3 {
 
 /** 대문 앞(광장 쪽). 확인이 필요한 에이전트가 나와 서는 곳. */
 export function gateSpot(plot: Plot, k: number): THREE.Vector3 {
-  return at(plot, -3.6, (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * 1.2);
+  return at(plot, -3.6, (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * 1.4);
 }
 
 /** 광장의 k 번째 자리. 안쪽 고리가 차면 바깥 고리로 넘어간다. */
