@@ -425,6 +425,8 @@ export class TermOverlay {
   private cols = 120;
   private pending = "";
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 보내고 아직 답을 받지 못한 입력의 수. */
+  private sending = 0;
   onError: ((message: string) => void) | undefined;
 
   constructor() {
@@ -564,18 +566,29 @@ export class TermOverlay {
   }
 
   private send(input: { text?: string; keys?: string[]; raw?: boolean }): void {
-    void sendInput(this.screen.pane, input).catch((e: Error) => this.onError?.(e.message));
+    this.sending += 1;
+    void sendInput(this.screen.pane, input)
+      .catch((e: Error) => this.onError?.(e.message))
+      .finally(() => {
+        this.sending -= 1;
+        if (this.sending === 0) this.flush();
+      });
   }
 
   /**
    * 친 글자는 키보드가 보내는 바이트 그대로(raw) 넣는다 — text 로 보내면 붙여넣기로 취급돼, 키 입력을
-   * 기다리는 대화상자가 받지 않는다. 빠르게 친 글자들은 모아서 한 번에 보낸다.
+   * 기다리는 대화상자가 받지 않는다.
+   *
+   * 앞서 보낸 입력의 답을 기다리는 동안 친 글자는 모아 두었다가 한 번에 보낸다. 글자마다 요청을 줄 세우면
+   * herdr 가 느리게 답할 때(한 번에 0.1초까지) 빨리 칠수록 뒤로 밀린다.
    */
   private type(text: string): void {
     if (!text) return;
     this.pending += text;
+    if (this.sending > 0) return;
+    // 조합이 끝나며 한꺼번에 들어오는 글자들을 한 번에 싣도록 이번 차례가 끝난 뒤에 보낸다.
     clearTimeout(this.flushTimer);
-    this.flushTimer = setTimeout(() => this.flush(), 12);
+    this.flushTimer = setTimeout(() => this.flush(), 0);
   }
 
   private flush(): void {
