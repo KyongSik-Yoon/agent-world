@@ -287,7 +287,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       }),
     },
 
-    "/api/term/theme": { GET: guarded(async () => json(await termTheme())) },
+    "/api/term/theme": { GET: guarded(async (req) => json(await termTheme(new URL(req.url).searchParams.get("scheme") === "light" ? "light" : "dark"))) },
 
     // ── 말 걸기와 키 입력 ────────────────────────────────────────────────────────────────────────
     "/api/image": {

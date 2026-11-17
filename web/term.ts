@@ -16,7 +16,9 @@ let palette: string[] = [];
 /** 사용자의 터미널 테마를 받아 온다. 화면의 색은 그 배경을 전제로 골라진 것이다. */
 export async function loadTermTheme(): Promise<void> {
   try {
-    const theme = await get<TermTheme>("/api/term/theme");
+    // 밝은/어두운 테마를 나눠 적은 터미널 설정에서 어느 쪽을 쓸지는 이 기기의 모드로 고른다.
+    const scheme = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    const theme = await get<TermTheme>(`/api/term/theme?scheme=${scheme}`);
     palette = theme.palette;
     document.documentElement.style.setProperty("--term-bg", theme.background);
     document.documentElement.style.setProperty("--term-fg", theme.foreground);
