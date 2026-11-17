@@ -186,7 +186,7 @@ HERDR_SOCKET_PATH=~/.config/herdr/sessions/aw-test/herdr.sock AGENT_WORLD_PORT=4
 herdr session stop aw-test && herdr session delete aw-test
 ```
 
-The brand marks (glyphs and tile colours) come from Collie's (MIT) icon data. The Clawd and Antigravity-arch characters are silhouettes drawn for this project. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The brand marks for Codex, pi, opencode, oh-my-pi, Grok and Muse, and the tile colours, come from Collie's (MIT) icon data. Clawd and the Antigravity arch — both the characters and the animated logos in the list — are drawn for this project. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 

@@ -172,7 +172,7 @@ HERDR_SOCKET_PATH=~/.config/herdr/sessions/aw-test/herdr.sock AGENT_WORLD_PORT=4
 herdr session stop aw-test && herdr session delete aw-test
 ```
 
-브랜드 마크(글리프와 타일 색)는 Collie(MIT)의 아이콘 데이터에서 가져왔다. Clawd 와 Antigravity 아치 캐릭터는 이 저장소에서 직접 그린 실루엣이다. 자세한 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Codex·pi·opencode·oh-my-pi·Grok·Muse 의 브랜드 마크와 타일 색은 Collie(MIT)의 아이콘 데이터에서 가져왔다. Clawd 와 Antigravity 아치는(캐릭터도, 목록의 움직이는 로고도) 이 저장소에서 직접 그린 것이다. 자세한 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## 라이선스
 

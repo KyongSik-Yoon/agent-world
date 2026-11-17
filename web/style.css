@@ -1827,6 +1827,43 @@ dialog.dlg .warn {
   cursor: pointer;
 }
 
+/* ── 직접 만든 타일 로고(Claude 의 Clawd, Antigravity 의 아치) ─────────────────────────
+   쉬는 동안에는 멈춘 그림. 일하는 중에는 미리 구운 띠(logos.ts)를 한 칸씩 옮겨 보여 준다 — 합성기가 옮기므로 다시 칠하지 않는다. */
+
+.brand-logo {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  overflow: hidden;
+}
+
+.brand-logo > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.brand-logo:has(> .logo-strip) > svg {
+  visibility: hidden;
+}
+
+.logo-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(var(--frames) * 100%);
+  height: 100%;
+  background-size: 100% 100%;
+  will-change: transform;
+  animation: logo-strip var(--loop) steps(var(--frames)) var(--logo-t, 0s) infinite;
+}
+
+@keyframes logo-strip {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
 /* ── 터미널 크게 보기의 화면 키 줄 ───────────────────────────────── */
 
 #btn-roster,

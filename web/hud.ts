@@ -1,6 +1,7 @@
 // 장면 위에 얹는 화면: 상태 칩, 에이전트 목록, 고른 에이전트의 상태 창, 알림.
 import type { AgentStatus, AgentView, WorldSnapshot } from "../shared/types.ts";
 import { brandFor, brandTile } from "./brands.ts";
+import { setLogoActive } from "./logos.ts";
 import { type Action, DetailPanel, workspaceKey } from "./detail.ts";
 import { STATUS_VAR, h } from "./dom.ts";
 import { STATUS_LABEL, STATUS_ORDER, bubbleText, needsAttention, statusAge } from "./format.ts";
@@ -221,7 +222,8 @@ export class Hud {
     row.dataset.status = a.status;
     row.classList.toggle("selected", a.id === this.selectedId);
     row.classList.toggle("hovered", a.id === this.hoveredId);
-    const [, title, age, sub] = row.children as unknown as [Element, HTMLElement, HTMLElement, HTMLElement];
+    const [tile, title, age, sub] = row.children as unknown as [Element, HTMLElement, HTMLElement, HTMLElement];
+    setLogoActive(tile, a.status === "working");
     title.textContent = a.title;
     age.textContent = statusAge(a);
     const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : a.workspaceLabel;

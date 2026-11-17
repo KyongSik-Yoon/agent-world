@@ -360,7 +360,7 @@ function faceTexture(brand: Brand): THREE.CanvasTexture {
   ctx.translate(size / 2, size / 2);
   ctx.scale(scale, scale);
   ctx.translate(-12, -12);
-  const path = new Path2D(brand.d);
+  const path = new Path2D(brand.d ?? "");
   let paintStyle: string | CanvasGradient = brand.fg;
   if (brand.grad) {
     const g = ctx.createLinearGradient(0, 0, 24, 24);

@@ -462,7 +462,7 @@ export class DetailPanel {
   private renderAgent(a: AgentView): string | null {
     const brand = brandFor(a.vendor);
     const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : t("{name} (herdr 밖)", { name: a.workspaceLabel });
-    this.setHead(brandTile(a.vendor, 46), a.title, `${brand.name}${a.name ? ` “${a.name}”` : ""} · ${where}`);
+    this.setHead(brandTile(a.vendor, 46, a.status === "working"), a.title, `${brand.name}${a.name ? ` “${a.name}”` : ""} · ${where}`);
 
     const badge = h("span", { class: "badge" }, a.seen ? t("확인함") : STATUS_LABEL[a.status]);
     badge.style.setProperty("--c", STATUS_VAR[a.status]);
@@ -731,14 +731,14 @@ export class DetailPanel {
         const section = h("section", { class: "tab" }, head);
         for (const p of panes.filter((x) => x.tabId === tab.id)) {
           const a = p.agentId ? agents.find((x) => x.id === p.agentId) : undefined;
-          if (a) section.append(row(brandTile(a.vendor, 26), a.title, `${a.seen ? t("확인함") : STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
+          if (a) section.append(row(brandTile(a.vendor, 26, a.status === "working"), a.title, `${a.seen ? t("확인함") : STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
           else section.append(row(h("span", { class: "shell-tile" }, ">_"), p.label || p.title || t("터미널"), t("셸 · {where}", { where: shortPath(p.cwd) }), p.id));
         }
         parts.push(section);
       }
     } else {
       const section = h("section", {}, h("h3", {}, t("세션")));
-      for (const a of agents) section.append(row(brandTile(a.vendor, 26), a.title, `${STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
+      for (const a of agents) section.append(row(brandTile(a.vendor, 26, a.status === "working"), a.title, `${STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
       parts.push(section);
     }
     this.setBody(...parts);
