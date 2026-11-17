@@ -97,9 +97,10 @@ export class Hud {
     else this.render();
   }
 
-  setConnection(state: "live" | "logs" | "down", text: string): void {
+  setConnection(state: "live" | "logs" | "down", text: string, why = ""): void {
     this.conn.dataset.state = state;
     this.conn.textContent = text;
+    this.conn.title = why;
   }
 
   select(id: string | null): void {
@@ -181,7 +182,7 @@ export class Hud {
         snap.agents.length > 0
           ? "조건에 맞는 에이전트가 없습니다."
           : !snap.herdr
-            ? "herdr 가 꺼져 있고, 최근 30분 안에 움직인 에이전트 세션도 없습니다. herdr 를 띄우면 여기에 나타납니다."
+            ? `herdr 에 붙지 못했고, 최근 30분 안에 움직인 에이전트 세션도 없습니다. herdr 를 띄우면 여기에 나타납니다.${snap.herdrError ? `\n(${snap.herdrError})` : ""}`
             : snap.control
               ? "아직 에이전트가 없습니다. 위의 ＋ 집 짓기(B)로 폴더를 열고 에이전트를 들이거나, herdr 에서 에이전트를 띄우면 여기에 나타납니다."
               : "아직 에이전트가 없습니다. herdr 에서 에이전트를 띄우면 여기에 나타납니다.";

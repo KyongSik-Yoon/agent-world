@@ -209,7 +209,7 @@ let retryMs = 1000;
 
 function show(snapshot: WorldSnapshot): void {
   if (snapshot.herdr) hud.setConnection("live", `herdr 연결됨 · 에이전트 ${snapshot.agents.length}`);
-  else hud.setConnection("logs", `herdr 없음 — 로그만으로 표시 · ${snapshot.agents.length}`);
+  else hud.setConnection("logs", `herdr 없음 — 로그만으로 표시 · ${snapshot.agents.length}`, snapshot.herdrError ?? "");
   announce(snapshot);
   scene.sync(snapshot);
   hud.update(snapshot);

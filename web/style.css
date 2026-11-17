@@ -579,6 +579,8 @@ kbd {
   margin: 28px 14px;
   color: var(--ink-2);
   text-align: center;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 /* ── 상태 창 ─────────────────────────────────────────────────────── */
