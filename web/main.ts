@@ -1,5 +1,5 @@
 // 들머리: 서버의 스냅샷 흐름을 받아 장면과 HUD 에 나눠 주고, 둘 사이의 고르기·필터·단축키를 잇는다.
-import type { AgentStatus, AgentView, WorldSnapshot } from "../shared/types.ts";
+import type { AgentStatus, AgentView, SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
 import { post } from "./api.ts";
 import { Builder } from "./build.ts";
 import { type Action, workspaceKey } from "./detail.ts";
@@ -218,19 +218,33 @@ function announce(snapshot: WorldSnapshot): void {
 /** 다시 붙기를 직접 시도할 때의 간격(ms). 실패가 이어지면 조금씩 늘린다. */
 let retryMs = 1000;
 
+function show(snapshot: WorldSnapshot): void {
+  if (snapshot.herdr) hud.setConnection("live", `herdr 연결됨 · 에이전트 ${snapshot.agents.length}`);
+  else hud.setConnection("logs", `herdr 없음 — 로그만으로 표시 · ${snapshot.agents.length}`);
+  announce(snapshot);
+  scene.sync(snapshot);
+  hud.update(snapshot);
+  builder.observe(snapshot);
+  buildBtn.hidden = !snapshot.herdr || !snapshot.control;
+}
+
 function connect(): void {
   const events = new EventSource("/api/events");
+  /** 이 연결로 받은 최신 상태. 서버는 전체를 한 번 보낸 뒤로 달라진 것만 보낸다. */
+  let current: WorldSnapshot | undefined;
   events.onmessage = (e) => {
     retryMs = 1000;
-    const snapshot = JSON.parse(e.data as string) as WorldSnapshot;
-    if (snapshot.herdr) hud.setConnection("live", `herdr 연결됨 · 에이전트 ${snapshot.agents.length}`);
-    else hud.setConnection("logs", `herdr 없음 — 로그만으로 표시 · ${snapshot.agents.length}`);
-    announce(snapshot);
-    scene.sync(snapshot);
-    hud.update(snapshot);
-    builder.observe(snapshot);
-    buildBtn.hidden = !snapshot.herdr || !snapshot.control;
+    current = JSON.parse(e.data as string) as WorldSnapshot;
+    show(current);
   };
+  events.addEventListener("patch", (e) => {
+    if (!current) return;
+    const { order, agents, ...rest } = JSON.parse((e as MessageEvent<string>).data) as SnapshotPatch;
+    const byId = new Map(current.agents.map((a) => [a.id, a]));
+    for (const a of agents) byId.set(a.id, a);
+    current = { ...current, ...rest, agents: order.map((id) => byId.get(id)).filter((a): a is AgentView => a !== undefined) };
+    show(current);
+  });
   events.onerror = () => {
     hud.setConnection("down", "서버와 끊김 — 다시 연결 중…");
     // 연결이 그냥 끊긴 것이면 EventSource 가 스스로 다시 붙는다. 하지만 오류 응답을 받으면(서버가 꺼진 동안

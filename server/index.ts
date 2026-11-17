@@ -4,7 +4,7 @@
 // 그래서 127.0.0.1 밖으로는 열지 않고, Host 와 Origin 을 확인해 다른 사이트가 브라우저를 거쳐
 // 읽어 가거나 조작하는 길을 막는다. 조작을 아예 끄려면 AGENT_WORLD_READONLY=1 로 띄운다.
 import index from "../web/index.html";
-import type { WorldSnapshot } from "../shared/types.ts";
+import type { SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
 import { controlRoutes } from "./control.ts";
 import { herdrFocus, herdrScreen } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
@@ -21,21 +21,66 @@ const READONLY = process.env.AGENT_WORLD_READONLY === "1";
 
 const world = new World(!READONLY);
 const encoder = new TextEncoder();
-const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
+type Client = ReadableStreamDefaultController<Uint8Array>;
+/** 붙어 있는 화면들. 값은 전체 스냅샷을 한 번 받았는지 — 받은 화면에는 바뀐 것만 보낸다. */
+const clients = new Map<Client, boolean>();
 let latest: WorldSnapshot | undefined;
-let latestKey = "";
 let ticking = false;
+/** 마지막으로 내보낸 상태: 에이전트별 직렬화와, 에이전트를 뺀 나머지의 직렬화. */
+let sentAgents = new Map<string, string>();
+let sentOrder = "";
+let sentRest = "";
 
 function frame(snapshot: WorldSnapshot): Uint8Array {
   return encoder.encode(`data: ${JSON.stringify(snapshot)}\n\n`);
 }
 
+function send(client: Client, bytes: Uint8Array): void {
+  try {
+    client.enqueue(bytes);
+  } catch {
+    clients.delete(client);
+  }
+}
+
 function broadcast(bytes: Uint8Array): void {
-  for (const client of clients) {
-    try {
-      client.enqueue(bytes);
-    } catch {
-      clients.delete(client);
+  for (const client of clients.keys()) send(client, bytes);
+}
+
+/**
+ * 새 스냅샷을 내보낸다. 처음 붙은 화면에는 전체를, 이미 전체를 받은 화면에는 달라진 에이전트만 보낸다 —
+ * 에이전트 하나가 일하는 동안 매초 스냅샷 전체(수십 KB)를 다시 보내지 않게.
+ */
+function publish(snapshot: WorldSnapshot): void {
+  const { agents, at, ...rest } = snapshot;
+  const now = new Map<string, string>();
+  const changed: WorldSnapshot["agents"] = [];
+  for (const agent of agents) {
+    // 로그 파일의 수정 시각은 화면이 쓰지 않는다. 그것만 바뀐 것은 변화로 치지 않는다.
+    const body = JSON.stringify({ ...agent, logUpdatedAt: undefined });
+    now.set(agent.id, body);
+    if (sentAgents.get(agent.id) !== body) changed.push(agent);
+  }
+  const order = agents.map((a) => a.id).join("\n");
+  const restBody = JSON.stringify(rest);
+  const restChanged = restBody !== sentRest;
+  const dirty = changed.length > 0 || order !== sentOrder || restChanged;
+  sentAgents = now;
+  sentOrder = order;
+  sentRest = restBody;
+
+  let full: Uint8Array | undefined;
+  let patch: Uint8Array | undefined;
+  for (const [client, primed] of clients) {
+    if (!primed) {
+      send(client, (full ??= frame(snapshot)));
+      clients.set(client, true);
+    } else if (dirty) {
+      if (!patch) {
+        const body: SnapshotPatch = { at, order: agents.map((a) => a.id), agents: changed, ...(restChanged ? rest : {}) };
+        patch = encoder.encode(`event: patch\ndata: ${JSON.stringify(body)}\n\n`);
+      }
+      send(client, patch);
     }
   }
 }
@@ -53,13 +98,9 @@ async function tick(force = false): Promise<void> {
   ticking = true;
   try {
     const snapshot = await world.snapshot();
-    // `at` 만 다른 스냅샷은 보내지 않는다 — 조용한 동안에는 브라우저가 아무 일도 하지 않는다.
-    const key = JSON.stringify({ ...snapshot, at: 0 });
     latest = snapshot;
-    if (key !== latestKey) {
-      latestKey = key;
-      broadcast(frame(snapshot));
-    }
+    // 달라진 것이 없으면 아무것도 보내지 않는다 — 조용한 동안에는 브라우저가 아무 일도 하지 않는다.
+    publish(snapshot);
   } catch (e) {
     console.error("스냅샷 실패:", e);
   } finally {
@@ -143,12 +184,12 @@ const server = Bun.serve({
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             self = controller;
-            clients.add(controller);
             // 묵은 스냅샷을 먼저 보내면 화면이 옛 상태를 기준 삼아, 곧이어 오는 새 스냅샷의 차이를
-            // 전부 "방금 바뀐 것"으로 알린다. 신선할 때만 건네고, 아니면 바로 새로 만든다.
-            if (latest && Date.now() - latest.at < FRESH_MS) controller.enqueue(frame(latest));
-            latestKey = "";
-            void tick();
+            // 전부 "방금 바뀐 것"으로 알린다. 신선할 때만 건네고, 아니면 바로 새로 만들어 전체를 보낸다.
+            const fresh = latest !== undefined && Date.now() - latest.at < FRESH_MS;
+            clients.set(controller, fresh);
+            if (fresh) controller.enqueue(frame(latest!));
+            void tick(true);
           },
           cancel() {
             if (self) clients.delete(self);

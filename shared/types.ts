@@ -124,3 +124,14 @@ export interface WorldSnapshot {
   panes: PaneView[];
   agents: AgentView[];
 }
+
+/**
+ * 직전 스냅샷과 달라진 부분. 화면은 전체 스냅샷을 한 번 받은 뒤로는 이것만 받아 덧입힌다.
+ * agents 는 바뀌었거나 새로 생긴 것만 담고, order 가 전체의 차례와 남아 있는 것을 정한다.
+ * 그 밖의 항목(workspaces, tabs, panes …)은 달라졌을 때만 들어 있다.
+ */
+export interface SnapshotPatch extends Partial<Omit<WorldSnapshot, "agents" | "at">> {
+  at: number;
+  order: string[];
+  agents: AgentView[];
+}
