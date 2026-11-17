@@ -13,6 +13,39 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<s
   return el;
 }
 
+/** 선으로 그린 아이콘(24×24 판). 글자 기호(↵ ✓ ⤢ ✕ ＋)는 기기의 글꼴마다 굵기와 자리가 달라서 쓰지 않는다. */
+const ICONS = {
+  open: "M14 4h6v6M20 4l-8.5 8.5M18 14v5H5V6h5",
+  check: "M5 12.5 9.5 17 19 7.5",
+  copy: "M9 9h11v11H9zM15 9V4H4v11h5",
+  pencil: "M4 20h4L19.5 8.5l-4-4L4 16zM13.5 6.5l4 4",
+  house: "M4.5 11.5 12 5l7.5 6.5M6.5 10.2V19h11v-8.8M10 19v-5h4v5",
+  close: "M6 6l12 12M18 6 6 18",
+  expand: "M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5",
+  terminal: "M3.5 5h17v14h-17zM7 9.5l3 2.5-3 2.5M12.5 15h4.5",
+  plus: "M12 5v14M5 12h14",
+  enter: "M19 5v6a2 2 0 0 1-2 2H6M9.5 8.5 6 13l3.5 4.5",
+  chevron: "M9 6l6 6-6 6",
+  info: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 1 0 0-17zM12 11v5.5M12 7.6v.1",
+  play: "M8 5.5v13l10.5-6.5z",
+  splitRight: "M3.5 5h17v14h-17zM12 5v14",
+  splitDown: "M3.5 5h17v14h-17zM3.5 12h17",
+  trash: "M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5",
+} as const;
+
+export type IconName = keyof typeof ICONS;
+
+export function icon(name: IconName): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "ico");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", ICONS[name]);
+  svg.append(path);
+  return svg;
+}
+
 export function stored(key: string): string | null {
   try {
     return localStorage.getItem(key);
