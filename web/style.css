@@ -166,7 +166,7 @@ input {
   background: var(--blocked);
   color: #fff;
   font-weight: 700;
-  animation: nudge 0.9s ease-in-out infinite;
+  animation: nudge 0.9s steps(2, jump-none) infinite;
 }
 
 .tag.hovered .bubble,
@@ -176,6 +176,10 @@ input {
   -webkit-line-clamp: 5;
 }
 
+/*
+ * 이름표의 깜빡임·들썩임은 계단식으로 움직인다. 부드럽게 이어지는 애니메이션은 화면에 하나만 있어도
+ * 브라우저가 초당 60장을 계속 합성하게 만들어, 3D 쪽에서 프레임을 줄인 보람이 없어진다.
+ */
 @keyframes nudge {
   50% {
     transform: translateY(-3px);
@@ -207,7 +211,7 @@ input {
 
 .tag[data-status="working"] .dot {
   background: var(--working);
-  animation: pulse 1.2s ease-in-out infinite;
+  animation: pulse 1.2s steps(2, jump-none) infinite;
 }
 
 .tag[data-status="done"] .dot {
@@ -216,7 +220,7 @@ input {
 
 .tag[data-status="blocked"] .dot {
   background: var(--blocked);
-  animation: pulse 0.6s ease-in-out infinite;
+  animation: pulse 0.6s steps(2, jump-none) infinite;
 }
 
 @keyframes pulse {
@@ -1697,4 +1701,9 @@ dialog.dlg .warn {
 
 #world.panning canvas:active {
   cursor: grabbing !important;
+}
+
+/* 이름표·문패는 3D 위를 떠다니며 자리만 바뀐다. 층으로 올려 두면 옮길 때마다 다시 칠하지 않는다. */
+.labels > * {
+  will-change: transform;
 }

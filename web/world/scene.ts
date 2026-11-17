@@ -32,7 +32,7 @@ const IDLE_FRAME_MS = 24;
 const ACTIVE_MS = 2500;
 /**
  * 한동안 손대지 않았거나 다른 창을 쓰는 중이면 "곁눈질 화면"이다 — 초당 12장쯤으로 더 줄인다.
- * 걸어가는 캐릭터가 있는 동안은 예외로, 움직임이 끊겨 보이지 않게 30장을 유지한다.
+ * 일하는 캐릭터는 늘 일터 사이를 오가므로, 걷는 동안을 예외로 두면 이 단계에 들어갈 틈이 없다.
  */
 const AMBIENT_AFTER_MS = 20_000;
 const AMBIENT_FRAME_MS = 80;
@@ -71,6 +71,10 @@ export class WorldScene {
   private lastFrameAt = 0;
   private lastInputAt = performance.now();
   private frameNo = 0;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  /** 이름표 층을 다시 놓아야 하는 프레임 수(스냅샷·크기·고르기가 바뀐 직후). */
+  private labelsDirty = 3;
+  private readonly lastCamera = new THREE.Matrix4();
   /** 직전 프레임에 걸어가는 캐릭터가 있었는지. */
   private walking = false;
 
@@ -134,13 +138,19 @@ export class WorldScene {
     // 조작하는 동안에는 화면 주사율 그대로, 가만히 두면 느긋하게 그린다.
     const touched = (): void => {
       this.lastInputAt = performance.now();
+      // 느긋하게 쉬는 중이었으면 다음 차례를 기다리지 않고 바로 그린다.
+      if (this.timer !== undefined) {
+        clearTimeout(this.timer);
+        this.timer = undefined;
+        requestAnimationFrame(this.tick);
+      }
     };
     for (const type of ["pointermove", "pointerdown", "wheel", "keydown", "touchstart"]) window.addEventListener(type, touched, { passive: true });
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
     this.overview(false);
-    this.renderer.setAnimationLoop(() => this.frame());
+    requestAnimationFrame(this.tick);
   }
 
   private resize(): void {
@@ -152,6 +162,7 @@ export class WorldScene {
     this.renderer.setPixelRatio(this.pixelRatio(w, h));
     this.renderer.setSize(w, h);
     this.labels.setSize(w, h);
+    this.labelsDirty = 3;
   }
 
   /** 기기 화소 비율에 부하 배율을 곱하되, 한 프레임의 화소 수가 상한을 넘지 않게 한다. */
@@ -229,6 +240,7 @@ export class WorldScene {
 
     this.syncShells(snapshot);
     this.place(snapshot.agents);
+    this.labelsDirty = 3;
     const blocked = snapshot.agents.filter((a) => a.status === "blocked").length;
     const done = snapshot.agents.filter((a) => a.status === "done").length;
     this.env.setSignal(blocked, done);
@@ -318,6 +330,7 @@ export class WorldScene {
   /** 고른 에이전트를 표시하고, fly 면 카메라가 따라간다. */
   select(id: string | null, fly = true): void {
     const before = this.selectedId;
+    this.labelsDirty = 3;
     if (id && !before && fly) {
       // 돌아오는 중에 다시 골랐으면, 가던 곳이 돌아갈 자리다.
       const returning = this.flight?.position ? this.flight : null;
@@ -407,13 +420,36 @@ export class WorldScene {
     this.callbacks.onSelect(this.pick(e));
   }
 
-  private frame(): void {
-    // 가만히 둔 화면은 프레임을 걸러 초당 30장쯤만 그린다. 조작 중이거나 카메라가 날아가는 중이면 거르지 않는다.
-    const now = performance.now();
+  /** 지금 몇 ms 간격으로 그릴지: 조작 중 0(주사율 그대로), 가만히 두면 30장쯤, 곁눈질 화면이면 12장쯤. */
+  private pace(now: number): { gap: number; ambient: boolean } {
     const quiet = now - this.lastInputAt;
-    const active = this.flight !== null || quiet < ACTIVE_MS;
-    const ambient = !active && !this.walking && (quiet > AMBIENT_AFTER_MS || !document.hasFocus());
-    if (!active && now - this.lastFrameAt < (ambient ? AMBIENT_FRAME_MS : IDLE_FRAME_MS)) return;
+    if (this.flight !== null || quiet < ACTIVE_MS) return { gap: 0, ambient: false };
+    const ambient = quiet > AMBIENT_AFTER_MS || !document.hasFocus();
+    return { gap: ambient ? AMBIENT_FRAME_MS : IDLE_FRAME_MS, ambient };
+  }
+
+  /**
+   * 한 프레임을 그리고 다음 차례를 잡는다.
+   *
+   * 쉬는 동안에는 requestAnimationFrame 을 매번 걸지 않는다 — 걸어 두면 그리지 않는 프레임에도 브라우저가
+   * 초당 60번 깨어나 화면 합성까지 돈다. 쉴 만큼 타이머로 기다렸다가 그때 한 번만 건다.
+   */
+  private readonly tick = (): void => {
+    this.frame();
+    const now = performance.now();
+    const wait = this.lastFrameAt + this.pace(now).gap - now;
+    if (wait < 6) requestAnimationFrame(this.tick);
+    else {
+      this.timer = setTimeout(() => {
+        this.timer = undefined;
+        requestAnimationFrame(this.tick);
+      }, wait - 4);
+    }
+  };
+
+  private frame(): void {
+    const now = performance.now();
+    const { ambient } = this.pace(now);
     this.lastFrameAt = now;
     this.frameNo += 1;
 
@@ -424,7 +460,7 @@ export class WorldScene {
     let walking = false;
     for (const actor of actors) {
       actor.update(t, dt, this.layout, this.camera);
-      walking ||= actor.transit;
+      walking ||= actor.moving;
     }
     this.walking = walking;
     // 걸어가는 동안에는 서로 겹치지 않게 살짝 비켜 간다. 자리에 닿은 배우는 밀지도 밀리지도 않는다.
@@ -482,7 +518,14 @@ export class WorldScene {
     this.renderer.render(this.scene, this.camera);
     // 어쩌다 한 번 튀는 프레임(셰이더 컴파일, 탭 전환)에 끌려가지 않게 표본을 눌러 담는다.
     this.renderMs += (Math.min(performance.now() - startedAt, 60) - this.renderMs) * 0.1;
-    this.labels.render(this.scene, this.camera);
+    // 이름표(DOM)는 카메라나 캐릭터가 움직였을 때만 다시 놓는다. 가만히 있는 동안 매 프레임 위치와 겹침 순서를
+    // 다시 쓰면 그리는 것보다 스타일 계산이 더 든다.
+    const cameraMoved = !this.lastCamera.equals(this.camera.matrixWorld);
+    if (cameraMoved || this.walking || this.labelsDirty > 0) {
+      this.labels.render(this.scene, this.camera);
+      this.lastCamera.copy(this.camera.matrixWorld);
+      if (this.labelsDirty > 0) this.labelsDirty -= 1;
+    }
     this.tune(now);
   }
 }

@@ -101,6 +101,7 @@ export class Actor {
   private bubbleFor: AgentView | undefined;
   private bubbleFull = false;
   private inTransit = false;
+  private isMoving = false;
 
   constructor(view: AgentView, onSelect: (id: string) => void, onHover: (id: string | null) => void) {
     this.view = view;
@@ -254,6 +255,7 @@ export class Actor {
     const dz = goal.pos.z - pos.z;
     const dist = Math.hypot(dx, dz);
     this.inTransit = dist > TRANSIT_DISTANCE;
+    this.isMoving = dist > 0.08;
     let pose: Pose;
     let face: number;
     const status = this.view.status;
@@ -323,6 +325,11 @@ export class Actor {
    */
   get transit(): boolean {
     return this.inTransit;
+  }
+
+  /** 지금 걸어가는 중인지(자리에 닿으면 false). */
+  get moving(): boolean {
+    return this.isMoving;
   }
 
   /** 다른 배우와 겹치지 않게 살짝 밀려난다(씬이 쌍마다 부른다). */
