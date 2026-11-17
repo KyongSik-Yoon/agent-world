@@ -1,6 +1,6 @@
 # Agent World
 
-[한국어](README.md) · [Homepage](https://kyongsik-yoon.github.io/agent-world/)
+[한국어](README.md) · [Homepage](https://agent-world.ksyoon.com/)
 
 A local dashboard that shows the coding agents running in [herdr](https://herdr.dev) as a 3D village, and lets you
 talk to them and build new workspaces without going back to the herdr window. One agent is one character, and

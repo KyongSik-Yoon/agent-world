@@ -2,7 +2,7 @@
 
 ## 홈페이지
 
-- 주소: https://kyongsik-yoon.github.io/agent-world/ (GitHub Pages, `main` 의 `docs/`)
+- 주소: https://agent-world.ksyoon.com/ (GitHub Pages, `main` 의 `docs/`)
 - `docs/index.html` 한 파일이다. 빌드 없음, 외부 자원은 Google Fonts 뿐. 컨셉은 "떠 있는 섬": 앱의 낮/밤 하늘 위에
   작은 섬을 그리고, 캐릭터가 상태(작업 중·확인 필요·완료·대기)마다 정해진 자리로 걸어가는 것을 첫 화면에서 보여 준다.
 - 문구와 숫자는 README(한국어·영어)와 `herdr-plugin.toml` 에 맞춘다. 기능이나 숫자가 바뀌면 README 와 함께 고친다.

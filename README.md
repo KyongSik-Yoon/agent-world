@@ -1,6 +1,6 @@
 # Agent World
 
-[English](README.en.md) · [홈페이지](https://kyongsik-yoon.github.io/agent-world/)
+[English](README.en.md) · [홈페이지](https://agent-world.ksyoon.com/)
 
 herdr 에 띄워 둔 코딩 에이전트들을 3D 마을로 보여 주는 로컬 대시보드입니다. 에이전트 하나가 캐릭터 하나이고,
 **캐릭터가 서 있는 곳이 곧 상태**입니다. herdr 창으로 돌아가지 않아도 여기서 지시를 보내고, 질문에 답하고, 새 집을 지을 수 있습니다.
