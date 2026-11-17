@@ -982,8 +982,9 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: auto;
-  padding: 0;
+  /* 글자는 11px 이지만 손가락으로 누를 자리는 넓힌다. 바깥 여백을 그만큼 빼서 줄 높이·간격은 그대로 둔다. */
+  margin: -8px -6px -8px auto;
+  padding: 8px 6px;
   border: 0;
   background: none;
   color: var(--accent);
@@ -1528,7 +1529,7 @@ kbd {
 }
 
 .d-body h3 button + button {
-  margin-left: 10px;
+  margin-left: 6px;
 }
 
 .btn.danger {
@@ -1542,8 +1543,9 @@ kbd {
 }
 
 .status-line .link {
-  margin-left: auto;
-  padding: 0;
+  /* 글자는 11px 이지만 손가락으로 누를 자리는 넓힌다. 바깥 여백을 그만큼 빼서 줄 높이·간격은 그대로 둔다. */
+  margin: -8px -6px -8px auto;
+  padding: 8px 6px;
   border: 0;
   background: none;
   color: var(--accent);

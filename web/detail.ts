@@ -588,7 +588,7 @@ export class DetailPanel {
     const more = h("div", { class: "actions minor" });
     if (a.sessionId) {
       const id = a.sessionId;
-      more.append(this.button(t("세션 ID 복사"), () => void navigator.clipboard.writeText(id).then(() => this.callbacks.toast(t("복사했습니다"), id, "var(--accent)")), { icon: "copy" }));
+      more.append(this.button(t("세션 ID 복사"), () => this.copy(id, id), { icon: "copy" }));
     }
     if (a.paneId && control) {
       const paneId = a.paneId;
@@ -601,6 +601,14 @@ export class DetailPanel {
     return h("div", { class: "action-group" }, main, more.childElementCount > 0 ? more : null);
   }
 
+  /** what: 토스트에 띄울 말 — 짧은 값은 그대로, 긴 글은 섹션 이름. */
+  private copy(text: string, what: string): void {
+    navigator.clipboard.writeText(text).then(
+      () => this.callbacks.toast(t("복사했습니다"), what, "var(--accent)"),
+      () => this.callbacks.toast(t("복사하지 못했습니다"), what, "var(--blocked)"),
+    );
+  }
+
   private textSection(title: string, text: string, key: "prompt" | "reply"): HTMLElement {
     const long = text.length > 420 || text.split("\n").length > 8;
     // 스냅샷이 올 때마다 다시 그리지만 글은 거의 그대로다. 같은 글이면 만들어 둔 노드를 다시 쓴다.
@@ -608,7 +616,7 @@ export class DetailPanel {
     if (made?.text !== text) made = this.proseOf[key] = { text, box: h("div", {}, prose(text)) };
     const box = made.box;
     box.className = long && !this.open[key] ? "prose clamp" : "prose";
-    const head = h("h3", {}, title);
+    const head = h("h3", {}, title, this.button(t("복사"), () => this.copy(text, title), { cls: "", icon: "copy", title: t("이 글을 클립보드에 복사합니다") }));
     if (long) {
       head.append(
         this.button(this.open[key] ? t("접기") : t("펼치기"), () => {
