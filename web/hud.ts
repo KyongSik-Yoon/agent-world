@@ -138,23 +138,32 @@ export class Hud {
     document.title = waiting > 0 ? `(${waiting}) Agent World` : "Agent World";
   }
 
+  /** 상태 칩. 한 번 만들어 두고 수와 눌림만 고친다 — 스냅샷마다 새로 만들면 누르는 도중의 단추가 발밑에서 바뀐다. */
+  private readonly chipEls = new Map<AgentStatus, { chip: HTMLButtonElement; count: HTMLElement }>();
+
   private renderChips(): void {
     const agents = this.snapshot!.agents;
     const order: AgentStatus[] = ["blocked", "done", "working", "idle"];
-    this.chips.replaceChildren(
-      ...order.map((status) => {
-        const count = agents.filter((a) => (a.status === "unknown" ? "idle" : a.status) === status).length;
-        const chip = h("button", { class: "chip", type: "button", "aria-pressed": String(this.statusFilter === status), "data-zero": String(count === 0) });
+    if (this.chipEls.size === 0) {
+      for (const status of order) {
+        const count = h("b");
+        const chip = h("button", { class: "chip", type: "button" }, h("i"), STATUS_LABEL[status], count);
         chip.style.setProperty("--c", STATUS_VAR[status]);
-        chip.append(h("i"), STATUS_LABEL[status], h("b", {}, String(count)));
         chip.addEventListener("click", () => {
           this.statusFilter = this.statusFilter === status ? null : status;
           this.applyFilter();
           this.render();
         });
-        return chip;
-      }),
-    );
+        this.chipEls.set(status, { chip, count });
+        this.chips.append(chip);
+      }
+    }
+    for (const [status, { chip, count }] of this.chipEls) {
+      const n = agents.filter((a) => (a.status === "unknown" ? "idle" : a.status) === status).length;
+      if (count.textContent !== String(n)) count.textContent = String(n);
+      chip.setAttribute("aria-pressed", String(this.statusFilter === status));
+      chip.dataset.zero = String(n === 0);
+    }
   }
 
   private renderRoster(): void {

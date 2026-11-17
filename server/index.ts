@@ -235,16 +235,16 @@ async function start() {
         console.log(`Agent World 가 이미 떠 있습니다 → http://127.0.0.1:${at}`);
         process.exit(0);
       }
-      const who = other ? "다른 herdr 세션(또는 다른 모드)의 Agent World" : "다른 프로그램";
+      const who = other ? "다른 herdr 세션(또는 다른 모드)의 Agent World 가" : "다른 프로그램이";
       if (PORT_GIVEN || at >= PORT + PORT_TRIES - 1 || at >= 65535) {
         console.error(
           PORT_GIVEN
-            ? `포트 ${at} 을 ${who} 이(가) 쓰고 있습니다. AGENT_WORLD_PORT 로 다른 포트를 주세요.`
-            : `포트 ${PORT}~${at} 이 모두 차 있습니다. AGENT_WORLD_PORT 로 빈 포트를 주세요.`,
+            ? `${at}번 포트는 ${who} 쓰고 있습니다. AGENT_WORLD_PORT 로 다른 포트를 주세요.`
+            : `${PORT}~${at}번 포트가 모두 차 있습니다. AGENT_WORLD_PORT 로 빈 포트를 주세요.`,
         );
         process.exit(1);
       }
-      console.log(`포트 ${at} 은 ${who} 이(가) 쓰고 있어 다음 포트를 봅니다.`);
+      console.log(`${at}번 포트는 ${who} 쓰고 있어 다음 포트를 봅니다.`);
     }
   }
 }

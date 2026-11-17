@@ -246,6 +246,9 @@ const DRAW_REST = 4;
 /** 아무리 무거워도 이보다 오래 쉬지는 않는다 — 초당 네 번은 그린다. */
 const DRAW_REST_MAX_MS = 250;
 
+/** 크게 보기에서 글자가 커질 수 있는 한도(px). 80칸짜리 pane 을 넓은 창에 띄워도 구석에 작게 몰리지 않게 한다. */
+const MAX_FONT_PX = 17;
+
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
 export class TermScreen {
   readonly el = document.createElement("div");
@@ -647,8 +650,10 @@ export class TermOverlay {
     const width = this.body.clientWidth - 28;
     // 좁은 화면에서는 칸을 다 넣으려다 글자가 깨알이 되느니, 읽을 만한 크기로 두고 가로로 민다.
     const floor = window.innerWidth < 760 ? 10 : 7;
-    const size = Math.max(floor, Math.min(14, width / (this.cols * 0.6)));
+    // 칸 수가 적은 pane 은 글자를 조금 키우고(읽기 좋은 데까지만), 그래도 남는 폭은 양옆에 고르게 둔다(스타일시트).
+    const size = Math.max(floor, Math.min(MAX_FONT_PX, width / (this.cols * 0.6)));
     this.screen.el.style.fontSize = `${size.toFixed(2)}px`;
+    this.screen.el.style.setProperty("--cols", String(this.cols));
   }
 
   private send(input: { text?: string; keys?: string[]; raw?: boolean }): void {

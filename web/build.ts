@@ -171,7 +171,7 @@ export class Builder {
       chosen: () => kind.value !== "",
       start: async (paneId, step) => {
         if (!AGENT_NAME.test(name.value)) throw new Error("주민 이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 32자까지 쓸 수 있습니다.");
-        step(`${brandFor(kind.value).name} 을(를) 띄우는 중…`);
+        step(`${brandFor(kind.value).name} 띄우는 중…`);
         await post("/api/agent/start", { paneId, kind: kind.value, name: name.value, args: splitArgs(args.value) });
         step("에이전트가 준비되기를 기다리는 중…");
         const agent = await this.waitFor((s) => s.agents.find((a) => a.id === paneId && a.status !== "unknown"), READY_TIMEOUT_MS);
@@ -339,7 +339,7 @@ export class Builder {
     for (const a of doomed) list.append(h("li", { "data-status": a.status }, h("b", {}, a.title), ` — ${brandFor(a.vendor).name} · ${STATUS_LABEL[a.status]}`));
     const working = doomed.filter((a) => a.status === "working" || a.status === "blocked").length;
     const fields: Child[] = [
-      h("p", {}, h("b", {}, name), ` ${what} 을(를) 닫습니다. 되돌릴 수 없습니다.`),
+      h("p", {}, h("b", {}, name), ` ${kind === "workspace" ? "집(스페이스)을" : kind === "tab" ? "탭을" : "pane 을"} 닫습니다. 되돌릴 수 없습니다.`),
       doomed.length > 0 ? h("p", { class: working > 0 ? "warn" : "" }, `함께 꺼지는 에이전트 ${doomed.length}개${working > 0 ? ` — 그중 ${working}개는 아직 일하는 중입니다` : ""}:`) : h("p", {}, "이 안에 돌고 있는 에이전트는 없습니다."),
       doomed.length > 0 ? list : null,
     ];

@@ -592,11 +592,15 @@ kbd {
 }
 
 .empty {
-  margin: 28px 14px;
+  margin: 28px 16px;
   color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.6;
   text-align: center;
   white-space: pre-line;
+  word-break: keep-all;
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 /* ── 상태 창 ─────────────────────────────────────────────────────── */
@@ -1204,7 +1208,8 @@ kbd {
 
 #term-overlay .term {
   height: 100%;
-  padding: 12px 14px;
+  /* 화면의 칸 수보다 창이 넓으면 남는 폭을 양옆에 나눠, 내용이 왼쪽 구석에 몰리지 않게 한다. */
+  padding: 12px max(14px, calc((100% - var(--cols, 120) * 1ch) / 2));
 }
 
 #term-overlay:focus-within {
