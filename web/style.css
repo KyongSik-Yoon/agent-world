@@ -1057,6 +1057,27 @@ kbd {
   min-height: 1.22em;
 }
 
+/* herdr 가 화면 읽기에 답하지 않는 동안: 보이는 것은 멈춘 화면이다. */
+.term.stalled > * {
+  opacity: 0.45;
+}
+
+.term.stalled::before {
+  content: "herdr 가 답하지 않습니다 — 다시 읽는 중…";
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: block;
+  width: max-content;
+  margin-bottom: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--blocked);
+  color: #fff;
+  font: 600 11px/1.4 var(--sans, system-ui, sans-serif);
+}
+
 .term.preview .tl.rule {
   overflow: hidden;
   white-space: nowrap;

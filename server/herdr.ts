@@ -36,7 +36,7 @@ export function herdrRpc<T = unknown>(method: string, params: Record<string, unk
       if (err) reject(err);
       else resolve(value as T);
     };
-    const timer = setTimeout(() => finish(new HerdrError(`herdr ${method} 응답 시간 초과`)), timeoutMs);
+    const timer = setTimeout(() => finish(new HerdrError(`herdr ${method} 응답 시간 초과`, "timeout")), timeoutMs);
     const parse = () => {
       const text = Buffer.concat(chunks).toString("utf8").trim();
       if (!text) return finish(new HerdrError(`herdr ${method} 응답 없음`));

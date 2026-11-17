@@ -392,18 +392,17 @@ export class World {
     return true;
   }
 
-  /** 지금 herdr 에 있는 대상인지 — 조작 요청은 실제로 있는 것에만 보낸다. */
+  /**
+   * 지금 herdr 에 있는 대상인지 — 조작 요청은 실제로 있는 것에만 보낸다.
+   * herdr 에 묻지 못했으면 HerdrError 를 던진다. "없다"로 답하면 화면이 멀쩡한 pane 을 닫힌 것으로 안다.
+   */
   async has(kind: Kind, id: string): Promise<boolean> {
     if (!id) return false;
-    try {
-      const snap = await herdrSnapshot();
-      if (kind === "workspace") return snap.workspaces.some((w) => w.workspace_id === id);
-      if (kind === "tab") return snap.tabs.some((t) => t.tab_id === id);
-      if (kind === "agent") return snap.agents.some((p) => p.pane_id === id && p.agent);
-      return snap.panes.some((p) => p.pane_id === id);
-    } catch {
-      return false;
-    }
+    const snap = await herdrSnapshot();
+    if (kind === "workspace") return snap.workspaces.some((w) => w.workspace_id === id);
+    if (kind === "tab") return snap.tabs.some((t) => t.tab_id === id);
+    if (kind === "agent") return snap.agents.some((p) => p.pane_id === id && p.agent);
+    return snap.panes.some((p) => p.pane_id === id);
   }
 
   hasPane(paneId: string): Promise<boolean> {

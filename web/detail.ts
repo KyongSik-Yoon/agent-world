@@ -366,7 +366,7 @@ export class DetailPanel {
         this.open.screen = true;
       } else {
         this.setNote((e as Error).message, "err");
-        if (e instanceof ApiError && e.code === "image_not_attached") this.open.screen = true;
+        if (e instanceof ApiError && (e.code === "image_not_attached" || e.code === "prompt_unconfirmed")) this.open.screen = true;
       }
     } finally {
       this.busy = false;

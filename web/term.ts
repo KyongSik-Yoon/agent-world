@@ -299,6 +299,9 @@ export class TermScreen {
       for (const [i, line] of (JSON.parse((e as MessageEvent<string>).data) as { set: Array<[number, string]> }).set) this.raw[i] = line;
       this.redraw();
     });
+    // herdr 가 읽기에 답하지 않으면 서버가 알려 준다. 멈춘 화면을 살아 있는 것처럼 두지 않는다.
+    source.addEventListener("stalled", () => this.el.classList.add("stalled"));
+    source.addEventListener("resumed", () => this.el.classList.remove("stalled"));
     const gone = () => {
       this.stop();
       this.raw = undefined;
@@ -325,6 +328,7 @@ export class TermScreen {
 
   stop(): void {
     this.wanted = false;
+    this.el.classList.remove("stalled");
     this.source?.close();
     this.source = undefined;
     cancelAnimationFrame(this.frame);

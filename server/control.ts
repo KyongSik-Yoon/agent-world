@@ -152,10 +152,29 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       } catch (e) {
         if (e instanceof Reject) return json({ error: e.message, code: e.code }, e.status);
         if (e instanceof HerdrError) return json({ error: e.message, code: e.code }, 502);
-        throw e;
+        // 예상하지 못한 실패도 화면이 읽을 수 있는 모양으로 돌려준다.
+        console.error("조작 요청 실패:", e);
+        return json({ error: `서버 안에서 실패했습니다: ${(e as Error).message}` }, 500);
       }
     }),
   });
+
+  /**
+   * 지시를 보낸다. herdr 가 제때 답하지 않은 것은 "못 보냈다"가 아니다 — 늦게라도 들어갔을 수 있어서,
+   * 실패로만 알리면 다시 보내 같은 지시가 두 번 들어간다.
+   */
+  const deliver = async (paneId: string, prompt: string): Promise<void> => {
+    try {
+      await herdrPrompt(paneId, prompt);
+    } catch (e) {
+      if (e instanceof HerdrError && e.code === "timeout") {
+        throw new Reject("herdr 가 제때 답하지 않았습니다. 지시가 들어갔을 수도 있으니, 다시 보내기 전에 터미널 화면을 확인해 주세요.", 504, "prompt_unconfirmed");
+      }
+      throw e;
+    }
+  };
+
+  const herdrDown = (e: unknown): Response => json({ error: (e as Error).message, code: (e as HerdrError).code }, 502);
 
   return {
     // ── 터미널 미러 ──────────────────────────────────────────────────────────────────────────────
@@ -166,7 +185,11 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         const back = Math.min(MAX_BACK_LINES, Math.max(0, Number(url.searchParams.get("back")) || 0));
         // 크게 보는 화면만 흐르는 출력을 촘촘히 따라간다. 종일 열려 있는 미리보기까지 그러면 herdr 를 쉬지 않고 읽게 된다.
         const live = url.searchParams.get("live") === "1";
-        if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
+        try {
+          if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
+        } catch (e) {
+          return herdrDown(e);
+        }
         const encoder = new TextEncoder();
         let timer: ReturnType<typeof setTimeout> | undefined;
         let closed = false;
@@ -187,6 +210,8 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
             let reading = false;
             /** 읽는 도중에 입력이 들어갔다 — 그 읽기는 입력 전의 화면일 수 있으니 끝나자마자 다시 읽는다. */
             let stale = false;
+            /** herdr 가 읽기에 답하지 않고 있다 — 화면에 알려 두었고, 다시 읽히면 풀어 준다. */
+            let stalled = false;
             const send = (event: string, data: unknown) => {
               sentAt = Date.now();
               controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
@@ -205,6 +230,10 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
                 const screen = (back > 0 ? await herdrTerm(paneId, "recent", back) : await herdrTerm(paneId, "visible")).split(/\r?\n/);
                 if (closed) return;
                 watcher.okAt = Date.now();
+                if (stalled) {
+                  stalled = false;
+                  send("resumed", {});
+                }
                 // 달라진 줄만 보낸다. 줄 수가 바뀌었거나 절반 넘게 달라졌으면 통째로 보내는 편이 싸다.
                 const diff: Array<[number, string]> = [];
                 if (last?.length === screen.length) screen.forEach((line, i) => line !== last![i] && diff.push([i, line]));
@@ -224,6 +253,14 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
                   stop();
                   controller.close();
                   return;
+                }
+                // 멈춘 화면을 살아 있는 것으로 보이게 두지 않는다. 연결이 살아 있다는 표시도 여기서 이어 간다.
+                if (!stalled) {
+                  stalled = true;
+                  send("stalled", { error: (e as Error).message });
+                } else if (Date.now() - sentAt > TERM_KEEPALIVE_MS) {
+                  sentAt = Date.now();
+                  controller.enqueue(encoder.encode(": keepalive\n\n"));
                 }
               } finally {
                 reading = false;
@@ -256,12 +293,21 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
     "/api/image": {
       POST: guarded(async (req) => {
         if (readonly) return json({ error: "보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", code: "readonly" }, 403);
-        if (!(await world.has("agent", new URL(req.url).searchParams.get("pane") ?? ""))) return json({ error: "지금 herdr 에 없는 에이전트입니다." }, 404);
+        try {
+          if (!(await world.has("agent", new URL(req.url).searchParams.get("pane") ?? ""))) return json({ error: "지금 herdr 에 없는 에이전트입니다." }, 404);
+        } catch (e) {
+          return herdrDown(e);
+        }
         const tooBig = () => json({ error: `이미지가 너무 큽니다(최대 ${MAX_IMAGE_BYTES / 1024 / 1024}MB).`, code: "too_large" }, 413);
         if (Number(req.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) return tooBig();
         const bytes = new Uint8Array(await req.arrayBuffer());
         if (bytes.length > MAX_IMAGE_BYTES) return tooBig();
-        const id = await saveImage(bytes);
+        let id: string | null;
+        try {
+          id = await saveImage(bytes);
+        } catch (e) {
+          return json({ error: `이미지를 저장하지 못했습니다: ${(e as Error).message}` }, 500);
+        }
         return id ? json({ ok: true, id }) : json({ error: "PNG·JPEG·GIF·WebP 이미지만 붙일 수 있습니다.", code: "not_image" }, 415);
       }),
     },
@@ -273,7 +319,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       const images: string[] = [];
       for (const id of ids) images.push((typeof id === "string" && (await imagePath(id))) || reject("붙인 이미지를 찾지 못했습니다. 다시 붙여 주세요.", 400));
       if (!prompt.trim() && images.length === 0) throw new Reject("보낼 말이 비어 있습니다.", 400);
-      if (images.length === 0) await herdrPrompt(paneId, prompt);
+      if (images.length === 0) await deliver(paneId, prompt);
       else {
         const pane = (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId);
         // 질문에 막혀 있으면 붙여넣은 경로가 대화상자로 들어간다. agent.prompt 가 거절하는 것과 같은 이유로 먼저 막는다.
@@ -290,11 +336,11 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
             attached = [...(await marks())].filter((m) => !before.has(m)).length >= images.length;
           }
           if (!attached) throw new Reject("이미지가 에이전트 입력창에 붙지 않았습니다. 터미널 화면을 확인해 주세요.", 409, "image_not_attached");
-          if (prompt.trim()) await herdrPrompt(paneId, prompt);
+          if (prompt.trim()) await deliver(paneId, prompt);
           else await herdrInput(paneId, undefined, ["enter"]);
         } else {
           // 그 밖의 하네스는 경로를 글에 실어 보낸다 — 에이전트가 제 도구로 파일을 연다.
-          await herdrPrompt(paneId, [prompt.trim(), ...images].filter(Boolean).join("\n"));
+          await deliver(paneId, [prompt.trim(), ...images].filter(Boolean).join("\n"));
         }
       }
       // 지시를 보냈으면 그 전의 완료는 읽은 것이다.

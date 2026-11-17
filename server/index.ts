@@ -223,8 +223,8 @@ const listen = () =>
     "/api/screen": {
       GET: guarded(async (req) => {
         const paneId = new URL(req.url).searchParams.get("pane") ?? "";
-        if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
         try {
+          if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
           return json({ text: await herdrScreen(paneId) });
         } catch (e) {
           return json({ error: (e as Error).message }, 502);
@@ -240,8 +240,8 @@ const listen = () =>
           return json({ error: "요청 본문이 JSON 이 아닙니다." }, 400);
         }
         // 화면을 옮기는 요청이므로, 지금 herdr 에 실제로 있는 pane 일 때만 보낸다.
-        if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
         try {
+          if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
           await herdrFocus(paneId);
         } catch (e) {
           return json({ error: (e as Error).message }, 502);
