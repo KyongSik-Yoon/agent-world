@@ -209,6 +209,11 @@ export function footerStart(lines: readonly string[]): number {
   return first !== undefined && PROMPT_LINE.test(first) ? bottom + 1 : -1;
 }
 
+/** 한 번 그린 뒤, 그리는 데 든 시간의 이만큼을 쉰다. 칠하기까지 쳐서, 쉬지 않고 흐르는 큰 화면이 메인 스레드의 40% 안팎을 쓴다. */
+const DRAW_REST = 4;
+/** 아무리 무거워도 이보다 오래 쉬지는 않는다 — 초당 네 번은 그린다. */
+const DRAW_REST_MAX_MS = 250;
+
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
 export class TermScreen {
   readonly el = document.createElement("div");
@@ -224,6 +229,9 @@ export class TermScreen {
   private raw: string[] | undefined;
   private rows: Row[] = [];
   private frame = 0;
+  /** 이 시각까지는 다시 그리지 않는다. */
+  private restUntil = 0;
+  private restTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly options: ScreenOptions = {}) {
     this.el.className = "term";
@@ -291,6 +299,8 @@ export class TermScreen {
     this.source = undefined;
     cancelAnimationFrame(this.frame);
     this.frame = 0;
+    clearTimeout(this.restTimer);
+    this.restTimer = undefined;
   }
 
   get running(): boolean {
@@ -303,13 +313,31 @@ export class TermScreen {
   }
 
   /**
-   * 받아 둔 화면을 다음 프레임에 그린다. 한 프레임 사이에 여러 번 바뀌어도 마지막 것만 그린다 —
-   * 화면이 빠르게 흐를 때 그리기가 밀려 쌓이지 않는다.
+   * 받아 둔 화면을 다음 프레임에 그린다. 한 프레임 사이에 여러 번 바뀌어도 마지막 것만 그린다.
+   *
+   * 큰 화면이 통째로 바뀌면 한 번 그리는 데 수십 ms 가 든다(느린 기기나 저전력 상태에서는 더). 그런 화면이 쉬지 않고
+   * 흐르면 그리기가 메인 스레드를 다 쓰므로, 그리는 데 든 시간의 몇 배만큼 쉬었다가 그린다. 한 줄만 바뀌는
+   * 그리기(글자 입력)는 1ms 도 들지 않아 쉬지 않는다.
    */
   redraw(): void {
-    this.frame ||= requestAnimationFrame(() => {
+    if (this.frame || this.restTimer !== undefined) return;
+    const rest = this.restUntil - performance.now();
+    if (rest > 4) {
+      this.restTimer = setTimeout(() => {
+        this.restTimer = undefined;
+        this.redraw();
+      }, rest);
+      return;
+    }
+    this.frame = requestAnimationFrame(() => {
       this.frame = 0;
-      if (this.raw) this.draw(this.raw);
+      if (!this.raw) return;
+      const began = performance.now();
+      this.draw(this.raw);
+      // 배치까지 여기서 끝내 그 값을 잰다 — 어차피 이 프레임에 치를 값이다.
+      void this.el.offsetHeight;
+      const now = performance.now();
+      this.restUntil = now + Math.min(DRAW_REST_MAX_MS, (now - began) * DRAW_REST);
     });
   }
 
