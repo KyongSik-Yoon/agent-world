@@ -3,7 +3,8 @@
 // 이 서버는 에이전트 로그의 요약과 터미널 화면을 내보내고, 에이전트에게 글자를 넣을 수도 있다.
 // 그래서 127.0.0.1 밖으로는 열지 않고, Host 와 Origin 을 확인해 다른 사이트가 브라우저를 거쳐
 // 읽어 가거나 조작하는 길을 막는다. 조작을 아예 끄려면 AGENT_WORLD_READONLY=1 로 띄운다.
-import { resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
+import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 
 import index from "../web/index.html";
 import type { SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
@@ -29,6 +30,7 @@ const IDLE_TICK_MS = 15_000;
 const FRESH_MS = 2_500;
 
 const READONLY = process.env.AGENT_WORLD_READONLY === "1";
+const DEV = process.env.AGENT_WORLD_DEV === "1";
 
 const world = new World(!READONLY, process.env.AGENT_WORLD_OUTSIDE === "1");
 const encoder = new TextEncoder();
@@ -125,6 +127,44 @@ async function tick(force = false): Promise<void> {
 
 setInterval(() => void tick(), TICK_MS);
 setInterval(() => broadcast(encoder.encode(": keepalive\n\n")), HEARTBEAT_MS);
+
+/**
+ * 화면을 한 번 묶어, 파일마다 압축본까지 만들어 둔다.
+ *
+ * 묶은 스크립트는 700KB 쯤인데 압축하면 그 1/4 이다. 이 PC 에서 열 때는 차이가 없지만, tailnet 너머의 휴대폰에서
+ * 처음 열 때는 그만큼이 기다리는 시간이다(tailscale serve 는 압축해 주지 않는다).
+ */
+async function bundledPage(): Promise<Record<string, { GET: (req: Request) => Response }>> {
+  const built = await Bun.build({ entrypoints: [join(import.meta.dir, "..", "web", "index.html")], minify: true });
+  if (!built.success) {
+    console.error("화면을 묶지 못했습니다:", built.logs.join("\n"));
+    process.exit(1);
+  }
+  const routes: Record<string, { GET: (req: Request) => Response }> = {};
+  for (const out of built.outputs) {
+    const isPage = out.path.endsWith(".html");
+    const raw = new Uint8Array(await out.arrayBuffer());
+    const br = new Uint8Array(brotliCompressSync(raw, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 } }));
+    const gz = Bun.gzipSync(raw, { level: 9 });
+    const base: Record<string, string> = {
+      "content-type": out.type,
+      vary: "accept-encoding",
+      // 스크립트와 스타일은 이름에 내용의 해시가 들어 있어 영영 묵혀도 된다. 문서는 매번 확인하게 한다.
+      "cache-control": isPage ? "no-cache" : "public, max-age=31536000, immutable",
+      etag: `"${Bun.hash(raw).toString(16)}"`,
+    };
+    routes[isPage ? "/" : `/${basename(out.path)}`] = {
+      GET: (req) => {
+        if (req.headers.get("if-none-match") === base.etag) return new Response(null, { status: 304, headers: base });
+        const accepts = req.headers.get("accept-encoding") ?? "";
+        if (/\bbr\b/.test(accepts)) return new Response(br, { headers: { ...base, "content-encoding": "br" } });
+        if (/\bgzip\b/.test(accepts)) return new Response(gz, { headers: { ...base, "content-encoding": "gzip" } });
+        return new Response(raw, { headers: base });
+      },
+    };
+  }
+  return routes;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -249,6 +289,9 @@ async function start() {
   }
 }
 
+/** 화면(HTML·JS·CSS). 개발 중에는 Bun 이 고칠 때마다 다시 묶어 주고, 평소에는 미리 묶어 압축해 둔 것을 내보낸다. */
+const page = (DEV ? { "/": index } : await bundledPage()) as Record<string, typeof index>;
+
 const listen = (at: number) =>
   Bun.serve({
   hostname: "127.0.0.1",
@@ -258,10 +301,10 @@ const listen = (at: number) =>
   // 가장 큰 요청은 이미지 한 장(10MB)이다. 그보다 훨씬 큰 본문은 읽기 전에 끊는다.
   maxRequestBodySize: MAX_IMAGE_BYTES + 1024 * 1024,
   idleTimeout: 0,
-  // 평소에는 한 번 묶어 둔 번들을 내보낸다. 화면을 고치는 동안에는 AGENT_WORLD_DEV=1 로 띄운다.
-  development: process.env.AGENT_WORLD_DEV === "1",
+  // 평소에는 한 번 묶어 압축해 둔 번들을 내보낸다. 화면을 고치는 동안에는 AGENT_WORLD_DEV=1 로 띄운다.
+  development: DEV,
   routes: {
-    "/": index,
+    ...page,
     "/api/identity": { GET: guarded(() => json(identity)) },
     "/api/snapshot": {
       GET: guarded(async () => json(await world.snapshot())),
