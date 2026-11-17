@@ -172,6 +172,27 @@ export interface ScreenOptions {
   tail?: number;
 }
 
+/** 입력창 테두리로 볼 가로줄: ─ 만으로 된 긴 줄. 표의 테두리(┼ ┬ 가 섞인 줄)는 아니다. */
+const INPUT_RULE = /^\u2500{20,}$/;
+/** 입력창과 그 아래 꾸밈(상태줄·안내줄)이 차지할 수 있는 줄 수. */
+const FOOTER_REACH = 24;
+/** 입력창 안의 글이 차지할 수 있는 줄 수. 두 가로줄이 이보다 멀면 입력창이 아니라 대화를 가르는 줄이다. */
+const INPUT_ROWS = 12;
+
+/**
+ * 화면 아래쪽의 입력창이 시작하는 줄. 없으면 -1.
+ *
+ * 입력창은 가로줄 두 개 사이에 있고 그 아래로 상태줄과 안내줄이 온다. 데스크톱 폭에 맞춰 그린 이 부분은
+ * 좁은 미리보기에서 줄이 넘쳐 깨지는데, 담긴 것(모델·컨텍스트)은 상태 창이 이미 보여 준다.
+ */
+function inputBoxStart(lines: HTMLElement[]): number {
+  const rules: number[] = [];
+  for (let i = lines.length - 1; i >= Math.max(0, lines.length - FOOTER_REACH) && rules.length < 2; i -= 1) {
+    if (INPUT_RULE.test(plainText(lines[i]!).trim())) rules.push(i);
+  }
+  return rules.length === 2 && rules[0]! - rules[1]! <= INPUT_ROWS + 1 ? rules[1]! : -1;
+}
+
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
 export class TermScreen {
   readonly el = document.createElement("div");
@@ -181,6 +202,9 @@ export class TermScreen {
   /** 화면을 보고 있어야 하는 상태인지 — 끊겼을 때 다시 붙을지 정한다. */
   private wanted = false;
   onGone: (() => void) | undefined;
+  /** 미리보기에서 입력창부터 아래를 빼고 대화 부분만 보여 준다. 대화상자를 읽어야 할 때는 끈다. */
+  hideInput = false;
+  private lastText: string | undefined;
 
   constructor(private readonly options: ScreenOptions = {}) {
     this.el.className = "term";
@@ -201,6 +225,7 @@ export class TermScreen {
     this.stop();
     this.paneId = paneId;
     this.back = back;
+    this.lastText = undefined;
     this.el.textContent = "화면을 읽는 중…";
     const source = new EventSource(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}`);
     this.source = source;
@@ -238,11 +263,26 @@ export class TermScreen {
     return this.source !== undefined;
   }
 
+  /** hideInput 을 바꾼 뒤, 받아 둔 화면으로 다시 그린다. */
+  redraw(): void {
+    if (this.lastText !== undefined) this.draw(this.lastText);
+  }
+
   private draw(text: string): void {
+    this.lastText = text;
     const { tail } = this.options;
     let lines = renderAnsi(text, tail !== undefined);
-    if (tail || this.back > 0) {
+    const trim = () => {
       while (lines.length > 1 && plainText(lines[lines.length - 1]!).trim() === "") lines.pop();
+    };
+    if (tail || this.back > 0) trim();
+    if (tail && this.hideInput) {
+      const start = inputBoxStart(lines);
+      // 입력창 위에 보여 줄 것이 없으면(막 띄운 에이전트) 자르지 않는다.
+      if (start > 0 && lines.slice(0, start).some((l) => plainText(l).trim() !== "")) {
+        lines = lines.slice(0, start);
+        trim();
+      }
     }
     if (tail) lines = lines.slice(-tail);
     const stick = this.back === 0 || this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40;
