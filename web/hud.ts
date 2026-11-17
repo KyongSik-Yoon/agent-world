@@ -135,7 +135,8 @@ export class Hud {
     const waiting = this.attention().length;
     this.nextCount.textContent = String(waiting);
     this.nextBtn.dataset.hot = String(waiting > 0);
-    document.title = waiting > 0 ? `(${waiting}) Agent World` : "Agent World";
+    const name = this.snapshot.session ? `Agent World — ${this.snapshot.session}` : "Agent World";
+    document.title = waiting > 0 ? `(${waiting}) ${name}` : name;
   }
 
   /** 상태 칩. 한 번 만들어 두고 수와 눌림만 고친다 — 스냅샷마다 새로 만들면 누르는 도중의 단추가 발밑에서 바뀐다. */

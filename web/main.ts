@@ -208,7 +208,9 @@ function announce(snapshot: WorldSnapshot): void {
 let retryMs = 1000;
 
 function show(snapshot: WorldSnapshot): void {
-  if (snapshot.herdr) hud.setConnection("live", `herdr 연결됨 · 에이전트 ${snapshot.agents.length}`);
+  // 이름 붙은 herdr 세션이면 그 이름을 함께 보여 준다 — 세션마다 띄운 화면이 여럿일 때 어느 것인지 알 수 있게.
+  const session = snapshot.session ? ` (${snapshot.session})` : "";
+  if (snapshot.herdr) hud.setConnection("live", `herdr${session} 연결됨 · 에이전트 ${snapshot.agents.length}`, snapshot.session ? `herdr 세션 ${snapshot.session}` : "");
   else hud.setConnection("logs", `herdr 없음 — 로그만으로 표시 · ${snapshot.agents.length}`, snapshot.herdrError ?? "");
   announce(snapshot);
   scene.sync(snapshot);

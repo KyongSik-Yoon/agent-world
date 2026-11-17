@@ -9,7 +9,7 @@ import { agy } from "./adapters/agy.ts";
 import { claude } from "./adapters/claude.ts";
 import { codex } from "./adapters/codex.ts";
 import type { Harness, LogFile } from "./adapters/types.ts";
-import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind } from "./herdr.ts";
+import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName } from "./herdr.ts";
 import { SeenStore } from "./seen.ts";
 import { currentPending, oneLine, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
@@ -372,6 +372,7 @@ export class World {
       at: this.builtAt,
       herdr: snap !== undefined,
       herdrError,
+      session: herdrSessionName() || undefined,
       control: this.control,
       workspaces: [...workspaces.values()].sort((a, b) => (a.number || 1e9) - (b.number || 1e9) || a.label.localeCompare(b.label)),
       tabs,

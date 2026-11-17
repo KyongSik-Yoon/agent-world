@@ -3,22 +3,35 @@
 // 이 서버는 에이전트 로그의 요약과 터미널 화면을 내보내고, 에이전트에게 글자를 넣을 수도 있다.
 // 그래서 127.0.0.1 밖으로는 열지 않고, Host 와 Origin 을 확인해 다른 사이트가 브라우저를 거쳐
 // 읽어 가거나 조작하는 길을 막는다. 조작을 아예 끄려면 AGENT_WORLD_READONLY=1 로 띄운다.
-import { basename, join, resolve } from "node:path";
+import { unlinkSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 
 import index from "../web/index.html";
 import type { SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
 import { controlRoutes } from "./control.ts";
 import { MAX_IMAGE_BYTES } from "./images.ts";
-import { herdrFocus, herdrScreen, herdrSocketPath } from "./herdr.ts";
+import { herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag, herdrSocketPath } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
+import { addressFile } from "./seen.ts";
 import { World } from "./world.ts";
 
-/** 포트를 직접 정해 줬는지. 정해 줬으면 그 포트만 쓰고, 아니면 4780 부터 빈 자리를 찾는다. */
+/** 포트를 직접 정해 줬는지. 정해 줬으면 그 포트만 쓰고, 아니면 이 herdr 세션의 자리부터 빈 포트를 찾는다. */
 const PORT_GIVEN = Boolean(process.env.AGENT_WORLD_PORT);
-const PORT = Number(process.env.AGENT_WORLD_PORT || 4780);
-/** 기본 포트가 차 있을 때 더 찾아보는 자리 수. herdr 세션을 이보다 많이 동시에 띄우는 일은 드물다. */
+const PORT = Number(process.env.AGENT_WORLD_PORT || sessionPort());
+/** 제 포트가 차 있을 때 더 찾아보는 자리 수. */
 const PORT_TRIES = 10;
+
+/**
+ * 이 herdr 세션의 포트. 기본 세션은 늘 4780 이고, 이름 붙은 세션은 소켓 경로에서 정해지는 4781~4879 의 한 자리다.
+ * 띄운 순서로 정하면(먼저 뜬 쪽이 4780) 재부팅 뒤 순서가 바뀔 때 같은 주소가 다른 세션을 보여 준다 —
+ * 북마크와 tailnet 주소가 가리키는 세션이 달라지지 않게, 세션이 같으면 포트도 같게 한다.
+ */
+function sessionPort(): number {
+  const tag = herdrSessionTag();
+  return tag ? 4781 + (Number.parseInt(tag.slice(0, 6), 16) % 99) : 4780;
+}
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
   console.error(`AGENT_WORLD_PORT 가 포트 번호가 아닙니다: ${process.env.AGENT_WORLD_PORT}`);
   process.exit(1);
@@ -243,6 +256,30 @@ interface Identity {
 }
 const identity: Identity = { app: "agent-world", socket: resolve(herdrSocketPath()), readonly: READONLY };
 
+/**
+ * 지금 어느 주소에 떠 있는지를 상태 폴더에 적어 둔다. 서버를 herdr 가 대신 띄우면(플러그인) 이 출력은 아무도 보지
+ * 않으므로, 주소를 열어 주는 쪽(`bun run url`)이 읽을 곳이 있어야 한다. 끝날 때 지운다.
+ */
+async function announce(at: number): Promise<void> {
+  const path = addressFile(READONLY);
+  try {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${JSON.stringify({ url: `http://127.0.0.1:${at}`, port: at, pid: process.pid, socket: identity.socket, session: herdrSessionName() ?? null, readonly: READONLY })}\n`);
+  } catch (e) {
+    console.error("주소를 적어 두지 못했습니다:", (e as Error).message);
+    return;
+  }
+  const forget = (): void => {
+    try {
+      unlinkSync(path);
+    } catch {
+      // 이미 없으면 그만이다.
+    }
+  };
+  process.on("exit", forget);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => process.exit(0));
+}
+
 /** 그 포트에 떠 있는 것이 Agent World 면 그 정체를, 아니면(다른 프로그램이거나 답이 없으면) null 을 준다. */
 async function identify(at: number): Promise<Identity | null> {
   try {
@@ -373,5 +410,7 @@ const listen = (at: number) =>
 
 const server = await start();
 
-console.log(`Agent World → http://127.0.0.1:${server.port}${READONLY ? " (보기 전용)" : ""}`);
+const session = herdrSessionName();
+console.log(`Agent World → http://127.0.0.1:${server.port}${READONLY ? " (보기 전용)" : ""}${session ? ` · herdr 세션 ${session}` : ""}`);
+void announce(server.port ?? port);
 for (const host of TAILNET_HOSTS) console.log(`  tailnet 에서도 받음(이 PC 의 계정만) → https://${host}`);

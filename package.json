@@ -6,6 +6,7 @@
     "start": "bun server/index.ts",
     "dev": "AGENT_WORLD_DEV=1 bun --hot server/index.ts",
     "probe": "bun server/probe.ts",
+    "url": "bun server/url.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

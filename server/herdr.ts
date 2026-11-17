@@ -1,7 +1,8 @@
 // herdr 소켓 RPC. 줄 단위 JSON 이고 요청 하나에 연결 하나다(서버가 응답 뒤 연결을 닫는다).
+import { createHash } from "node:crypto";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export function herdrDefaultSocket(): string {
   return join(homedir(), ".config", "herdr", "herdr.sock");
@@ -9,6 +10,21 @@ export function herdrDefaultSocket(): string {
 
 export function herdrSocketPath(): string {
   return process.env.HERDR_SOCKET_PATH || herdrDefaultSocket();
+}
+
+/**
+ * 이 서버가 붙은 herdr 세션의 이름. 기본 세션이면 "", 알 수 없는 자리의 소켓이면 undefined.
+ * 이름 붙은 세션의 소켓은 `…/herdr/sessions/<이름>/herdr.sock` 에 있다.
+ */
+export function herdrSessionName(socket = herdrSocketPath()): string | undefined {
+  if (resolve(socket) === resolve(herdrDefaultSocket())) return "";
+  return /\/sessions\/([^/]+)\/herdr\.sock$/.exec(resolve(socket))?.[1];
+}
+
+/** 소켓 경로에서 나오는 짧은 표시. 세션마다 따로 둬야 하는 것(파일 이름, 포트)을 가르는 데 쓴다. 기본 세션은 "". */
+export function herdrSessionTag(): string {
+  const socket = resolve(herdrSocketPath());
+  return socket === resolve(herdrDefaultSocket()) ? "" : createHash("sha1").update(socket).digest("hex").slice(0, 10);
 }
 
 export class HerdrError extends Error {

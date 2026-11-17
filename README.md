@@ -51,7 +51,7 @@ bun start            # http://127.0.0.1:4780
 
 | 환경 변수 | 뜻 |
 | --- | --- |
-| `AGENT_WORLD_PORT` | 포트(기본 4780). 루프백에만 묶인다. 주지 않았는데 4780 이 차 있으면 4789 까지 빈 포트를 찾아 띄우고 그 주소를 찍는다(herdr 세션마다 하나씩 띄울 때). 같은 herdr 에 이미 떠 있으면 그 주소만 알리고 끝난다. |
+| `AGENT_WORLD_PORT` | 포트. 주지 않으면 herdr 세션마다 정해진 자리를 쓴다 — 기본 세션은 4780, 이름 붙은 세션은 소켓 경로에서 정해지는 4781~4879 의 한 포트(세션이 같으면 늘 같다). 그 자리가 차 있으면 옆 포트로 옮겨 띄우고, 같은 herdr 에 이미 떠 있으면 그 주소만 알리고 끝난다. 지금 주소는 `bun run url` 이 찍는다. 루프백에만 묶인다. |
 | `AGENT_WORLD_READONLY=1` | 보기 전용. 지시·키 입력·만들기·닫기와 `herdr 에서 열기`(herdr 화면 옮기기) 요청을 모두 거절한다. |
 | `AGENT_WORLD_TRUST_HOSTS` | `tailscale serve` 로 내보낼 때의 주소(`host.tailnet.ts.net:4780`, 쉼표로 여럿). 이 PC 를 tailnet 에 올린 계정의 요청만 받는다. |
 | `AGENT_WORLD_OUTSIDE=1` | herdr 에 붙어 있는 동안에도 herdr 밖 세션(다른 터미널, 데스크톱 앱)을 함께 보여 준다. |
@@ -108,7 +108,8 @@ shared/   서버와 화면이 같이 쓰는 스냅샷 타입
 dev/      mock-herdr.ts — 실제 herdr 없이 화면을 시험하는 흉내 소켓
 ```
 
-`bun run probe` 는 서버를 띄우지 않고 지금의 스냅샷을 표로 찍는다.
+`bun run probe` 는 서버를 띄우지 않고 지금의 스냅샷을 표로 찍는다. `bun run url` 은 이 herdr 세션에 떠 있는 서버의 주소를 찍는다
+(서버가 `~/.local/state/agent-world/server*.json` 에 적어 둔다) — `xdg-open "$(bun run --silent url)"`.
 
 조작을 시험할 때는 쓰고 있는 herdr 대신 이름 붙은 테스트 세션을 쓴다:
 
