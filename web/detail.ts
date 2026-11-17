@@ -146,9 +146,11 @@ export class DetailPanel {
   }
 
   render(snapshot: WorldSnapshot, selectedId: string | null): void {
+    // 스크롤 위치는 본문을 짓기 전에 읽는다 — 다시 쓰는 노드(응답 글·미리보기)가 새 본문으로 옮겨 가는 순간
+    // 옛 본문이 짧아져, 그 뒤에 읽으면 이미 위로 밀린 값이 나온다.
+    const top = selectedId === this.selectedId ? this.body.scrollTop : 0;
     if (selectedId !== this.selectedId) {
       this.open.prompt = this.open.reply = this.open.screen = false;
-      this.body.scrollTop = 0;
       this.sent = null;
     }
     this.snapshot = snapshot;
@@ -169,6 +171,7 @@ export class DetailPanel {
       return;
     }
     this.root.hidden = false;
+    this.body.scrollTop = top;
 
     // 에이전트의 미리보기는 상태줄을 접지 않고 보여 준다. 확인 필요일 때는 대화상자가 그 자리에 뜨므로 화면 그대로 둔다.
     const fitFooter = agent !== undefined && agent.status !== "blocked";
@@ -316,9 +319,7 @@ export class DetailPanel {
   }
 
   private setBody(...children: Child[]): void {
-    const top = this.body.scrollTop;
     this.body.replaceChildren(...children.filter((c): c is Node | string => Boolean(c)));
-    this.body.scrollTop = top;
   }
 
   private button(label: string, onClick: () => void, opts: { cls?: string; title?: string; disabled?: boolean } = {}): HTMLButtonElement {
