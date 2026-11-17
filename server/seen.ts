@@ -28,8 +28,17 @@ export class SeenStore {
     }
   }
 
-  has(paneId: string, seq: number): boolean {
-    return this.marks.get(paneId) === seq;
+  /**
+   * 그 pane 의 지금 상태 번호가 확인해 둔 것과 같은지. 번호가 달라졌으면(다시 일했다) 기록을 그 자리에서
+   * 지운다 — 나중에 같은 번호가 다시 나와도 새 완료를 가리지 않게.
+   */
+  check(paneId: string, seq: number): boolean {
+    const mark = this.marks.get(paneId);
+    if (mark === undefined) return false;
+    if (mark === seq) return true;
+    this.marks.delete(paneId);
+    this.save();
+    return false;
   }
 
   set(paneId: string, seq: number | null): void {

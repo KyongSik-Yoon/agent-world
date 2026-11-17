@@ -140,7 +140,7 @@ export class World {
     const ws = snap.workspaces.find((w) => w.workspace_id === pane.workspace_id);
     const tab = snap.tabs.find((t) => t.tab_id === pane.tab_id);
     const vendor = (pane.agent ?? "unknown").toLowerCase();
-    let status = STATUSES.has(pane.agent_status as AgentStatus) ? (pane.agent_status as AgentStatus) : "unknown";
+    let status: AgentStatus = STATUSES.has(pane.agent_status as AgentStatus) ? (pane.agent_status as AgentStatus) : "unknown";
     const view: AgentView = {
       id: pane.pane_id,
       vendor,
@@ -183,17 +183,13 @@ export class World {
       ws?.tokens?.topic ||
       view.workspaceLabel;
 
-    // herdr 가 질문 화면을 알아보지 못할 때가 있다(하네스의 대화상자가 바뀌었거나 꾸며져 있을 때).
-    // 로그에 사용자에게 묻는 도구가 답 없이 열려 있으면 그것이 더 확실한 신호다.
-    if (status === "working" && view.pending?.asksUser) {
-      status = "blocked";
-      view.statusSource = "log";
-    }
-    if (status !== "working" && status !== "blocked") view.pending = undefined;
+    // 로그의 대기 요청은 확인 필요 카드에 보탤 내용일 뿐, 상태를 바꾸지는 않는다 — 상태는 herdr 가 정본이다.
+    if (status !== "blocked") view.pending = undefined;
     const seq = pane.state_change_seq ?? 0;
+    const seen = this.seen.check(pane.pane_id, seq);
     if (status === "done") {
       this.doneSeq.set(pane.pane_id, seq);
-      if (this.seen.has(pane.pane_id, seq)) {
+      if (seen) {
         status = "idle";
         view.seen = true;
       }

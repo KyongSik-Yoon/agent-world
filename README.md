@@ -92,7 +92,8 @@ dev/      mock-herdr.ts — 실제 herdr 없이 화면을 시험하는 흉내 �
 조작을 시험할 때는 쓰고 있는 herdr 대신 이름 붙은 테스트 세션을 쓴다:
 
 ```sh
-herdr --session aw-test server &     # 따로 도는 빈 herdr
+# 따로 도는 빈 herdr. herdr pane 안에서 띄울 때는 물려받은 HERDR_* 를 떼어야 쓰던 세션과 섞이지 않는다.
+env -u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH -u HERDR_SESSION -u HERDR_ENV herdr --session aw-test server &
 HERDR_SOCKET_PATH=~/.config/herdr/sessions/aw-test/herdr.sock AGENT_WORLD_PORT=4782 bun start
 herdr session stop aw-test && herdr session delete aw-test
 ```

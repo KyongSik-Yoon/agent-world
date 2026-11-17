@@ -247,7 +247,7 @@ export class DetailPanel {
       { class: "status-line" },
       badge,
       h("span", { class: "age" }, statusAge(a)),
-      h("span", { class: "src" }, a.statusSource === "herdr" ? "herdr 가 알려준 상태" : a.paneId ? "로그에서 읽은 상태" : "로그 시각으로 추정한 상태"),
+      h("span", { class: "src" }, a.statusSource === "herdr" ? "herdr 가 알려준 상태" : "로그 시각으로 추정한 상태"),
     );
     if (a.seen && a.paneId) {
       const undo = this.button("되돌리기", () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: true }), { cls: "link" });
