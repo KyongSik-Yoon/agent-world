@@ -97,7 +97,7 @@ export class DetailPanel {
   private docked: { paneId: string; agent: boolean } | null = null;
   private sent: { text: string; at: number; confirmed: boolean; before?: string } | null = null;
   private readonly open = { prompt: false, reply: false, screen: false };
-  private readonly proseOf: { prompt?: { text: string; box: HTMLElement }; reply?: { text: string; box: HTMLElement } } = {};
+  private readonly sectionOf: { prompt?: { stamp: string; el: HTMLElement }; reply?: { stamp: string; el: HTMLElement } } = {};
   private busy = false;
 
   constructor(
@@ -466,8 +466,17 @@ export class DetailPanel {
     this.head.replaceChildren(tile, h("div", {}, h("h2", {}, title), h("p", {}, sub)), close);
   }
 
+  /** 다시 쓰는 노드는 제자리에 두고 그 앞뒤만 바꾼다. replaceChildren 은 모두 떼었다 붙여, 붙어 있던 노드 안의
+   *  가로 스크롤(표·코드 블록)이 처음으로 돌아가고 밀던 터치가 끊긴다. */
   private setBody(...children: Child[]): void {
-    this.body.replaceChildren(...children.filter((c): c is Node | string => Boolean(c)));
+    const next = children.filter((c): c is Node | string => Boolean(c)).map((c) => (typeof c === "string" ? document.createTextNode(c) : c));
+    const keep = new Set(next);
+    for (const old of [...this.body.childNodes]) if (!keep.has(old)) old.remove();
+    let at = this.body.firstChild;
+    for (const node of next) {
+      if (node === at) at = at.nextSibling;
+      else this.body.insertBefore(node, at);
+    }
   }
 
   private button(label: string, onClick: () => void, opts: { cls?: string; title?: string; disabled?: boolean; icon?: IconName } = {}): HTMLButtonElement {
@@ -611,11 +620,12 @@ export class DetailPanel {
 
   private textSection(title: string, text: string, key: "prompt" | "reply"): HTMLElement {
     const long = text.length > 420 || text.split("\n").length > 8;
-    // 스냅샷이 올 때마다 다시 그리지만 글은 거의 그대로다. 같은 글이면 만들어 둔 노드를 다시 쓴다.
-    let made = this.proseOf[key];
-    if (made?.text !== text) made = this.proseOf[key] = { text, box: h("div", {}, prose(text)) };
-    const box = made.box;
-    box.className = long && !this.open[key] ? "prose clamp" : "prose";
+    // 스냅샷이 올 때마다 다시 그리지만 글은 거의 그대로다. 같은 글이면 섹션을 통째로 다시 쓴다 — setBody 가 그 노드를
+    // 떼지 않고 두므로, 옆으로 민 표·코드 블록의 스크롤과 밀던 손가락이 그대로 남는다.
+    const stamp = `${title}\n${this.open[key]}\n${text}`;
+    const made = this.sectionOf[key];
+    if (made?.stamp === stamp) return made.el;
+    const box = h("div", { class: long && !this.open[key] ? "prose clamp" : "prose" }, prose(text));
     const head = h("h3", {}, title, this.button(t("복사"), () => this.copy(text, title), { cls: "", icon: "copy", title: t("이 글을 클립보드에 복사합니다") }));
     if (long) {
       head.append(
@@ -625,7 +635,9 @@ export class DetailPanel {
         }, { cls: "" }),
       );
     }
-    return h("section", {}, head, box);
+    const el = h("section", {}, head, box);
+    this.sectionOf[key] = { stamp, el };
+    return el;
   }
 
   private logSection(a: AgentView): HTMLElement {
