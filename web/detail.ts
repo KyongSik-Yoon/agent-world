@@ -4,7 +4,7 @@
 // 스냅샷이 올 때마다 위쪽(머리·본문)은 다시 그리지만, 아래쪽 도크(빠른 키·입력창)는 고른 대상이 바뀔 때만
 // 새로 만든다 — 치고 있던 글과 초점이 스냅샷에 쓸려 가지 않게.
 import type { AgentView, PaneView, PendingRequest, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
-import { ApiError, post, sendInput } from "./api.ts";
+import { ApiError, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
 import { type Child, STATUS_VAR, h, prose } from "./dom.ts";
 import { STATUS_LABEL, activityLine, bubbleText, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
@@ -44,6 +44,8 @@ const QUICK_KEYS: Array<{ label: string; title: string; keys?: string[]; text?: 
 ];
 
 const PREVIEW_LINES = 18;
+/** 한 번에 붙일 수 있는 이미지 수(서버의 MAX_IMAGES 와 같다). */
+const MAX_SHOTS = 8;
 
 function norm(text: string): string {
   return text.replace(/\s+/g, " ").trim();
@@ -60,13 +62,17 @@ export class DetailPanel {
   private readonly quick = h("div", { class: "quick" });
   private readonly input = h("textarea", { rows: "2", spellcheck: "false" });
   private readonly sendBtn = h("button", { class: "btn primary", type: "button" }, "보내기");
+  private readonly attachBtn = h("button", { class: "attach", type: "button", title: "이미지 붙이기 — 입력창에 붙여넣거나 끌어다 놓아도 됩니다", "aria-label": "이미지 붙이기" }, "＋");
   private readonly note = h("div", { class: "dock-note" });
+  /** 보낼 말에 붙인 이미지들. id 는 서버가 맡아 준 뒤에 생긴다. */
+  private readonly shotsEl = h("div", { class: "shots", hidden: "" });
+  private shots: Array<{ id?: string; url: string; el: HTMLElement }> = [];
   private readonly preview = new TermScreen({ tail: PREVIEW_LINES });
   private snapshot: WorldSnapshot | undefined;
   private selectedId: string | null = null;
   /** 도크가 지금 붙어 있는 pane 과 방식. */
   private docked: { paneId: string; agent: boolean } | null = null;
-  private sent: { text: string; at: number; confirmed: boolean } | null = null;
+  private sent: { text: string; at: number; confirmed: boolean; before?: string } | null = null;
   private readonly open = { prompt: false, reply: false, screen: false };
   private busy = false;
 
@@ -95,7 +101,30 @@ export class DetailPanel {
       void this.submit();
     });
     this.sendBtn.addEventListener("click", () => void this.submit());
-    this.dock.append(this.quick, h("div", { class: "compose" }, this.input, this.sendBtn), this.note);
+    // 이미지는 붙여넣거나, 끌어다 놓거나, 클립 단추로 고른다. 글 붙여넣기는 건드리지 않는다.
+    const images = (list: FileList | undefined | null): File[] => [...(list ?? [])].filter((f) => f.type.startsWith("image/"));
+    this.input.addEventListener("paste", (e) => {
+      const files = images(e.clipboardData?.files);
+      if (files.length === 0 || !this.docked?.agent) return;
+      e.preventDefault();
+      this.attach(files);
+    });
+    this.dock.addEventListener("dragover", (e) => {
+      if (this.docked?.agent && e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    });
+    this.dock.addEventListener("drop", (e) => {
+      const files = images(e.dataTransfer?.files);
+      if (files.length === 0 || !this.docked?.agent) return;
+      e.preventDefault();
+      this.attach(files);
+    });
+    const picker = h("input", { type: "file", accept: "image/png,image/jpeg,image/gif,image/webp", multiple: "", hidden: "" });
+    picker.addEventListener("change", () => {
+      this.attach(images(picker.files));
+      picker.value = "";
+    });
+    this.attachBtn.addEventListener("click", () => picker.click());
+    this.dock.append(this.quick, this.shotsEl, h("div", { class: "compose" }, this.attachBtn, this.input, this.sendBtn), picker, this.note);
     this.root.replaceChildren(this.head, this.body, this.dock);
     this.preview.el.classList.add("preview");
     this.preview.el.title = "눌러서 크게 보기";
@@ -157,8 +186,10 @@ export class DetailPanel {
     const same = target?.paneId === this.docked?.paneId && target?.agent === this.docked?.agent;
     this.docked = target;
     this.dock.hidden = target === null;
+    this.attachBtn.hidden = !target?.agent;
     if (same || !target) return;
     this.input.value = "";
+    this.clearShots();
     this.input.placeholder = target.agent ? "이 에이전트에게 보낼 말 — Enter 전송 · Shift+Enter 줄바꿈" : "명령을 치고 Enter — 이 셸에서 바로 실행합니다";
     this.sendBtn.textContent = target.agent ? "보내기" : "실행";
     this.setNote("", "");
@@ -170,17 +201,66 @@ export class DetailPanel {
     this.note.hidden = text === "";
   }
 
+  /** 이미지를 서버에 맡기고 입력창 위에 작게 보여 준다. 올라가는 동안에도 글은 계속 칠 수 있다. */
+  private attach(files: File[]): void {
+    const target = this.docked;
+    if (!target?.agent) return;
+    for (const file of files) {
+      if (this.shots.length >= MAX_SHOTS) {
+        this.setNote(`이미지는 한 번에 ${MAX_SHOTS}장까지 붙일 수 있습니다.`, "err");
+        break;
+      }
+      const url = URL.createObjectURL(file);
+      const remove = h("button", { type: "button", title: "이미지 빼기", "aria-label": "이미지 빼기" }, "✕");
+      const shot: (typeof this.shots)[number] = { url, el: h("div", { class: "shot busy" }, h("img", { src: url, alt: "붙인 이미지" }), remove) };
+      const drop = () => {
+        this.shots = this.shots.filter((s) => s !== shot);
+        shot.el.remove();
+        URL.revokeObjectURL(url);
+        this.shotsEl.hidden = this.shots.length === 0;
+      };
+      remove.addEventListener("click", drop);
+      this.shots.push(shot);
+      this.shotsEl.append(shot.el);
+      this.shotsEl.hidden = false;
+      uploadImage(target.paneId, file).then(
+        (id) => {
+          shot.id = id;
+          shot.el.classList.remove("busy");
+        },
+        (e: Error) => {
+          drop();
+          if (this.docked === target) this.setNote(e.message, "err");
+        },
+      );
+    }
+    this.input.focus();
+  }
+
+  private clearShots(): void {
+    for (const shot of this.shots) URL.revokeObjectURL(shot.url);
+    this.shots = [];
+    this.shotsEl.replaceChildren();
+    this.shotsEl.hidden = true;
+  }
+
   private async submit(): Promise<void> {
     const target = this.docked;
     const text = this.input.value;
-    if (!target || !text.trim() || this.busy) return;
+    const shots = target?.agent ? this.shots : [];
+    if (!target || (!text.trim() && shots.length === 0) || this.busy) return;
+    if (shots.some((s) => !s.id)) {
+      this.setNote("이미지를 올리는 중입니다. 잠시 뒤에 다시 보내 주세요.", "wait");
+      return;
+    }
     this.busy = true;
     this.sendBtn.disabled = true;
     try {
       if (target.agent) {
-        await post("/api/prompt", { paneId: target.paneId, text });
-        this.sent = { text, at: Date.now(), confirmed: false };
+        await post("/api/prompt", { paneId: target.paneId, text, ...(shots.length ? { images: shots.map((s) => s.id) } : {}) });
+        this.sent = { text, at: Date.now(), confirmed: false, before: this.snapshot?.agents.find((a) => a.paneId === target.paneId)?.lastPrompt };
         this.setNote("보냈습니다. 에이전트가 받으면 여기에 표시됩니다…", "wait");
+        if (this.docked === target) this.clearShots();
       } else {
         await sendInput(target.paneId, { text, keys: ["enter"] });
         this.setNote("", "");
@@ -203,7 +283,10 @@ export class DetailPanel {
   private confirmDelivery(a: AgentView): void {
     const sent = this.sent;
     if (!sent || sent.confirmed) return;
-    if (a.lastPrompt && norm(a.lastPrompt).startsWith(norm(sent.text).slice(0, 32))) {
+    // 이미지를 붙여 보내면 로그의 사용자 턴 앞에 [Image #N] 표시가 붙는다. 글 없이 이미지만 보냈으면 턴이 바뀐 것으로 안다.
+    const logged = a.lastPrompt ? norm(a.lastPrompt.replace(/^(\[Image #\d+\]\s*)+/, "")) : undefined;
+    const want = norm(sent.text).slice(0, 32);
+    if (logged !== undefined && (want ? logged.startsWith(want) : a.lastPrompt !== sent.before)) {
       sent.confirmed = true;
       this.setNote("✓ 에이전트가 받았습니다.", "ok");
     } else if (!a.hasLog && a.status === "working") {

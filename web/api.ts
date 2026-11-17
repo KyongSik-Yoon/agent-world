@@ -22,6 +22,19 @@ export async function post<T = Record<string, unknown>>(path: string, body: Reco
   return data as T;
 }
 
+/** 입력창에 붙인 이미지를 서버에 맡기고, 지시를 보낼 때 쓸 이름을 받는다. */
+export async function uploadImage(paneId: string, image: Blob): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/image?pane=${encodeURIComponent(paneId)}`, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: image });
+  } catch {
+    throw new ApiError("서버에 닿지 못했습니다.");
+  }
+  const data = (await res.json().catch(() => ({}))) as { id?: string; error?: string; code?: string };
+  if (!res.ok || !data.id) throw new ApiError(data.error ?? `HTTP ${res.status}`, data.code, res.status);
+  return data.id;
+}
+
 export async function get<T>(path: string): Promise<T> {
   const res = await fetch(path);
   const data = (await res.json().catch(() => ({}))) as { error?: string };

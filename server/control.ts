@@ -20,12 +20,14 @@ import {
   herdrPrompt,
   herdrRaw,
   herdrRename,
+  herdrScreen,
   herdrSnapshot,
   herdrSplit,
   herdrStartAgent,
   herdrTerm,
   type Kind,
 } from "./herdr.ts";
+import { MAX_IMAGE_BYTES, MAX_IMAGES, imagePath, saveImage } from "./images.ts";
 import { termTheme } from "./termtheme.ts";
 import type { World } from "./world.ts";
 
@@ -35,6 +37,9 @@ const MAX_BACK_LINES = 2000;
 const MAX_TEXT = 200_000;
 const AGENT_NAME = /^[a-z][a-z0-9_-]{0,31}$/;
 const KINDS = new Set<Kind>(["workspace", "tab", "pane", "agent"]);
+/** 붙여넣은 경로를 하네스가 이미지로 바꿔 달 때까지 기다려 주는 시간. */
+const IMAGE_ATTACH_MS = 4000;
+const IMAGE_MARK = /\[Image #\d+\]/g;
 
 type Handler = (req: Request) => Response | Promise<Response>;
 type Body = Record<string, unknown>;
@@ -56,6 +61,10 @@ class Reject extends Error {
   ) {
     super(message);
   }
+}
+
+function reject(message: string, status: number): never {
+  throw new Reject(message, status);
 }
 
 function text(body: Body, key: string, max = 400): string {
@@ -173,11 +182,44 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
     "/api/term/theme": { GET: guarded(async () => json(await termTheme())) },
 
     // ── 말 걸기와 키 입력 ────────────────────────────────────────────────────────────────────────
+    "/api/image": {
+      POST: guarded(async (req) => {
+        if (readonly) return json({ error: "보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", code: "readonly" }, 403);
+        if (!(await world.has("agent", new URL(req.url).searchParams.get("pane") ?? ""))) return json({ error: "지금 herdr 에 없는 에이전트입니다." }, 404);
+        const tooBig = () => json({ error: `이미지가 너무 큽니다(최대 ${MAX_IMAGE_BYTES / 1024 / 1024}MB).`, code: "too_large" }, 413);
+        if (Number(req.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) return tooBig();
+        const bytes = new Uint8Array(await req.arrayBuffer());
+        if (bytes.length > MAX_IMAGE_BYTES) return tooBig();
+        const id = await saveImage(bytes);
+        return id ? json({ ok: true, id }) : json({ error: "PNG·JPEG·GIF·WebP 이미지만 붙일 수 있습니다.", code: "not_image" }, 415);
+      }),
+    },
     "/api/prompt": mutate(async (body) => {
       const paneId = await need("agent", text(body, "paneId"));
       const prompt = text(body, "text", MAX_TEXT);
-      if (!prompt.trim()) throw new Reject("보낼 말이 비어 있습니다.", 400);
-      await herdrPrompt(paneId, prompt);
+      const ids = Array.isArray(body.images) ? body.images : [];
+      if (ids.length > MAX_IMAGES) throw new Reject(`이미지는 한 번에 ${MAX_IMAGES}장까지 보낼 수 있습니다.`, 400);
+      const images: string[] = [];
+      for (const id of ids) images.push((typeof id === "string" && (await imagePath(id))) || reject("붙인 이미지를 찾지 못했습니다. 다시 붙여 주세요.", 400));
+      if (!prompt.trim() && images.length === 0) throw new Reject("보낼 말이 비어 있습니다.", 400);
+      if (images.length === 0) await herdrPrompt(paneId, prompt);
+      else {
+        const pane = (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId);
+        // 질문에 막혀 있으면 붙여넣은 경로가 대화상자로 들어간다. agent.prompt 가 거절하는 것과 같은 이유로 먼저 막는다.
+        if (pane?.agent_status === "blocked") throw new Reject("에이전트가 질문에 대한 답을 기다리는 중입니다.", 409, "agent_blocked");
+        if (pane?.agent === "claude") {
+          // Claude Code 는 경로만 붙여넣으면 그 파일을 읽어 [Image #N] 으로 단다. 다 달린 뒤에 글을 보낸다.
+          const count = async () => (await herdrScreen(paneId)).match(IMAGE_MARK)?.length ?? 0;
+          const before = await count();
+          for (const path of images) await herdrInput(paneId, path, undefined);
+          for (const until = Date.now() + IMAGE_ATTACH_MS; Date.now() < until && (await count()) < before + images.length; ) await Bun.sleep(120);
+          if (prompt.trim()) await herdrPrompt(paneId, prompt);
+          else await herdrInput(paneId, undefined, ["enter"]);
+        } else {
+          // 그 밖의 하네스는 경로를 글에 실어 보낸다 — 에이전트가 제 도구로 파일을 연다.
+          await herdrPrompt(paneId, [prompt.trim(), ...images].filter(Boolean).join("\n"));
+        }
+      }
       // 지시를 보냈으면 그 전의 완료는 읽은 것이다.
       world.markSeen(paneId, false);
     }),
