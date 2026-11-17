@@ -102,7 +102,7 @@ bun start            # http://127.0.0.1:4780
 
 ```sh
 AGENT_WORLD_TRUST_HOSTS=<host>.<tailnet>.ts.net:4780 bun start
-ts-gate quick http://127.0.0.1:4780 -p 4780 -t 8h     # 또는 tailscale serve --bg --https=4780 http://127.0.0.1:4780
+tailscale serve --bg --https=4780 http://127.0.0.1:4780
 ```
 
 ## 어떻게 아는가
@@ -153,7 +153,7 @@ HERDR_SOCKET_PATH=~/.config/herdr/sessions/aw-test/herdr.sock AGENT_WORLD_PORT=4
 herdr session stop aw-test && herdr session delete aw-test
 ```
 
-캐릭터의 실루엣과 브랜드 마크는 Collie(MIT)의 상태줄 로고·아이콘 데이터에서 왔다.
+캐릭터의 실루엣과 브랜드 마크는 Collie(MIT)의 상태줄 로고·아이콘 데이터에서 왔다. 자세한 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## 라이선스
 

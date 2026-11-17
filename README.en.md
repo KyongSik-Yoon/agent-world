@@ -164,7 +164,7 @@ HERDR_SOCKET_PATH=~/.config/herdr/sessions/aw-test/herdr.sock AGENT_WORLD_PORT=4
 herdr session stop aw-test && herdr session delete aw-test
 ```
 
-Character silhouettes and brand marks come from Collie's (MIT) status-line logo and icon data.
+Character silhouettes and brand marks come from Collie's (MIT) status-line logo and icon data. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 
