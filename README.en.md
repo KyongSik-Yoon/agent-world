@@ -1,10 +1,12 @@
 # Agent World
 
-[한국어](README.md)
+[한국어](README.md) · [Homepage](https://kyongsik-yoon.github.io/agent-world/)
 
 A local dashboard that shows the coding agents running in [herdr](https://herdr.dev) as a 3D village, and lets you
 talk to them and build new workspaces without going back to the herdr window. One agent is one character, and
 **where it stands is its status**.
+
+<img src="docs/img/overview.webp" alt="Four houses and nine agents on an island. Two finished characters wait in the plaza under green beams, and the list on the left is grouped by needs input, done, working and idle" width="960">
 
 | Status | Where the character is |
 | --- | --- |
@@ -16,6 +18,10 @@ talk to them and build new workspaces without going back to the herdr window. On
 Click a character to open its status window: model, effort, context, last prompt and reply, activity log and the
 terminal screen. The camera moves in on that character, and closing the window (✕ or Esc) returns to where you were.
 `Open in herdr` (Enter) switches herdr to that pane and, on Hyprland, brings the terminal window to the front.
+
+<img src="docs/img/detail.webp" alt="The status window of a working character: model, effort, context, branch, last prompt and reply, with the quick-key row and input below" width="960">
+
+The screenshots come from a test session that imitates a made-up project (`dev/mock-herdr.ts`), shown in the default Korean UI.
 
 The UI is Korean by default. Switch to English with the `EN` button in the top bar (remembered per browser), by
 opening `?lang=en`, or by setting `AGENT_WORLD_LANG=en`.
@@ -34,9 +40,18 @@ opening `?lang=en`, or by setting `AGENT_WORLD_LANG=en`.
 | Add residents and tabs | Click a house sign for the house panel — `New resident`, `New tab`, rename, demolish. Shell panes stand in front of the house as small terminals. |
 | Close things | Closing a pane, tab or house lists the agents that will stop with it and asks first. |
 
+<img src="docs/img/blocked.webp" alt="Needs input: the character stands at its gate inside a red ring, and the agent's own permission dialog is shown at the top of the status window" width="960">
+
+<img src="docs/img/terminal.webp" alt="The terminal opened large, showing the agent's screen with its colours; keystrokes go straight to the pane" width="960">
+
 On a narrow screen such as a phone, the list becomes a drawer opened with `☰`, and the status window and terminal
 use the whole screen. On touch devices the terminal shows a row of keys the on-screen keyboard lacks (Esc, Tab,
 arrows, Ctrl+C …) and an input line that shows what you type.
+
+<p>
+  <img src="docs/img/phone.webp" alt="The world at phone width" width="300">
+  <img src="docs/img/phone-detail.webp" alt="A needs-input status window on a phone, with two rows of quick keys under the dialog" width="300">
+</p>
 
 You can **install it to the home screen** as an app: `Add to Home screen` (or `Install app`) in Android Chrome's menu,
 or Share → `Add to Home Screen` in iOS Safari. It then opens full-screen without the address bar. On iOS a home-screen
@@ -57,6 +72,8 @@ Worth knowing:
   is typed into the pane. Claude Code turns the path into `[Image #N]`; other harnesses get the path in the prompt
   text. Files older than seven days are removed.
 - Left to the herdr TUI: pane layout, size and movement, copy mode, mouse, plugins, remote machines, session management.
+
+<img src="docs/img/night.webp" alt="The world in the night theme: a dark blue island with name tags and speech bubbles" width="960">
 
 ## Use it as a herdr plugin
 
@@ -173,6 +190,7 @@ web/      three.js scene and HUD
 shared/   snapshot types used by both sides
 scripts/  plugin.ts — start/stop/open when run as a herdr plugin
 dev/      mock-herdr.ts — a fake herdr socket for testing the UI; i18n-check.ts
+docs/     the homepage (index.html) and screenshots
 ```
 
 `bun run probe` prints the current snapshot as a table without starting the server. `bun run url` prints the address
