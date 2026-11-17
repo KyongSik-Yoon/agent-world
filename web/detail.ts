@@ -68,6 +68,8 @@ export class DetailPanel {
   private readonly shotsEl = h("div", { class: "shots", hidden: "" });
   private shots: Array<{ id?: string; url: string; el: HTMLElement }> = [];
   private readonly preview = new TermScreen({ tail: PREVIEW_LINES });
+  /** 터미널 크게 보기에 덮여 있다 — 같은 화면을 두 번 읽지 않도록 미리보기를 쉰다. */
+  private covered = false;
   private snapshot: WorldSnapshot | undefined;
   private selectedId: string | null = null;
   /** 도크가 지금 붙어 있는 pane 과 방식. */
@@ -139,6 +141,12 @@ export class DetailPanel {
     if (this.docked?.paneId === paneId) this.input.value = text;
   }
 
+  setCovered(covered: boolean): void {
+    this.covered = covered;
+    if (covered) this.preview.stop();
+    else if (this.snapshot) this.render(this.snapshot, this.selectedId);
+  }
+
   focusComposer(): boolean {
     if (!this.docked) return false;
     this.input.focus();
@@ -179,7 +187,7 @@ export class DetailPanel {
       this.preview.fitFooter = fitFooter;
       this.preview.redraw();
     }
-    if (wantPreview) this.preview.start(wantPreview);
+    if (wantPreview && !this.covered) this.preview.start(wantPreview);
     else this.preview.stop();
     this.preview.el.scrollTop = this.preview.el.scrollHeight;
 

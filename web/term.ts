@@ -178,6 +178,8 @@ function renderLine(raw: string, start: Style, reflow: boolean): Row {
 export interface ScreenOptions {
   /** 아래에서부터 비지 않은 줄 몇 개만 보여 준다(미리보기). 없으면 화면 전체. */
   tail?: number;
+  /** 흐르는 출력을 촘촘히 따라간다(크게 보기). 없으면 조용할 때의 간격으로 읽고, 입력 직후에만 서두른다. */
+  live?: boolean;
 }
 
 /** 입력창 테두리로 볼 가로줄: ─ 만으로 된 긴 줄. 표의 테두리(┼ ┬ 가 섞인 줄)는 아니다. */
@@ -238,13 +240,17 @@ export class TermScreen {
 
   /** back 이 0 이면 지금 보이는 화면, 크면 그만큼의 스크롤백까지 읽는다. */
   start(paneId: string, back = 0): void {
-    if (this.source && paneId === this.paneId && back === this.back) return;
+    const same = paneId === this.paneId && back === this.back;
+    if (this.source && same) return;
     this.stop();
     this.paneId = paneId;
     this.back = back;
-    this.raw = undefined;
-    this.clear("화면을 읽는 중…");
-    const source = new EventSource(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}`);
+    // 같은 화면에 다시 붙는 것이면, 새 화면이 올 때까지 보던 것을 그대로 둔다.
+    if (!same || !this.raw) {
+      this.raw = undefined;
+      this.clear("화면을 읽는 중…");
+    }
+    const source = new EventSource(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}${this.options.live ? "&live=1" : ""}`);
     this.source = source;
     source.addEventListener("screen", (e) => {
       this.raw = (JSON.parse((e as MessageEvent<string>).data) as { text: string }).text.split(/\r?\n/);
@@ -310,8 +316,8 @@ export class TermScreen {
   private draw(raw: readonly string[]): void {
     const { tail } = this.options;
     const reflow = tail !== undefined;
-    // 앞서 그린 줄 가운데 글과 스타일이 같은 것은 요소를 그대로 쓴다. 글자를 치면 한 줄만, 화면이 밀려 올라가면
-    // 새로 들어온 줄만 만든다 — 한글이 많은 큰 화면은 줄을 전부 새로 만드는 값이 크다.
+    // 앞서 그린 줄 가운데 글과 스타일이 같은 것은 요소를 그대로 쓴다. 글자를 치면 그 한 줄만 다시 만든다(큰 화면에서
+    // 0.3ms — 전부 새로 만들면 20ms 안팎). 화면이 통째로 밀릴 때는 줄을 다시 써도 배치 값이 그대로라 덕을 보지 못한다.
     const pool = new Map<string, Row[]>();
     for (let i = this.rows.length - 1; i >= 0; i -= 1) {
       const row = this.rows[i]!;
@@ -419,7 +425,7 @@ export class TermOverlay {
   private readonly title = document.createElement("b");
   private readonly sub = document.createElement("span");
   private readonly backBtn = document.createElement("button");
-  private readonly screen = new TermScreen();
+  private readonly screen = new TermScreen({ live: true });
   private readonly ime = document.createElement("textarea");
   private readonly body = document.createElement("div");
   private cols = 120;
@@ -520,6 +526,12 @@ export class TermOverlay {
       if (text) this.send({ text });
     });
     this.screen.onGone = () => this.close();
+    // 탭을 보고 있지 않은 동안에는 읽지 않는다 — 열어 둔 채 잊어도 herdr 를 계속 읽지 않게.
+    document.addEventListener("visibilitychange", () => {
+      if (this.root.hidden) return;
+      if (document.visibilityState === "hidden") this.screen.stop();
+      else this.screen.start(this.screen.pane, this.screen.scrollback);
+    });
     new ResizeObserver(() => this.fit()).observe(this.body);
   }
 

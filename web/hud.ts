@@ -75,6 +75,11 @@ export class Hud {
     return this.snapshot;
   }
 
+  /** 터미널 크게 보기가 열려 상태 창이 덮였다. */
+  setCovered(covered: boolean): void {
+    this.panel.setCovered(covered);
+  }
+
   focusComposer(): boolean {
     return this.panel.focusComposer();
   }

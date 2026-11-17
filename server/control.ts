@@ -35,7 +35,7 @@ import type { World } from "./world.ts";
 // 늘 느리게 읽으면 친 글자가 한참 뒤에 보이므로, 화면이 움직이는 동안과 입력 직후에만 촘촘히 읽는다.
 /** 조용한 화면을 읽는 간격. */
 const TERM_POLL_MS = 400;
-/** 화면이 바뀌고 있는 동안의 간격과, 마지막으로 바뀐 뒤 그 간격을 지키는 시간. */
+/** 크게 보는 화면이 바뀌고 있는 동안의 간격과, 마지막으로 바뀐 뒤 그 간격을 지키는 시간. 미리보기는 해당 없다. */
 const TERM_LIVE_MS = 60;
 const TERM_LIVE_FOR_MS = 2000;
 /** 입력을 보낸 직후의 간격과 그 시간 — 친 글자가 곧바로 보이게. */
@@ -164,6 +164,8 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         const url = new URL(req.url);
         const paneId = url.searchParams.get("pane") ?? "";
         const back = Math.min(MAX_BACK_LINES, Math.max(0, Number(url.searchParams.get("back")) || 0));
+        // 크게 보는 화면만 흐르는 출력을 촘촘히 따라간다. 종일 열려 있는 미리보기까지 그러면 herdr 를 쉬지 않고 읽게 된다.
+        const live = url.searchParams.get("live") === "1";
         if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
         const encoder = new TextEncoder();
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -193,7 +195,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
               const now = Date.now();
               if (back > 0) return now - pokedAt < TERM_ECHO_FOR_MS ? TERM_BACK_ECHO_MS : TERM_BACK_POLL_MS;
               if (now - pokedAt < TERM_ECHO_FOR_MS) return TERM_ECHO_MS;
-              return now - changedAt < TERM_LIVE_FOR_MS ? TERM_LIVE_MS : TERM_POLL_MS;
+              return live && now - changedAt < TERM_LIVE_FOR_MS ? TERM_LIVE_MS : TERM_POLL_MS;
             };
             const loop = async (): Promise<void> => {
               if (closed || reading) return;
