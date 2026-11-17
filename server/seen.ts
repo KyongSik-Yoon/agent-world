@@ -4,7 +4,7 @@
 // 월드가 따로 적어 둔다: pane 과 그때의 herdr 상태 변경 번호. 에이전트가 다시 일하면 번호가 바뀌어
 // 기록은 저절로 무효가 된다. herdr 의 초점은 건드리지 않는다.
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { herdrDefaultSocket } from "./herdr.ts";
@@ -22,17 +22,38 @@ function storePath(): string {
 
 export class SeenStore {
   private marks = new Map<string, number>();
-  private loaded = false;
   private writing: Promise<void> = Promise.resolve();
+  /** 마지막으로 읽었거나 내가 쓴 파일의 모습(수정 시각과 크기). 달라졌으면 다른 서버가 쓴 것이다. */
+  private stamp = "";
+  /** 고친 횟수 — 파일을 읽는 사이에 고쳤는지 알아보는 데 쓴다. */
+  private edits = 0;
 
+  /**
+   * 파일이 바뀌었으면 다시 읽는다. 같은 herdr 에 서버가 둘 붙을 수 있어서(조작용과 보기 전용) 처음 한 번만 읽으면
+   * 한쪽이 묵은 내용으로 다른 쪽의 기록을 덮어쓴다. 스냅샷을 만들 때마다 부른다.
+   */
   async load(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
+    await this.writing;
+    const edits = this.edits;
+    let stamp: string;
+    let body: string;
     try {
-      const data = JSON.parse(await readFile(storePath(), "utf8")) as Record<string, unknown>;
-      for (const [id, seq] of Object.entries(data)) if (typeof seq === "number") this.marks.set(id, seq);
+      const info = await stat(storePath());
+      stamp = `${info.mtimeMs}:${info.size}`;
+      if (stamp === this.stamp) return;
+      body = await readFile(storePath(), "utf8");
     } catch {
       // 아직 기록이 없다.
+      return;
+    }
+    // 읽는 사이에 내가 고쳤으면 내 것이 더 새롭다 — 곧 파일에 적히고, 다음에 다시 맞춘다.
+    if (edits !== this.edits) return;
+    try {
+      const data = JSON.parse(body) as Record<string, unknown>;
+      this.marks = new Map(Object.entries(data).filter((e): e is [string, number] => typeof e[1] === "number"));
+      this.stamp = stamp;
+    } catch {
+      // 쓰다 만 파일이면 지금 가진 것을 그대로 쓴다.
     }
   }
 
@@ -68,13 +89,18 @@ export class SeenStore {
   }
 
   private save(): void {
+    this.edits += 1;
     const body = JSON.stringify(Object.fromEntries(this.marks));
     this.writing = this.writing
       .then(async () => {
         const path = storePath();
         await mkdir(dirname(path), { recursive: true });
-        await writeFile(`${path}.tmp`, body);
-        await rename(`${path}.tmp`, path);
+        // 임시 파일은 프로세스마다 따로 — 둘이 같은 이름에 쓰다 섞이지 않게.
+        const tmp = `${path}.${process.pid}.tmp`;
+        await writeFile(tmp, body);
+        await rename(tmp, path);
+        const info = await stat(path);
+        this.stamp = `${info.mtimeMs}:${info.size}`;
       })
       .catch((e) => console.error("확인 기록 저장 실패:", e));
   }
