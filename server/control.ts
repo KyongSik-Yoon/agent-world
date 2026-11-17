@@ -31,8 +31,24 @@ import { MAX_IMAGE_BYTES, MAX_IMAGES, imagePath, saveImage } from "./images.ts";
 import { termTheme } from "./termtheme.ts";
 import type { World } from "./world.ts";
 
+// herdr 는 화면을 밀어 주지 않아(읽기 요청에만 답한다) 주기적으로 읽어야 한다. 늘 빠르게 읽으면 herdr 에 짐이 되고
+// 늘 느리게 읽으면 친 글자가 한참 뒤에 보이므로, 화면이 움직이는 동안과 입력 직후에만 촘촘히 읽는다.
+/** 조용한 화면을 읽는 간격. */
 const TERM_POLL_MS = 400;
+/** 화면이 바뀌고 있는 동안의 간격과, 마지막으로 바뀐 뒤 그 간격을 지키는 시간. */
+const TERM_LIVE_MS = 60;
+const TERM_LIVE_FOR_MS = 2000;
+/** 입력을 보낸 직후의 간격과 그 시간 — 친 글자가 곧바로 보이게. */
+const TERM_ECHO_MS = 25;
+const TERM_ECHO_FOR_MS = 600;
 const TERM_BACK_POLL_MS = 1500;
+const TERM_BACK_ECHO_MS = 150;
+/** 이만큼 보낸 것이 없으면 연결이 살아 있다는 표시를 보낸다. */
+const TERM_KEEPALIVE_MS = 12_000;
+/** 화면을 읽고 있는 pane 은 이 시간 안에 herdr 가 "있다"고 답한 것이다 — 키 입력마다 다시 묻지 않는다. */
+const WATCH_FRESH_MS = 1500;
+/** 키 입력이 이어지는 동안에는 월드 스냅샷을 다시 만들지 않고, 멎은 뒤에 한 번 만든다. */
+const KEYS_REFRESH_MS = 300;
 const MAX_BACK_LINES = 2000;
 const MAX_TEXT = 200_000;
 const AGENT_NAME = /^[a-z][a-z0-9_-]{0,31}$/;
@@ -99,14 +115,27 @@ async function isDir(path: string): Promise<boolean> {
   }
 }
 
+/** pane 의 화면을 읽고 있는 흐름 하나. */
+interface Watcher {
+  /** 방금 입력이 들어갔다 — 기다리지 말고 지금 다시 읽는다. */
+  poke(): void;
+  /** 마지막으로 읽기에 성공한 시각. */
+  okAt: number;
+}
+
 export function controlRoutes({ world, readonly, guarded, json, refresh }: ControlDeps): Record<string, Record<string, Handler>> {
+  const watchers = new Map<string, Set<Watcher>>();
+  const poke = (paneId: string): void => watchers.get(paneId)?.forEach((w) => w.poke());
+  const watched = (paneId: string): boolean => [...(watchers.get(paneId) ?? [])].some((w) => Date.now() - w.okAt < WATCH_FRESH_MS);
+  let keysRefresh: ReturnType<typeof setTimeout> | undefined;
+
   const need = async (kind: Kind, id: string): Promise<string> => {
     if (!(await world.has(kind, id))) throw new Reject(`지금 herdr 에 없는 대상입니다: ${id || "(비어 있음)"}`, 404);
     return id;
   };
 
   /** 바꾸는 요청 하나. 본문을 읽고, 실패를 구분할 수 있는 모양으로 돌려준다. */
-  const mutate = (run: (body: Body) => Promise<unknown>): Record<string, Handler> => ({
+  const mutate = (run: (body: Body) => Promise<unknown>, after: () => void = refresh): Record<string, Handler> => ({
     POST: guarded(async (req) => {
       if (readonly) return json({ error: "보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", code: "readonly" }, 403);
       let body: Body;
@@ -118,7 +147,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       }
       try {
         const result = await run(body);
-        refresh();
+        after();
         return json({ ok: true, ...(typeof result === "object" && result !== null ? result : {}) });
       } catch (e) {
         if (e instanceof Reject) return json({ error: e.message, code: e.code }, e.status);
@@ -139,25 +168,52 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         const encoder = new TextEncoder();
         let timer: ReturnType<typeof setTimeout> | undefined;
         let closed = false;
+        const watcher: Watcher = { poke: () => {}, okAt: 0 };
         const stop = () => {
           closed = true;
           clearTimeout(timer);
+          const set = watchers.get(paneId);
+          set?.delete(watcher);
+          if (set?.size === 0) watchers.delete(paneId);
         };
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
-            let last: string | undefined;
-            let idle = 0;
-            const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+            let last: string[] | undefined;
+            let changedAt = 0;
+            let pokedAt = 0;
+            let sentAt = Date.now();
+            let reading = false;
+            /** 읽는 도중에 입력이 들어갔다 — 그 읽기는 입력 전의 화면일 수 있으니 끝나자마자 다시 읽는다. */
+            let stale = false;
+            const send = (event: string, data: unknown) => {
+              sentAt = Date.now();
+              controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+            };
+            const wait = (): number => {
+              const now = Date.now();
+              if (back > 0) return now - pokedAt < TERM_ECHO_FOR_MS ? TERM_BACK_ECHO_MS : TERM_BACK_POLL_MS;
+              if (now - pokedAt < TERM_ECHO_FOR_MS) return TERM_ECHO_MS;
+              return now - changedAt < TERM_LIVE_FOR_MS ? TERM_LIVE_MS : TERM_POLL_MS;
+            };
             const loop = async (): Promise<void> => {
-              if (closed) return;
+              if (closed || reading) return;
+              clearTimeout(timer);
+              reading = true;
               try {
-                const screen = back > 0 ? await herdrTerm(paneId, "recent", back) : await herdrTerm(paneId, "visible");
+                const screen = (back > 0 ? await herdrTerm(paneId, "recent", back) : await herdrTerm(paneId, "visible")).split(/\r?\n/);
                 if (closed) return;
-                if (screen !== last) {
-                  last = screen;
-                  idle = 0;
-                  send("screen", { text: screen });
-                } else if ((idle += 1) % 30 === 0) controller.enqueue(encoder.encode(": keepalive\n\n"));
+                watcher.okAt = Date.now();
+                // 달라진 줄만 보낸다. 줄 수가 바뀌었거나 절반 넘게 달라졌으면 통째로 보내는 편이 싸다.
+                const diff: Array<[number, string]> = [];
+                if (last?.length === screen.length) screen.forEach((line, i) => line !== last![i] && diff.push([i, line]));
+                if (!last || last.length !== screen.length || diff.length > screen.length / 2) send("screen", { text: screen.join("\n") });
+                else if (diff.length > 0) send("lines", { set: diff });
+                else if (Date.now() - sentAt > TERM_KEEPALIVE_MS) {
+                  sentAt = Date.now();
+                  controller.enqueue(encoder.encode(": keepalive\n\n"));
+                }
+                if (!last || last.length !== screen.length || diff.length > 0) changedAt = Date.now();
+                last = screen;
               } catch (e) {
                 if (closed) return;
                 // pane 이 닫혔으면 여기서 끝낸다. 그 밖의 실패는 잠깐 쉬었다 다시 읽는다.
@@ -167,9 +223,22 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
                   controller.close();
                   return;
                 }
+              } finally {
+                reading = false;
               }
-              timer = setTimeout(() => void loop(), back > 0 ? TERM_BACK_POLL_MS : TERM_POLL_MS);
+              if (stale) {
+                stale = false;
+                return loop();
+              }
+              timer = setTimeout(() => void loop(), wait());
             };
+            watcher.poke = () => {
+              pokedAt = Date.now();
+              if (reading) stale = true;
+              else void loop();
+            };
+            const set = watchers.get(paneId) ?? new Set<Watcher>();
+            watchers.set(paneId, set.add(watcher));
             void loop();
           },
           cancel: stop,
@@ -228,17 +297,28 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       }
       // 지시를 보냈으면 그 전의 완료는 읽은 것이다.
       world.markSeen(paneId, false);
+      poke(paneId);
     }),
-    "/api/keys": mutate(async (body) => {
-      const paneId = await need("pane", text(body, "paneId"));
-      const input = text(body, "text", MAX_TEXT);
-      const keys = Array.isArray(body.keys) ? body.keys : [];
-      if (keys.length > 64 || keys.some((k) => typeof k !== "string" || k.length === 0 || k.length > 32)) throw new Reject("keys 가 올바르지 않습니다.", 400);
-      if (!input && keys.length === 0) throw new Reject("보낼 입력이 없습니다.", 400);
-      // raw 는 제어 문자·이스케이프 시퀀스를 그대로 넣을 때 쓴다(herdr 에 논리 키가 없는 Home, PageUp 등).
-      if (body.raw === true) await herdrRaw(paneId, input);
-      else await herdrInput(paneId, input || undefined, keys as string[]);
-    }),
+    "/api/keys": mutate(
+      async (body) => {
+        const paneId = text(body, "paneId");
+        // 화면을 읽고 있는 pane 이면 herdr 에 있는지 다시 묻지 않는다 — 글자마다 묻는 만큼 입력이 늦어진다.
+        // 그 사이에 닫혔다면 herdr 가 pane_not_found 로 거절한다.
+        if (!watched(paneId)) await need("pane", paneId);
+        const input = text(body, "text", MAX_TEXT);
+        const keys = Array.isArray(body.keys) ? body.keys : [];
+        if (keys.length > 64 || keys.some((k) => typeof k !== "string" || k.length === 0 || k.length > 32)) throw new Reject("keys 가 올바르지 않습니다.", 400);
+        if (!input && keys.length === 0) throw new Reject("보낼 입력이 없습니다.", 400);
+        // raw 는 제어 문자·이스케이프 시퀀스를 그대로 넣을 때 쓴다(herdr 에 논리 키가 없는 Home, PageUp 등).
+        if (body.raw === true) await herdrRaw(paneId, input);
+        else await herdrInput(paneId, input || undefined, keys as string[]);
+        poke(paneId);
+      },
+      () => {
+        clearTimeout(keysRefresh);
+        keysRefresh = setTimeout(refresh, KEYS_REFRESH_MS);
+      },
+    ),
     "/api/seen": mutate(async (body) => {
       const paneId = await need("pane", text(body, "paneId"));
       return { seen: world.markSeen(paneId, body.undo === true) };

@@ -128,43 +128,51 @@ const ESCAPE = /\x1b\[([0-9;:]*)([A-Za-z])|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1
 // eslint-disable-next-line no-control-regex
 const TRAILING = /(?:\x1b\[[0-9;:]*m|[ \t])+$/;
 
-/**
- * SGR 이 섞인 화면 글을 줄 단위 요소로 바꾼다.
- * reflow 면 좁은 곳에서 읽기 좋게 줄 끝 공백을 걷어 낸다(줄은 CSS 가 접는다).
- */
-export function renderAnsi(text: string, reflow = false): HTMLDivElement[] {
-  const lines: HTMLDivElement[] = [];
-  let style: Style = {};
-  for (const full of text.split(/\r?\n/)) {
-    const raw = reflow ? full.replace(TRAILING, "") : full;
-    const line = document.createElement("div");
-    line.className = "tl";
-    let last = 0;
-    const emit = (chunk: string) => {
-      if (!chunk) return;
-      const rule = css(style);
-      if (!rule) return cells(chunk, line);
-      const span = document.createElement("span");
-      span.style.cssText = rule;
-      cells(chunk, span);
-      line.append(span);
-    };
-    for (const m of raw.matchAll(ESCAPE)) {
-      emit(raw.slice(last, m.index));
-      last = m.index + m[0].length;
-      if (m[2] === "m") style = applySgr(style, (m[1] || "0").split(/[;:]/).map((x) => Number(x) || 0));
-    }
-    emit(raw.slice(last));
-    if (!line.hasChildNodes()) line.append("\u200b");
-    // 가로줄뿐인 줄은 접히면 여러 줄을 차지하므로 한 줄로 잘라 보여 준다.
-    else if (reflow && /^[\s\u2500-\u257F]+$/.test(line.textContent ?? "")) line.classList.add("rule");
-    lines.push(line);
-  }
-  return lines;
+/** 그려 둔 줄 하나. 같은 글이 같은 스타일로 다시 오면 요소를 그대로 다시 쓴다. */
+interface Row {
+  /** 줄이 시작할 때의 스타일 + 줄의 글. 이것이 같으면 그림도 같다. */
+  key: string;
+  node: HTMLDivElement;
+  /** 색상 코드를 뺀 글. */
+  text: string;
+  /** 줄이 끝났을 때의 스타일 — 다음 줄이 이어받는다. */
+  end: Style;
 }
 
-function plainText(line: HTMLElement): string {
-  return (line.textContent ?? "").replace(/\u200b/g, "");
+function styleKey(s: Style): string {
+  const flags = (s.bold ? 1 : 0) | (s.dim ? 2 : 0) | (s.italic ? 4 : 0) | (s.underline ? 8 : 0) | (s.inverse ? 16 : 0) | (s.strike ? 32 : 0);
+  return `${s.fg ?? ""}|${s.bg ?? ""}|${flags}\n`;
+}
+
+/**
+ * SGR 이 섞인 줄 하나를 요소로 바꾼다. style 은 앞줄에서 이어받은 스타일이다.
+ * reflow 면 좁은 곳에서 읽기 좋게 줄 끝 공백을 걷어 낸 줄이 온다(줄은 CSS 가 접는다).
+ */
+function renderLine(raw: string, start: Style, reflow: boolean): Row {
+  let style = start;
+  const line = document.createElement("div");
+  line.className = "tl";
+  let last = 0;
+  const emit = (chunk: string) => {
+    if (!chunk) return;
+    const rule = css(style);
+    if (!rule) return cells(chunk, line);
+    const span = document.createElement("span");
+    span.style.cssText = rule;
+    cells(chunk, span);
+    line.append(span);
+  };
+  for (const m of raw.matchAll(ESCAPE)) {
+    emit(raw.slice(last, m.index));
+    last = m.index + m[0].length;
+    if (m[2] === "m") style = applySgr(style, (m[1] || "0").split(/[;:]/).map((x) => Number(x) || 0));
+  }
+  emit(raw.slice(last));
+  const text = line.textContent ?? "";
+  if (!line.hasChildNodes()) line.append("\u200b");
+  // 가로줄뿐인 줄은 접히면 여러 줄을 차지하므로 한 줄로 잘라 보여 준다.
+  else if (reflow && /^[\s\u2500-\u257F]+$/.test(text)) line.classList.add("rule");
+  return { key: styleKey(start) + raw, node: line, text, end: style };
 }
 
 export interface ScreenOptions {
@@ -210,7 +218,10 @@ export class TermScreen {
   onGone: (() => void) | undefined;
   /** 미리보기에서 입력창 아래의 상태줄·안내줄을 접지 않고 한 줄씩 보여 준다. */
   fitFooter = false;
-  private lastText: string | undefined;
+  /** 받아 둔 화면의 줄들(SGR 포함). 서버는 처음에 통째로, 그 뒤로는 달라진 줄만 보낸다. */
+  private raw: string[] | undefined;
+  private rows: Row[] = [];
+  private frame = 0;
 
   constructor(private readonly options: ScreenOptions = {}) {
     this.el.className = "term";
@@ -231,14 +242,23 @@ export class TermScreen {
     this.stop();
     this.paneId = paneId;
     this.back = back;
-    this.lastText = undefined;
-    this.el.textContent = "화면을 읽는 중…";
+    this.raw = undefined;
+    this.clear("화면을 읽는 중…");
     const source = new EventSource(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}`);
     this.source = source;
-    source.addEventListener("screen", (e) => this.draw((JSON.parse((e as MessageEvent<string>).data) as { text: string }).text));
+    source.addEventListener("screen", (e) => {
+      this.raw = (JSON.parse((e as MessageEvent<string>).data) as { text: string }).text.split(/\r?\n/);
+      this.redraw();
+    });
+    source.addEventListener("lines", (e) => {
+      if (!this.raw) return;
+      for (const [i, line] of (JSON.parse((e as MessageEvent<string>).data) as { set: Array<[number, string]> }).set) this.raw[i] = line;
+      this.redraw();
+    });
     const gone = () => {
       this.stop();
-      this.el.textContent = "이 pane 은 닫혔습니다.";
+      this.raw = undefined;
+      this.clear("이 pane 은 닫혔습니다.");
       this.onGone?.();
     };
     source.addEventListener("gone", gone);
@@ -263,32 +283,65 @@ export class TermScreen {
     this.wanted = false;
     this.source?.close();
     this.source = undefined;
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
   }
 
   get running(): boolean {
     return this.source !== undefined;
   }
 
-  /** fitFooter 를 바꾼 뒤, 받아 둔 화면으로 다시 그린다. */
-  redraw(): void {
-    if (this.lastText !== undefined) this.draw(this.lastText);
+  private clear(message: string): void {
+    this.rows = [];
+    this.el.textContent = message;
   }
 
-  private draw(text: string): void {
-    this.lastText = text;
+  /**
+   * 받아 둔 화면을 다음 프레임에 그린다. 한 프레임 사이에 여러 번 바뀌어도 마지막 것만 그린다 —
+   * 화면이 빠르게 흐를 때 그리기가 밀려 쌓이지 않는다.
+   */
+  redraw(): void {
+    this.frame ||= requestAnimationFrame(() => {
+      this.frame = 0;
+      if (this.raw) this.draw(this.raw);
+    });
+  }
+
+  private draw(raw: readonly string[]): void {
     const { tail } = this.options;
-    let lines = renderAnsi(text, tail !== undefined);
-    const trim = () => {
-      while (lines.length > 1 && plainText(lines[lines.length - 1]!).trim() === "") lines.pop();
-    };
-    if (tail || this.back > 0) trim();
-    if (tail && this.fitFooter) {
-      const start = footerStart(lines.map(plainText));
-      if (start > 0) for (const line of lines.slice(start)) line.classList.add("fit");
+    const reflow = tail !== undefined;
+    // 앞서 그린 줄 가운데 글과 스타일이 같은 것은 요소를 그대로 쓴다. 글자를 치면 한 줄만, 화면이 밀려 올라가면
+    // 새로 들어온 줄만 만든다 — 한글이 많은 큰 화면은 줄을 전부 새로 만드는 값이 크다.
+    const pool = new Map<string, Row[]>();
+    for (let i = this.rows.length - 1; i >= 0; i -= 1) {
+      const row = this.rows[i]!;
+      const same = pool.get(row.key);
+      if (same) same.push(row);
+      else pool.set(row.key, [row]);
     }
-    if (tail) lines = lines.slice(-tail);
+    let style: Style = {};
+    let rows = raw.map((full) => {
+      const line = reflow ? full.replace(TRAILING, "") : full;
+      const row = pool.get(styleKey(style) + line)?.pop() ?? renderLine(line, style, reflow);
+      style = row.end;
+      return row;
+    });
+    this.rows = rows;
+    if (tail || this.back > 0) while (rows.length > 1 && rows[rows.length - 1]!.text.trim() === "") rows = rows.slice(0, -1);
+    if (tail) {
+      const start = this.fitFooter ? footerStart(rows.map((r) => r.text)) : -1;
+      rows.forEach((row, i) => row.node.classList.toggle("fit", start > 0 && i >= start));
+      rows = rows.slice(-tail);
+    }
     const stick = this.back === 0 || this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40;
-    this.el.replaceChildren(...lines);
+    // 남는 줄은 붙어 있는 채로 두고, 빠진 줄만 떼고 새 줄만 끼운다.
+    const keep = new Set<Node>(rows.map((r) => r.node));
+    for (const child of [...this.el.childNodes]) if (!keep.has(child)) child.remove();
+    let at = this.el.firstChild;
+    for (const { node } of rows) {
+      if (at === node) at = at.nextSibling;
+      else this.el.insertBefore(node, at);
+    }
     if (tail || (this.back > 0 && stick)) this.el.scrollTop = this.el.scrollHeight;
   }
 }
