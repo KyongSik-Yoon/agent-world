@@ -1,7 +1,7 @@
 // 어댑터들이 공통으로 채우는 로그 요약과, 그 요약을 다루는 작은 도구들.
 import { basename } from "node:path";
 
-import type { Activity, ActivityKind } from "../shared/types.ts";
+import type { Activity, ActivityKind, PendingRequest } from "../shared/types.ts";
 
 export const MAX_RECENT = 16;
 const MAX_ACTIVITY_CHARS = 220;
@@ -25,10 +25,12 @@ export interface LogSummary {
   turnOpen: boolean;
   /** 모델 응답 행을 하나라도 봤는지 — 꼬리 창을 더 키울지 판단한다. */
   sawAssistant: boolean;
+  /** 결과를 기다리는 도구 호출들(호출 id → 요청). 결과 행이 오면 지운다. */
+  open: Map<string, PendingRequest>;
 }
 
 export function emptySummary(): LogSummary {
-  return { recent: [], turnOpen: false, sawAssistant: false };
+  return { recent: [], turnOpen: false, sawAssistant: false, open: new Map() };
 }
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
@@ -94,4 +96,46 @@ export function summarizeToolInput(input: unknown): string {
     if (typeof v === "string" && v.trim()) return oneLine(v);
   }
   return "";
+}
+
+const MAX_PENDING_CHARS = 2000;
+/** 사용자에게 직접 묻는 도구 — 답이 올 때까지 에이전트는 반드시 멈춰 있다. */
+const ASKS_USER = /^(AskUserQuestion|ExitPlanMode|ask_user|request_user_input)$/;
+
+/** 도구 입력을 줄이지 않고 보여 줄 글로 만든다(승인 전에 무엇을 하려는지 읽을 수 있게). */
+function describeToolInput(input: unknown): string {
+  if (typeof input === "string") return clip(input, MAX_PENDING_CHARS);
+  if (!isRecord(input)) return "";
+  const lines: string[] = [];
+  const command = input.command ?? input.cmd ?? input.CommandLine;
+  if (typeof command === "string") lines.push(command);
+  else if (Array.isArray(command)) lines.push(command.join(" "));
+  for (const key of FILE_KEYS) {
+    const v = str(input[key]);
+    if (v) lines.push(v);
+  }
+  if (typeof input.plan === "string") lines.push(input.plan);
+  if (lines.length === 0) {
+    for (const [key, v] of Object.entries(input)) if (typeof v === "string" && v.trim()) lines.push(`${key}: ${v}`);
+  } else if (typeof input.description === "string") lines.unshift(`# ${input.description}`);
+  return clip(lines.join("\n"), MAX_PENDING_CHARS);
+}
+
+export function pendingRequest(tool: string, input: unknown, at: string): PendingRequest {
+  const request: PendingRequest = { tool, detail: describeToolInput(input), asksUser: ASKS_USER.test(tool), at };
+  if (isRecord(input) && Array.isArray(input.questions)) {
+    request.questions = input.questions.filter(isRecord).map((q) => ({
+      question: str(q.question) ?? "",
+      options: (Array.isArray(q.options) ? q.options : []).filter(isRecord).map((o) => ({ label: str(o.label) ?? "", description: str(o.description) })),
+    }));
+    request.detail = request.questions.map((q) => q.question).join("\n");
+  }
+  return request;
+}
+
+/** 지금 답을 기다리는 요청 — 사용자에게 묻는 것이 있으면 그것, 아니면 가장 최근에 연 도구 호출. */
+export function currentPending(s: LogSummary): PendingRequest | undefined {
+  if (!s.turnOpen || s.open.size === 0) return undefined;
+  const all = [...s.open.values()];
+  return all.findLast((r) => r.asksUser) ?? all[all.length - 1];
 }

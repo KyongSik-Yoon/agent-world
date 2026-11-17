@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { LogReader } from "../tail.ts";
-import { emptySummary, isRecord, num, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
+import { emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
 import type { Harness, LogFile } from "./types.ts";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -38,6 +38,7 @@ function feedEvent(s: LogSummary, p: Record<string, unknown>, at: string): void 
   switch (p.type) {
     case "task_started":
       s.turnOpen = true;
+      s.open.clear();
       s.contextWindow = num(p.model_context_window) ?? s.contextWindow;
       break;
     case "task_complete": {
@@ -105,7 +106,17 @@ function feedItem(s: LogSummary, p: Record<string, unknown>, at: string): void {
     case "local_shell_call": {
       s.sawAssistant = true;
       const input = toolInput(p.arguments ?? p.input ?? p.action);
-      pushActivity(s, "tool", str(p.name) ?? "shell", summarizeToolInput(input), at);
+      const name = str(p.name) ?? "shell";
+      pushActivity(s, "tool", name, summarizeToolInput(input), at);
+      const id = str(p.call_id);
+      if (id) s.open.set(id, pendingRequest(name, input, at));
+      break;
+    }
+    case "function_call_output":
+    case "custom_tool_call_output":
+    case "local_shell_call_output": {
+      const id = str(p.call_id);
+      if (id) s.open.delete(id);
       break;
     }
   }

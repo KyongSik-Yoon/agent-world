@@ -4,13 +4,14 @@
 // herdr 에 없는 세션(다른 터미널, 데스크톱 앱)은 로그만으로 찾아 상태를 추정한다.
 import { basename } from "node:path";
 
-import type { Activity, AgentStatus, AgentView, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
+import type { Activity, AgentStatus, AgentView, PaneView, TabView, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
 import { agy } from "./adapters/agy.ts";
 import { claude } from "./adapters/claude.ts";
 import { codex } from "./adapters/codex.ts";
 import type { Harness, LogFile } from "./adapters/types.ts";
-import { herdrSnapshot, type HerdrPane, type HerdrSnapshot } from "./herdr.ts";
-import { oneLine, type LogSummary } from "./summary.ts";
+import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind } from "./herdr.ts";
+import { SeenStore } from "./seen.ts";
+import { currentPending, oneLine, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
 
 const HARNESSES: Harness[] = [claude, agy, codex];
@@ -63,6 +64,11 @@ export class World {
   private builtAt = 0;
   /** 이번 스냅샷에서 읽은 로그들 — 끝나면 나머지는 놓아준다. */
   private used = new Set<string>();
+  private readonly seen = new SeenStore();
+  /** 완료 상태인 pane 의 herdr 상태 변경 번호 — 확인 기록을 남길 때 쓴다. */
+  private doneSeq = new Map<string, number>();
+
+  constructor(private readonly control: boolean) {}
 
   private async track(harness: Harness, sessionId: string, knownPath?: string): Promise<Tracked | undefined> {
     const key = `${harness.vendor}:${sessionId}`;
@@ -119,6 +125,7 @@ export class World {
     view.activity = currentActivity(s.recent);
     view.lastPrompt = s.lastPrompt;
     view.lastReply = s.lastReply;
+    view.pending = currentPending(s);
     view.logUpdatedAt = entry.tail.mtimeMs;
     if (harness.subagents) view.subagents = await harness.subagents(entry.path);
     return s;
@@ -128,7 +135,7 @@ export class World {
     const ws = snap.workspaces.find((w) => w.workspace_id === pane.workspace_id);
     const tab = snap.tabs.find((t) => t.tab_id === pane.tab_id);
     const vendor = (pane.agent ?? "unknown").toLowerCase();
-    const status = STATUSES.has(pane.agent_status as AgentStatus) ? (pane.agent_status as AgentStatus) : "unknown";
+    let status = STATUSES.has(pane.agent_status as AgentStatus) ? (pane.agent_status as AgentStatus) : "unknown";
     const view: AgentView = {
       id: pane.pane_id,
       vendor,
@@ -136,8 +143,10 @@ export class World {
       workspaceId: pane.workspace_id,
       workspaceLabel: ws?.label ?? pane.workspace_id,
       workspaceNumber: ws?.number ?? 0,
+      tabId: pane.tab_id,
       tabLabel: tab?.label,
       paneLabel: pane.label,
+      name: pane.name,
       title: "",
       status,
       statusSource: "herdr",
@@ -168,6 +177,23 @@ export class World {
       (view.lastPrompt ? oneLine(view.lastPrompt, 60) : "") ||
       ws?.tokens?.topic ||
       view.workspaceLabel;
+
+    // herdr 가 질문 화면을 알아보지 못할 때가 있다(하네스의 대화상자가 바뀌었거나 꾸며져 있을 때).
+    // 로그에 사용자에게 묻는 도구가 답 없이 열려 있으면 그것이 더 확실한 신호다.
+    if (status === "working" && view.pending?.asksUser) {
+      status = "blocked";
+      view.statusSource = "log";
+    }
+    if (status !== "working" && status !== "blocked") view.pending = undefined;
+    const seq = pane.state_change_seq ?? 0;
+    if (status === "done") {
+      this.doneSeq.set(pane.pane_id, seq);
+      if (this.seen.has(pane.pane_id, seq)) {
+        status = "idle";
+        view.seen = true;
+      }
+    }
+    view.status = status;
     view.statusSince = this.statusSince(view.id, status, view.logUpdatedAt);
     return view;
   }
@@ -236,6 +262,8 @@ export class World {
 
   private async build(): Promise<WorldSnapshot> {
     this.used = new Set();
+    this.doneSeq = new Map();
+    await this.seen.load();
     let snap: HerdrSnapshot | undefined;
     let herdrError: string | undefined;
     try {
@@ -248,23 +276,49 @@ export class World {
     const workspaces = new Map<string, WorkspaceView>();
     const inHerdr = new Set<string>();
 
+    const tabs: TabView[] = [];
+    const panes: PaneView[] = [];
+
     if (snap) {
+      // 주민이 없는 집도 집이다 — herdr 의 스페이스는 전부 세운다.
+      for (const ws of snap.workspaces) {
+        workspaces.set(ws.workspace_id, {
+          id: ws.workspace_id,
+          label: ws.label,
+          number: ws.number,
+          topic: ws.tokens?.topic,
+          repo: ws.worktree?.repo_name,
+          focused: ws.focused === true,
+          managed: true,
+          worktree: ws.worktree ? { path: ws.worktree.checkout_path, linked: ws.worktree.is_linked_worktree === true } : undefined,
+        });
+      }
+      for (const tab of snap.tabs) tabs.push({ id: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? "", number: tab.number ?? 0 });
+
       const views = await Promise.all(snap.agents.filter((p) => p.agent).map((p) => this.paneView(p, snap)));
       for (const view of views) {
         agents.push(view);
         if (view.sessionId) inHerdr.add(`${harnessFor(view.vendor)?.vendor ?? view.vendor}:${view.sessionId}`);
-        const ws = snap.workspaces.find((w) => w.workspace_id === view.workspaceId);
-        if (!workspaces.has(view.workspaceId)) {
-          workspaces.set(view.workspaceId, {
-            id: view.workspaceId,
-            label: view.workspaceLabel,
-            number: view.workspaceNumber,
-            topic: ws?.tokens?.topic,
-            repo: ws?.worktree?.repo_name,
-            focused: ws?.focused === true,
-          });
-        }
       }
+
+      const sizes = new Map<string, { width: number; height: number }>();
+      for (const layout of snap.layouts ?? []) for (const p of layout.panes) sizes.set(p.pane_id, p.rect);
+      const hosts = new Set(views.map((v) => v.id));
+      for (const pane of snap.panes) {
+        const size = sizes.get(pane.pane_id);
+        panes.push({
+          id: pane.pane_id,
+          workspaceId: pane.workspace_id,
+          tabId: pane.tab_id,
+          label: pane.label,
+          title: (pane.terminal_title_stripped ?? "").trim(),
+          cwd: pane.foreground_cwd || pane.cwd || "",
+          agentId: hosts.has(pane.pane_id) ? pane.pane_id : undefined,
+          cols: size?.width,
+          rows: size?.height,
+        });
+      }
+      this.seen.prune(new Set(snap.panes.map((p) => p.pane_id)));
     }
 
     this.discover();
@@ -274,7 +328,7 @@ export class World {
       if (!view) continue;
       agents.push(view);
       if (!workspaces.has(view.workspaceId)) {
-        workspaces.set(view.workspaceId, { id: view.workspaceId, label: view.workspaceLabel, number: 0, focused: false });
+        workspaces.set(view.workspaceId, { id: view.workspaceId, label: view.workspaceLabel, number: 0, focused: false, managed: false });
       }
     }
 
@@ -288,17 +342,41 @@ export class World {
       at: this.builtAt,
       herdr: snap !== undefined,
       herdrError,
+      control: this.control,
       workspaces: [...workspaces.values()].sort((a, b) => (a.number || 1e9) - (b.number || 1e9) || a.label.localeCompare(b.label)),
+      tabs,
+      panes,
       agents,
     };
   }
 
-  /** 지금 herdr 에 있는 pane 인지 — 포커스·화면 읽기 요청을 받을 때 확인한다. */
-  async hasPane(paneId: string): Promise<boolean> {
+  /** 완료를 확인했다고 적는다(undo 면 지운다). 지금 완료 상태가 아닌 pane 이면 false. */
+  markSeen(paneId: string, undo: boolean): boolean {
+    if (undo) {
+      this.seen.set(paneId, null);
+      return true;
+    }
+    const seq = this.doneSeq.get(paneId);
+    if (seq === undefined) return false;
+    this.seen.set(paneId, seq);
+    return true;
+  }
+
+  /** 지금 herdr 에 있는 대상인지 — 조작 요청은 실제로 있는 것에만 보낸다. */
+  async has(kind: Kind, id: string): Promise<boolean> {
+    if (!id) return false;
     try {
-      return (await herdrSnapshot()).panes.some((p) => p.pane_id === paneId);
+      const snap = await herdrSnapshot();
+      if (kind === "workspace") return snap.workspaces.some((w) => w.workspace_id === id);
+      if (kind === "tab") return snap.tabs.some((t) => t.tab_id === id);
+      if (kind === "agent") return snap.agents.some((p) => p.pane_id === id && p.agent);
+      return snap.panes.some((p) => p.pane_id === id);
     } catch {
       return false;
     }
+  }
+
+  hasPane(paneId: string): Promise<boolean> {
+    return this.has("pane", paneId);
   }
 }

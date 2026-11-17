@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { LogReader } from "../tail.ts";
-import { emptySummary, isRecord, num, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
+import { emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
 import type { Harness, LogFile } from "./types.ts";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -59,6 +59,7 @@ export const agyReader: LogReader<LogSummary> = {
           setPrompt(s, text);
           pushActivity(s, "user", "", text, at);
           s.turnOpen = true;
+          s.open.clear();
         }
         break;
       }
@@ -73,12 +74,16 @@ export const agyReader: LogReader<LogSummary> = {
           pushActivity(s, "text", "", content, at);
         }
         const calls = Array.isArray(row.tool_calls) ? row.tool_calls : [];
-        for (const call of calls) {
-          if (!isRecord(call)) continue;
+        // 결과 행을 호출과 짝지을 id 가 없어서, 가장 최근 응답이 부른 도구들을 "지금 기다리는 것"으로 둔다.
+        s.open.clear();
+        calls.forEach((call, i) => {
+          if (!isRecord(call)) return;
           const args = decodeArgs(call.args);
           const summary = str(args.toolSummary) ?? summarizeToolInput(args);
-          pushActivity(s, "tool", str(call.name) ?? "tool", summary, at);
-        }
+          const name = str(call.name) ?? "tool";
+          pushActivity(s, "tool", name, summary, at);
+          s.open.set(String(i), pendingRequest(name, args, at));
+        });
         s.turnOpen = calls.length > 0;
         break;
       }

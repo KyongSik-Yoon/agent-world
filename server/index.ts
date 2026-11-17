@@ -1,9 +1,11 @@
 // Agent World 서버. 루프백에만 묶이고, 브라우저에는 스냅샷을 SSE 로 밀어 준다.
 //
-// 이 서버가 내보내는 것은 에이전트 로그의 요약과 터미널 화면이다. 그래서 127.0.0.1 밖으로는
-// 열지 않고, Host 와 Origin 을 확인해 다른 사이트가 브라우저를 거쳐 읽어 가는 길도 막는다.
+// 이 서버는 에이전트 로그의 요약과 터미널 화면을 내보내고, 에이전트에게 글자를 넣을 수도 있다.
+// 그래서 127.0.0.1 밖으로는 열지 않고, Host 와 Origin 을 확인해 다른 사이트가 브라우저를 거쳐
+// 읽어 가거나 조작하는 길을 막는다. 조작을 아예 끄려면 AGENT_WORLD_READONLY=1 로 띄운다.
 import index from "../web/index.html";
 import type { WorldSnapshot } from "../shared/types.ts";
+import { controlRoutes } from "./control.ts";
 import { herdrFocus, herdrScreen } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
 import { World } from "./world.ts";
@@ -15,7 +17,9 @@ const IDLE_TICK_MS = 15_000;
 /** 새로 붙은 브라우저에 바로 건네도 되는 스냅샷의 나이. 이보다 묵었으면 새로 만들어 보낸다. */
 const FRESH_MS = 2_500;
 
-const world = new World();
+const READONLY = process.env.AGENT_WORLD_READONLY === "1";
+
+const world = new World(!READONLY);
 const encoder = new TextEncoder();
 const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
 let latest: WorldSnapshot | undefined;
@@ -36,9 +40,16 @@ function broadcast(bytes: Uint8Array): void {
   }
 }
 
-async function tick(): Promise<void> {
+let again = false;
+
+async function tick(force = false): Promise<void> {
+  // 만드는 중에 조작이 끝났으면, 그 결과가 빠지지 않도록 끝난 뒤 한 번 더 만든다.
+  if (ticking) {
+    again ||= force;
+    return;
+  }
   // 보는 사람이 없으면 드문드문만 만든다 — 상태가 바뀐 시각을 크게 놓치지 않을 만큼만.
-  if (ticking || (clients.size === 0 && Date.now() - (latest?.at ?? 0) < IDLE_TICK_MS)) return;
+  if (!force && clients.size === 0 && Date.now() - (latest?.at ?? 0) < IDLE_TICK_MS) return;
   ticking = true;
   try {
     const snapshot = await world.snapshot();
@@ -53,6 +64,10 @@ async function tick(): Promise<void> {
     console.error("스냅샷 실패:", e);
   } finally {
     ticking = false;
+    if (again) {
+      again = false;
+      void tick(true);
+    }
   }
 }
 
@@ -148,8 +163,9 @@ const server = Bun.serve({
         return json({ ok: true, raised });
       }),
     },
+    ...controlRoutes({ world, readonly: READONLY, guarded, json, refresh: () => void tick(true) }),
   },
   fetch: () => new Response("not found", { status: 404 }),
 });
 
-console.log(`Agent World → http://127.0.0.1:${server.port}`);
+console.log(`Agent World → http://127.0.0.1:${server.port}${READONLY ? " (보기 전용)" : ""}`);

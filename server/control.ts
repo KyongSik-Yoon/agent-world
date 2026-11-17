@@ -1,0 +1,297 @@
+// 조작 엔드포인트: 지시·키 입력, 터미널 미러, 스페이스·탭·pane·에이전트 만들기와 닫기.
+//
+// 여기서부터 이 서버는 "보는 창"이 아니라 터미널에 글자를 넣을 수 있는 통로다. 그래서
+//   - 바꾸는 요청은 전부 POST 이고 Origin 이 같은 호스트일 때만 받는다(index.ts 의 guarded),
+//   - 대상 id 는 지금 herdr 에 실제로 있는 것만 통과시키고,
+//   - 만들 때는 초점을 옮기지 않으며, 묶음 닫기·강제 삭제·저장소 신뢰는 요청이 명시했을 때만 싣는다.
+// AGENT_WORLD_READONLY=1 이면 바꾸는 요청을 모두 거절한다.
+import { readdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
+
+import {
+  HerdrError,
+  herdrAgentKinds,
+  herdrClose,
+  herdrCreateTab,
+  herdrCreateWorkspace,
+  herdrCreateWorktree,
+  herdrInput,
+  herdrPrompt,
+  herdrRaw,
+  herdrRename,
+  herdrSnapshot,
+  herdrSplit,
+  herdrStartAgent,
+  herdrTerm,
+  type Kind,
+} from "./herdr.ts";
+import { termTheme } from "./termtheme.ts";
+import type { World } from "./world.ts";
+
+const TERM_POLL_MS = 400;
+const TERM_BACK_POLL_MS = 1500;
+const MAX_BACK_LINES = 2000;
+const MAX_TEXT = 200_000;
+const AGENT_NAME = /^[a-z][a-z0-9_-]{0,31}$/;
+const KINDS = new Set<Kind>(["workspace", "tab", "pane", "agent"]);
+
+type Handler = (req: Request) => Response | Promise<Response>;
+type Body = Record<string, unknown>;
+
+export interface ControlDeps {
+  world: World;
+  readonly: boolean;
+  guarded(handler: Handler): Handler;
+  json(body: unknown, status?: number): Response;
+  /** 바꾼 결과가 곧바로 화면에 보이도록 스냅샷을 새로 만들어 내보낸다. */
+  refresh(): void;
+}
+
+class Reject extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
+function text(body: Body, key: string, max = 400): string {
+  const v = body[key];
+  if (v === undefined || v === null) return "";
+  if (typeof v !== "string") throw new Reject(`${key} 는 문자열이어야 합니다.`, 400);
+  if (v.length > max) throw new Reject(`${key} 가 너무 깁니다.`, 400);
+  return v;
+}
+
+function expandHome(path: string): string {
+  if (path === "~") return homedir();
+  return path.startsWith("~/") ? join(homedir(), path.slice(2)) : path;
+}
+
+async function directory(path: string): Promise<string> {
+  const full = resolve(expandHome(path.trim()));
+  if (!path.trim()) throw new Reject("폴더를 정해 주세요.", 400);
+  try {
+    if (!(await stat(full)).isDirectory()) throw new Error();
+  } catch {
+    throw new Reject(`폴더가 없습니다: ${full}`, 400);
+  }
+  return full;
+}
+
+async function isDir(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+export function controlRoutes({ world, readonly, guarded, json, refresh }: ControlDeps): Record<string, Record<string, Handler>> {
+  const need = async (kind: Kind, id: string): Promise<string> => {
+    if (!(await world.has(kind, id))) throw new Reject(`지금 herdr 에 없는 대상입니다: ${id || "(비어 있음)"}`, 404);
+    return id;
+  };
+
+  /** 바꾸는 요청 하나. 본문을 읽고, 실패를 구분할 수 있는 모양으로 돌려준다. */
+  const mutate = (run: (body: Body) => Promise<unknown>): Record<string, Handler> => ({
+    POST: guarded(async (req) => {
+      if (readonly) return json({ error: "보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", code: "readonly" }, 403);
+      let body: Body;
+      try {
+        body = (await req.json()) as Body;
+        if (typeof body !== "object" || body === null) throw new Error();
+      } catch {
+        return json({ error: "요청 본문이 JSON 이 아닙니다." }, 400);
+      }
+      try {
+        const result = await run(body);
+        refresh();
+        return json({ ok: true, ...(typeof result === "object" && result !== null ? result : {}) });
+      } catch (e) {
+        if (e instanceof Reject) return json({ error: e.message, code: e.code }, e.status);
+        if (e instanceof HerdrError) return json({ error: e.message, code: e.code }, 502);
+        throw e;
+      }
+    }),
+  });
+
+  return {
+    // ── 터미널 미러 ──────────────────────────────────────────────────────────────────────────────
+    "/api/term": {
+      GET: guarded(async (req) => {
+        const url = new URL(req.url);
+        const paneId = url.searchParams.get("pane") ?? "";
+        const back = Math.min(MAX_BACK_LINES, Math.max(0, Number(url.searchParams.get("back")) || 0));
+        if (!(await world.hasPane(paneId))) return json({ error: "그 pane 은 지금 herdr 에 없습니다." }, 404);
+        const encoder = new TextEncoder();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let closed = false;
+        const stop = () => {
+          closed = true;
+          clearTimeout(timer);
+        };
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            let last: string | undefined;
+            let idle = 0;
+            const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+            const loop = async (): Promise<void> => {
+              if (closed) return;
+              try {
+                const screen = back > 0 ? await herdrTerm(paneId, "recent", back) : await herdrTerm(paneId, "visible");
+                if (closed) return;
+                if (screen !== last) {
+                  last = screen;
+                  idle = 0;
+                  send("screen", { text: screen });
+                } else if ((idle += 1) % 30 === 0) controller.enqueue(encoder.encode(": keepalive\n\n"));
+              } catch (e) {
+                if (closed) return;
+                // pane 이 닫혔으면 여기서 끝낸다. 그 밖의 실패는 잠깐 쉬었다 다시 읽는다.
+                if (e instanceof HerdrError && e.code === "pane_not_found") {
+                  send("gone", { error: e.message });
+                  stop();
+                  controller.close();
+                  return;
+                }
+              }
+              timer = setTimeout(() => void loop(), back > 0 ? TERM_BACK_POLL_MS : TERM_POLL_MS);
+            };
+            void loop();
+          },
+          cancel: stop,
+        });
+        req.signal.addEventListener("abort", stop);
+        return new Response(stream, { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", "x-accel-buffering": "no" } });
+      }),
+    },
+
+    "/api/term/theme": { GET: guarded(async () => json(await termTheme())) },
+
+    // ── 말 걸기와 키 입력 ────────────────────────────────────────────────────────────────────────
+    "/api/prompt": mutate(async (body) => {
+      const paneId = await need("agent", text(body, "paneId"));
+      const prompt = text(body, "text", MAX_TEXT);
+      if (!prompt.trim()) throw new Reject("보낼 말이 비어 있습니다.", 400);
+      await herdrPrompt(paneId, prompt);
+      // 지시를 보냈으면 그 전의 완료는 읽은 것이다.
+      world.markSeen(paneId, false);
+    }),
+    "/api/keys": mutate(async (body) => {
+      const paneId = await need("pane", text(body, "paneId"));
+      const input = text(body, "text", MAX_TEXT);
+      const keys = Array.isArray(body.keys) ? body.keys : [];
+      if (keys.length > 64 || keys.some((k) => typeof k !== "string" || k.length === 0 || k.length > 32)) throw new Reject("keys 가 올바르지 않습니다.", 400);
+      if (!input && keys.length === 0) throw new Reject("보낼 입력이 없습니다.", 400);
+      // raw 는 제어 문자·이스케이프 시퀀스를 그대로 넣을 때 쓴다(herdr 에 논리 키가 없는 Home, PageUp 등).
+      if (body.raw === true) await herdrRaw(paneId, input);
+      else await herdrInput(paneId, input || undefined, keys as string[]);
+    }),
+    "/api/seen": mutate(async (body) => {
+      const paneId = await need("pane", text(body, "paneId"));
+      return { seen: world.markSeen(paneId, body.undo === true) };
+    }),
+
+    // ── 만들기 ───────────────────────────────────────────────────────────────────────────────────
+    "/api/workspace": mutate(async (body) => herdrCreateWorkspace(await directory(text(body, "cwd", 4096)), text(body, "label").trim() || undefined)),
+    "/api/worktree": mutate(async (body) => {
+      const workspaceId = text(body, "workspaceId");
+      const cwd = text(body, "cwd", 4096);
+      return herdrCreateWorktree({
+        workspaceId: workspaceId ? await need("workspace", workspaceId) : undefined,
+        cwd: workspaceId ? undefined : await directory(cwd),
+        branch: text(body, "branch").trim() || undefined,
+        base: text(body, "base").trim() || undefined,
+        label: text(body, "label").trim() || undefined,
+        trust: body.trust === true,
+      });
+    }),
+    "/api/tab": mutate(async (body) => herdrCreateTab(await need("workspace", text(body, "workspaceId")), text(body, "label").trim() || undefined)),
+    "/api/pane/split": mutate(async (body) => {
+      const direction = body.direction === "down" ? "down" : "right";
+      return herdrSplit(await need("pane", text(body, "paneId")), direction);
+    }),
+    "/api/agent/start": mutate(async (body) => {
+      const paneId = await need("pane", text(body, "paneId"));
+      const kind = text(body, "kind", 40);
+      const name = text(body, "name", 40);
+      if (!/^[a-z][a-z0-9_-]*$/.test(kind)) throw new Reject("에이전트 종류가 올바르지 않습니다.", 400);
+      if (!AGENT_NAME.test(name)) throw new Reject("이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 32자까지 쓸 수 있습니다.", 400);
+      const args = Array.isArray(body.args) ? body.args : [];
+      if (args.length > 32 || args.some((a) => typeof a !== "string" || a.length > 2000)) throw new Reject("args 가 올바르지 않습니다.", 400);
+      await herdrStartAgent(paneId, kind, name, args as string[]);
+    }),
+
+    // ── 관리 ─────────────────────────────────────────────────────────────────────────────────────
+    "/api/rename": mutate(async (body) => {
+      const kind = text(body, "kind") as Kind;
+      if (!KINDS.has(kind)) throw new Reject("kind 가 올바르지 않습니다.", 400);
+      const label = text(body, "label", 120).trim();
+      if (kind === "agent" && label && !AGENT_NAME.test(label)) throw new Reject("에이전트 이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 쓸 수 있습니다.", 400);
+      if ((kind === "workspace" || kind === "tab") && !label) throw new Reject("이름이 비어 있습니다.", 400);
+      await herdrRename(kind, await need(kind, text(body, "id")), label);
+    }),
+    "/api/close": mutate(async (body) => {
+      const kind = text(body, "kind") as Kind;
+      if (!KINDS.has(kind) || kind === "agent") throw new Reject("kind 가 올바르지 않습니다.", 400);
+      await herdrClose(kind, await need(kind, text(body, "id")), {
+        group: body.group === true,
+        removeWorktree: body.removeWorktree === true,
+        force: body.force === true,
+      });
+    }),
+
+    // ── 폼에 쓰는 읽기 전용 목록 ─────────────────────────────────────────────────────────────────
+    "/api/kinds": {
+      GET: guarded(async () => {
+        try {
+          const kinds = (await herdrAgentKinds()).map((kind) => ({ kind, installed: Bun.which(kind) !== null }));
+          return json({ kinds: kinds.sort((a, b) => Number(b.installed) - Number(a.installed)) });
+        } catch (e) {
+          return json({ error: (e as Error).message }, 502);
+        }
+      }),
+    },
+    "/api/dirs": {
+      GET: guarded(async (req) => {
+        const prefix = new URL(req.url).searchParams.get("prefix") ?? "";
+        const home = homedir();
+        const short = (p: string) => (p === home ? "~" : p.startsWith(`${home}/`) ? `~/${p.slice(home.length + 1)}` : p);
+        if (!prefix.trim()) {
+          // 아직 아무것도 치지 않았으면 지금 쓰고 있는 폴더들을 권한다.
+          const seen = new Set<string>();
+          try {
+            const snap = await herdrSnapshot();
+            for (const ws of snap.workspaces) if (ws.worktree) seen.add((ws.worktree as { repo_root?: string }).repo_root ?? "");
+            for (const pane of snap.panes) if (pane.cwd) seen.add(pane.cwd);
+          } catch {
+            // herdr 가 없으면 권할 것이 없다.
+          }
+          seen.delete("");
+          return json({ dirs: [...seen].filter((p) => !p.includes("/.herdr/worktrees/")).sort().slice(0, 30).map(short) });
+        }
+        const full = resolve(expandHome(prefix));
+        // 홈 밖은 훑지 않는다 — 폴더 이름을 알려 주는 창구이므로 범위를 좁게 둔다.
+        if (full !== home && !full.startsWith(`${home}/`)) return json({ dirs: [] });
+        const [dir, head] = prefix.endsWith("/") ? [full, ""] : [dirname(full), basename(full)];
+        let names: string[];
+        try {
+          names = await readdir(dir);
+        } catch {
+          return json({ dirs: [] });
+        }
+        const hits = names.filter((n) => n.toLowerCase().startsWith(head.toLowerCase()) && (head.startsWith(".") || !n.startsWith("."))).sort();
+        const dirs: string[] = [];
+        for (const name of hits) {
+          if (dirs.length >= 30) break;
+          if (await isDir(join(dir, name))) dirs.push(short(join(dir, name)));
+        }
+        return json({ dirs });
+      }),
+    },
+  };
+}

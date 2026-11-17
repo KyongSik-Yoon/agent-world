@@ -11,6 +11,7 @@ import {
   emptySummary,
   isRecord,
   num,
+  pendingRequest,
   pushActivity,
   setPrompt,
   setReply,
@@ -72,12 +73,18 @@ function feedAssistant(s: LogSummary, row: Record<string, unknown>, at: string):
       pushActivity(s, "thinking", "", "", at);
     } else if (part.type === "tool_use") {
       calledTool = true;
-      pushActivity(s, "tool", str(part.name) ?? "tool", summarizeToolInput(part.input), at);
+      const name = str(part.name) ?? "tool";
+      pushActivity(s, "tool", name, summarizeToolInput(part.input), at);
+      const id = str(part.id);
+      if (id) s.open.set(id, pendingRequest(name, part.input, at));
     }
   }
   const stop = str(message.stop_reason);
   if (calledTool || stop === "tool_use") s.turnOpen = true;
-  else if (stop === "end_turn" || stop === "stop_sequence" || stop === "refusal") s.turnOpen = false;
+  else if (stop === "end_turn" || stop === "stop_sequence" || stop === "refusal") {
+    s.turnOpen = false;
+    s.open.clear();
+  }
 }
 
 function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void {
@@ -91,6 +98,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
       setPrompt(s, text);
       pushActivity(s, "user", "", text, at);
       s.turnOpen = true;
+      s.open.clear();
     }
     return;
   }
@@ -101,7 +109,10 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
     if (part.type === "text") {
       const text = userText(str(part.text) ?? "");
       if (text) texts.push(text);
-    } else if (part.type === "tool_result" && part.is_error === true) {
+    } else if (part.type === "tool_result") {
+      const id = str(part.tool_use_id);
+      if (id) s.open.delete(id);
+      if (part.is_error !== true) continue;
       // 방금 부른 도구가 실패했다 — 가장 최근 도구 활동에 표시한다.
       for (let i = s.recent.length - 1; i >= 0; i -= 1) {
         const a = s.recent[i]!;
@@ -117,6 +128,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
     setPrompt(s, text);
     pushActivity(s, "user", "", text, at);
     s.turnOpen = true;
+    s.open.clear();
   }
 }
 
