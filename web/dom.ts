@@ -3,18 +3,11 @@ import type { AgentStatus } from "../shared/types.ts";
 
 export type Child = Node | string | null | undefined | false;
 
-/** 1Password · LastPass · Bitwarden · Dashlane 이 각각 알아듣는 "건너뛰어라" 표시. */
-const NOT_A_LOGIN: Record<string, string> = { "data-1p-ignore": "", "data-lpignore": "true", "data-bwignore": "true", "data-form-type": "other" };
-
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") el.className = v;
     else el.setAttribute(k, v);
-  }
-  // 여기의 입력란은 로그인 폼이 아니다. 비밀번호 관리 확장이 자동 완성 창을 덧씌우지 않게 한다.
-  if (tag === "input" || tag === "textarea") {
-    for (const [k, v] of Object.entries(NOT_A_LOGIN)) el.setAttribute(k, v);
   }
   for (const c of children) if (c) el.append(c);
   return el;
