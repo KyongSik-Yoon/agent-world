@@ -1567,8 +1567,16 @@ kbd {
 }
 
 .quick button:has(> .ico):not(.wide) {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+/* ⇧Tab 의 Shift 표시는 글자 옆에 붙는 작은 아이콘이다. */
+.quick button > .ico:has(+ span) {
+  width: 13px;
+  height: 13px;
 }
 
 .quick .ico {
@@ -1582,6 +1590,15 @@ kbd {
   @media not (pointer: coarse) {
     .quick button.wide span {
       display: none;
+    }
+
+    .quick,
+    .quick .keys {
+      gap: 3px;
+    }
+
+    .quick .keys button {
+      padding: 0 3px;
     }
   }
 }

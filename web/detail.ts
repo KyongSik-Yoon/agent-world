@@ -31,16 +31,17 @@ export interface DetailCallbacks {
 
 // 글자 키는 raw(키보드로 친 바이트 그대로)로 보낸다. 그냥 text 로 보내면 herdr 가 붙여넣기로 감싸서,
 // 키 입력을 기다리는 대화상자(권한 확인 등)가 무시한다.
-const QUICK_KEYS: Array<{ label: string; title: string; icon?: IconName; keys?: string[]; text?: string; raw?: boolean }> = [
+/** icon 이 있으면 글자 기호 대신 선 아이콘을 그리고 title 을 읽어 주는 이름으로 쓴다. caption 은 아이콘 옆에 붙는 글. */
+const QUICK_KEYS: Array<{ label: string; title: string; icon?: IconName; caption?: string; keys?: string[]; text?: string; raw?: boolean }> = [
   { label: "Esc", title: t("하던 일 멈추기 / 대화상자 닫기"), keys: ["esc"] },
   { label: "Enter", title: "Enter", icon: "enter", keys: ["enter"] },
-  { label: "↑", title: t("위"), keys: ["up"] },
-  { label: "↓", title: t("아래"), keys: ["down"] },
+  { label: "Up", title: t("위"), icon: "up", keys: ["up"] },
+  { label: "Down", title: t("아래"), icon: "down", keys: ["down"] },
   { label: "1", title: t("{key} 누르기", { key: "1" }), text: "1", raw: true },
   { label: "2", title: t("{key} 누르기", { key: "2" }), text: "2", raw: true },
   { label: "3", title: t("{key} 누르기", { key: "3" }), text: "3", raw: true },
   { label: "Tab", title: "Tab", keys: ["tab"] },
-  { label: "⇧Tab", title: t("Shift+Tab (권한 모드 바꾸기)"), keys: ["shift+tab"] },
+  { label: "Shift+Tab", title: t("Shift+Tab (권한 모드 바꾸기)"), icon: "shift", caption: "Tab", keys: ["shift+tab"] },
   { label: "^C", title: "Ctrl+C", text: "\x03", raw: true },
 ];
 
@@ -104,7 +105,9 @@ export class DetailPanel {
     // 키 단추는 한 묶음으로 남는 폭을 나눠 쓰고, 터미널 단추는 그 옆에 제 폭으로 선다.
     const keys = h("div", { class: "keys" });
     for (const key of QUICK_KEYS) {
-      const btn = h("button", key.icon ? { type: "button", title: key.title, "aria-label": key.label } : { type: "button", title: key.title }, key.icon ? icon(key.icon) : key.label);
+      const btn = key.icon
+        ? h("button", { type: "button", title: key.title, "aria-label": key.title }, icon(key.icon), key.caption ? h("span", { "aria-hidden": "true" }, key.caption) : null)
+        : h("button", { type: "button", title: key.title }, key.label);
       btn.addEventListener("click", () => {
         if (!this.docked) return;
         void sendInput(this.docked.paneId, { text: key.text, keys: key.keys, raw: key.raw }).catch((e: Error) => this.setNote(e.message, "err"));
