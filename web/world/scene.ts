@@ -72,6 +72,10 @@ export class WorldScene {
     this.controls.minPolarAngle = 0.2;
     this.controls.maxPolarAngle = 1.36;
     this.controls.target.set(0, 0.5, 0);
+    // 이동은 땅과 나란히 — 화면 기준으로 밀면 카메라가 기울어 있을 때 땅속으로 파고든다.
+    this.controls.screenSpacePanning = false;
+    // 휠 버튼(가운데)과 오른쪽 버튼 드래그는 맵 이동이다. 휠 굴리기는 그대로 확대·축소.
+    this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
     this.controls.addEventListener("start", () => {
       this.flight = null;
     });
@@ -114,6 +118,12 @@ export class WorldScene {
   setTheme(theme: Theme): void {
     this.env.setTheme(theme);
     (this.scene.fog as THREE.Fog).color.set(FOG[theme]);
+  }
+
+  /** Space 를 누르고 있는 동안에는 왼쪽 드래그가 회전이 아니라 맵 이동이다(Figma 식). */
+  setPanMode(on: boolean): void {
+    this.controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    this.container.classList.toggle("panning", on);
   }
 
   /** 스냅샷을 장면에 반영한다: 배치가 바뀌었으면 무대를 다시 짓고, 배우를 만들고 치우고 갱신한다. */
@@ -372,6 +382,18 @@ export class WorldScene {
 
     this.env.update(t, dt);
     this.controls.update();
+    // 맵을 밀다가 섬을 잃어버리지 않게, 바라보는 곳이 섬 언저리를 벗어나지 않게 한다.
+    const target = this.controls.target;
+    const away = Math.hypot(target.x, target.z);
+    const limit = this.layout.islandRadius + 4;
+    if (away > limit) {
+      const dx = target.x * (limit / away - 1);
+      const dz = target.z * (limit / away - 1);
+      target.x += dx;
+      target.z += dz;
+      this.camera.position.x += dx;
+      this.camera.position.z += dz;
+    }
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   }

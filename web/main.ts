@@ -276,6 +276,23 @@ window.addEventListener(
 // Safari 는 같은 동작을 gesture 이벤트로 알린다.
 for (const type of ["gesturestart", "gesturechange"]) window.addEventListener(type, (e) => e.preventDefault(), { passive: false });
 
+// Space 를 누른 채 드래그하면 맵이 이동한다. 글을 치는 중의 Space 는 그냥 띄어쓰기다.
+function isTyping(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.matches("input, textarea, select, [contenteditable]") || target.closest("dialog") !== null);
+}
+window.addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || isTyping(e.target) || terminal.isOpen || document.querySelector("dialog[open]")) return;
+  // 초점이 단추에 남아 있어도 Space 가 그 단추를 누르지 않게 한다.
+  e.preventDefault();
+  scene.setPanMode(true);
+});
+window.addEventListener("keyup", (e) => {
+  if (e.code !== "Space") return;
+  if (!isTyping(e.target)) e.preventDefault();
+  scene.setPanMode(false);
+});
+window.addEventListener("blur", () => scene.setPanMode(false));
+
 window.addEventListener("keydown", (e) => {
   // 글을 치는 중이면(입력란, 터미널, 대화상자) 그 키는 월드의 단축키가 아니다.
   const target = e.target instanceof HTMLElement ? e.target : null;

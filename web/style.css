@@ -1689,3 +1689,12 @@ dialog.dlg .warn {
     max-width: 120px;
   }
 }
+
+/* Space 를 누르고 있는 동안: 드래그하면 맵이 이동한다. */
+#world.panning canvas {
+  cursor: grab !important;
+}
+
+#world.panning canvas:active {
+  cursor: grabbing !important;
+}
