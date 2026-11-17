@@ -784,7 +784,6 @@ kbd {
   border-radius: 10px;
   background: var(--soft);
   overflow-wrap: anywhere;
-  white-space: pre-wrap;
 }
 
 .prose.clamp {
@@ -793,6 +792,27 @@ kbd {
   mask-image: linear-gradient(#000 70%, transparent);
 }
 
+/* 응답 글의 블록들 — 위아래 간격은 블록 사이에만 둔다. */
+.prose > * { margin: 0 0 0.65em; }
+.prose > :last-child,
+.prose li > :last-child,
+.prose blockquote > :last-child { margin-bottom: 0; }
+.prose p { white-space: pre-wrap; }
+
+.prose .h { font-weight: 700; }
+.prose .h1 { font-size: 1.12em; }
+.prose .h2 { font-size: 1.06em; }
+.prose > .h:not(:first-child) { margin-top: 1em; }
+
+.prose ul,
+.prose ol { padding-left: 1.35em; }
+.prose li { margin: 0.2em 0; white-space: pre-wrap; }
+.prose li > ul,
+.prose li > ol { margin: 0.2em 0 0; white-space: normal; }
+.prose li.task { list-style: none; margin-left: -1.35em; }
+.prose li.task input { margin: 0 0.45em 0 0; vertical-align: -1px; accent-color: var(--accent); pointer-events: none; }
+.prose li::marker { color: var(--ink-3); }
+
 .prose code {
   padding: 0 4px;
   border-radius: 4px;
@@ -800,9 +820,40 @@ kbd {
   font: 12px var(--mono);
 }
 
-.prose .h {
-  font-weight: 700;
+.prose pre {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--soft-2);
+  overflow-x: auto;
 }
+.prose pre code { padding: 0; background: none; white-space: pre; overflow-wrap: normal; }
+
+.prose blockquote {
+  padding-left: 10px;
+  border-left: 3px solid var(--line);
+  color: var(--ink-2);
+}
+
+.prose hr { border: 0; border-top: 1px solid var(--line); }
+
+/* 표는 패널 폭에 맞춰 칸 안에서 줄을 바꾼다. 칸이 아주 많을 때만 옆으로 민다. */
+.prose .table { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.prose table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.45; }
+.prose th,
+.prose td {
+  min-width: 2.6em;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  /* 낱말 중간에서 끊지 않는다. anywhere 로 두면 좁은 칸이 글자 하나 폭까지 줄어든다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+.prose th { background: var(--soft-2); font-weight: 700; white-space: nowrap; }
+.prose th + th,
+.prose td + td { border-left: 1px solid var(--line); }
+.prose tbody tr:last-child td { border-bottom: 0; }
 
 .prose a {
   color: var(--accent);
