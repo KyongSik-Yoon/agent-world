@@ -1,11 +1,11 @@
 // 3D 장면: 렌더러·카메라·조작, 스냅샷을 배우들로 옮기는 일, 고르기.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { CSS2DObject, CSS2DRenderer } from "three/addons/renderers/CSS2DRenderer.js";
 
 import type { AgentView, WorldSnapshot } from "../../shared/types.ts";
 import { Actor } from "./actor.ts";
 import { Environment, type Theme } from "./environment.ts";
+import { labels } from "./labels.ts";
 import { buildLayout, shellSpot, type Layout } from "./layout.ts";
 
 export interface SceneCallbacks {
@@ -41,7 +41,7 @@ const SHADOW_MS = 20;
 
 export class WorldScene {
   private readonly renderer: THREE.WebGLRenderer;
-  private readonly labels = new CSS2DRenderer();
+  private readonly labels = labels;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(36, 1, 0.5, 600);
   private readonly controls: OrbitControls;
@@ -103,7 +103,6 @@ export class WorldScene {
     this.renderer.toneMappingExposure = 1.05;
     container.append(this.renderer.domElement);
 
-    this.labels.domElement.className = "labels";
     container.append(this.labels.domElement);
 
     this.scene.fog = new THREE.Fog(FOG.day, 70, 210);
@@ -265,7 +264,7 @@ export class WorldScene {
     for (const group of this.shells.values()) {
       this.scene.remove(group);
       group.traverse((o) => {
-        if (o instanceof CSS2DObject) o.element.remove();
+        if (o.userData.label instanceof HTMLElement) this.labels.detach(o.userData.label);
         if (o instanceof THREE.Mesh) {
           o.geometry.dispose();
           (o.material as THREE.Material).dispose();
@@ -297,8 +296,11 @@ export class WorldScene {
       el.textContent = ">_";
       el.title = `셸 ${pane.id}${pane.label ? ` · ${pane.label}` : ""}`;
       el.addEventListener("click", () => this.callbacks.onSelect(pane.id));
-      const tag = new CSS2DObject(el);
+      const tag = new THREE.Object3D();
       tag.position.set(0, 1.25, 0);
+      tag.userData.label = el;
+      // 셸 표시는 가장 덜 급하다. 다른 이름표와 겹치면 숨는다(단말기 자체는 그대로 보이고 눌린다).
+      this.labels.attach({ el, anchor: tag, center: [0.5, 0.5], order: pane.id, rank: () => 6, sizes: () => [[30, 16]], hideable: () => true });
       group.add(stand, screen, tag);
       this.shells.set(pane.id, group);
       this.scene.add(group);
@@ -555,10 +557,11 @@ export class WorldScene {
     // 이름표(DOM)는 카메라나 캐릭터가 움직였을 때만 다시 놓는다. 가만히 있는 동안 매 프레임 위치와 겹침 순서를
     // 다시 쓰면 그리는 것보다 스타일 계산이 더 든다.
     const cameraMoved = !this.lastCamera.equals(this.camera.matrixWorld);
-    if (cameraMoved || this.walking || this.labelsDirty > 0) {
-      this.labels.render(this.scene, this.camera);
+    if (cameraMoved || this.walking || this.labelsDirty > 0 || this.labels.dirty) {
+      // 자세한 모습으로 돌아가려고 기다리는 이름표가 있으면 다음 프레임에도 본다.
+      if (this.labels.update(this.camera, now)) this.labelsDirty = Math.max(this.labelsDirty, 1);
+      else if (this.labelsDirty > 0) this.labelsDirty -= 1;
       this.lastCamera.copy(this.camera.matrixWorld);
-      if (this.labelsDirty > 0) this.labelsDirty -= 1;
     }
     this.tune(now);
   }

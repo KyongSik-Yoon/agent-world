@@ -117,6 +117,12 @@ input {
   opacity: 0.58;
 }
 
+/* 자리가 막혀 비켜 올라선 이름표: 조각들이 그만큼 부드럽게 올라간다(transform 과 따로 노는 translate 로). */
+.tag > * {
+  translate: 0 var(--lift, 0px);
+  transition: translate 0.18s ease-out;
+}
+
 .tag.hovered,
 .tag.selected {
   opacity: 1;
@@ -263,6 +269,16 @@ input {
   max-width: 190px;
   padding: 3px 8px;
   font-size: 11px;
+}
+
+/* 자리가 모자라 밀린 이름표: 말풍선을 접고(lod1), 그래도 겹치면 번호만 남긴다(lod2). */
+.tag.lod1 .bubble,
+.tag.lod2 .bubble {
+  display: none;
+}
+
+.tag.lod2 .name {
+  display: none;
 }
 
 .plot-sign {
@@ -1075,7 +1091,7 @@ kbd {
   border-radius: 6px;
   background: var(--blocked);
   color: #fff;
-  font: 600 11px/1.4 var(--sans, system-ui, sans-serif);
+  font: 600 11px/1.4 var(--font);
 }
 
 .term.preview .tl.rule {
@@ -1946,5 +1962,8 @@ dialog.dlg .warn {
 
 /* 이름표·문패는 3D 위를 떠다니며 자리만 바뀐다. 층으로 올려 두면 옮길 때마다 다시 칠하지 않는다. */
 .labels > * {
+  position: absolute;
+  top: 0;
+  left: 0;
   will-change: transform;
 }

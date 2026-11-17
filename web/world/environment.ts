@@ -1,8 +1,8 @@
 // 섬, 광장, 집터, 나무와 구름 — 배우들이 서는 무대.
 import * as THREE from "three";
-import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 import type { WorkspaceView } from "../../shared/types.ts";
+import { labels } from "./labels.ts";
 import { PLAZA_RADIUS, type Layout, type Plot } from "./layout.ts";
 
 export type Theme = "day" | "night";
@@ -218,7 +218,7 @@ export class Environment {
 
   private disposeTree(root: THREE.Object3D): void {
     root.traverse((o) => {
-      if (o instanceof CSS2DObject) o.element.remove();
+      if (o.userData.label instanceof HTMLElement) labels.detach(o.userData.label);
       if (o instanceof THREE.Mesh && o !== this.crystal) {
         o.geometry.dispose();
         // 합친 메시의 재질은 여기서만 쓰인다(테마 목록의 재질은 rebuild 가 목록째 버린다).
@@ -370,10 +370,17 @@ export class Environment {
     el.className = "plot-sign";
     el.style.setProperty("--hue", String(Math.round(plot.hue * 360)));
     el.addEventListener("click", () => this.onPlotClick(ws.id));
-    const sign = new CSS2DObject(el);
-    sign.center.set(0.5, 1);
+    const sign = new THREE.Object3D();
     sign.position.set(-1.6, 1.25, 3.3);
+    sign.userData.label = el;
     g.add(sign);
+    // 문패는 줄어들지 않는다. 일하거나 쉬는 에이전트의 이름표가 문패를 덮지 않고 비켜 간다.
+    const size: [number, number] = [96, 22];
+    labels.attach({ el, anchor: sign, order: ws.id, rank: () => 1, sizes: () => [size] });
+    labels.measure(el, (w, h) => {
+      size[0] = w;
+      size[1] = h;
+    });
     this.signs.set(ws.id, el);
     this.labelSign(ws);
   }

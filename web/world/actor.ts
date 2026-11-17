@@ -1,10 +1,10 @@
 // 에이전트 하나를 연기하는 배우: 캐릭터 모델, 머리 위 이름표·말풍선, 상태에 따른 자리와 몸짓.
 import * as THREE from "three";
-import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 import type { AgentStatus, AgentView } from "../../shared/types.ts";
 import { bubbleText } from "../format.ts";
 import { createRig, type Pose, type Rig } from "./characters.ts";
+import { labels, type Size } from "./labels.ts";
 import { gateSpot, plazaSlot, restSpot, workSpots, type Layout, type Spot } from "./layout.ts";
 
 const STATUS_COLOR: Record<AgentStatus, string> = {
@@ -49,6 +49,17 @@ const MAX_FOLLOWERS = 4;
 const FRESH_DONE_MS = 90_000;
 /** 카메라가 이보다 멀면 쉬거나 기다리는 에이전트의 이름을 접고 번호만 남긴다. */
 const FAR_DISTANCE = 50;
+/** 이름표의 모습: 말풍선과 이름 → 이름만 → 번호만. 자리가 모자라면 뒤쪽으로 줄어든다. */
+const LOD_CLASS = ["", "lod1", "lod2"];
+/**
+ * 자리 다툼에서의 차례 — 나를 부르는 쪽이 먼저 자리를 잡는다. 문패는 1 이다(environment): 확인이 필요한 에이전트는
+ * 바로 문패 옆 대문에 서는데, 빛기둥과 고리로 이미 눈에 띄므로 말풍선이 문패를 덮기보다 문패를 비켜 접힌다.
+ */
+const RANK: Record<AgentStatus, number> = { blocked: 2, done: 3, working: 4, idle: 5, unknown: 5 };
+/** 제자리가 막혔을 때 이름표가 비켜 올라설 수 있는 높이(px) — 문패 한 줄, 두 줄 높이만큼. */
+const LIFTS = [0, 28, 56] as const;
+/** 크기를 아직 재지 못했을 때 쓰는 어림값(px). */
+const GUESS = { bubble: [118, 28], plate: [112, 21], compact: [34, 21] } as const satisfies Record<string, Size>;
 
 function hash(text: string): number {
   let h = 2166136261;
@@ -85,9 +96,18 @@ export class Actor {
   private readonly ringMat: THREE.MeshBasicMaterial;
   private readonly pillar: THREE.Mesh;
   private readonly pillarMat: THREE.MeshBasicMaterial;
-  private readonly label: CSS2DObject;
+  private readonly anchor = new THREE.Object3D();
   private readonly tag: HTMLDivElement;
   private readonly bubble: HTMLDivElement;
+  private readonly plate: HTMLDivElement;
+  /** 브라우저가 알려 준 조각들의 크기. 이름표가 겹치는지는 이 값으로 셈한다. */
+  private bubbleSize: Size = GUESS.bubble;
+  private plateSize: Size = GUESS.plate;
+  private compactSize: Size = GUESS.compact;
+  private lod = 0;
+  private far = false;
+  /** 마지막으로 이름표에 적어 둔 표시들 — 달라졌을 때만 클래스를 고친다. */
+  private shownAs = "";
   private readonly plateNum: HTMLSpanElement;
   private readonly plateName: HTMLSpanElement;
   private readonly followers: Array<{ rig: Rig; phase: number }> = [];
@@ -147,7 +167,7 @@ export class Actor {
     this.tag.className = "tag";
     this.bubble = document.createElement("div");
     this.bubble.className = "bubble";
-    const plate = document.createElement("div");
+    const plate = (this.plate = document.createElement("div"));
     plate.className = "plate";
     const dot = document.createElement("span");
     dot.className = "dot";
@@ -163,10 +183,31 @@ export class Actor {
     });
     this.tag.addEventListener("pointerenter", () => onHover(this.view.id));
     this.tag.addEventListener("pointerleave", () => onHover(null));
-    this.label = new CSS2DObject(this.tag);
-    this.label.center.set(0.5, 1);
-    this.label.position.y = this.rig.height;
-    this.group.add(this.label);
+    this.anchor.position.y = this.rig.height;
+    this.group.add(this.anchor);
+    labels.attach({
+      el: this.tag,
+      anchor: this.anchor,
+      order: view.id,
+      rank: () => (this.hovered || this.selected ? 0 : this.muted ? 8 : RANK[this.view.status]),
+      pinned: () => this.hovered || this.selected,
+      sizes: () => this.sizes(),
+      lifts: LIFTS,
+      // 번호만 남기고도 겹치면 숨는다(캐릭터와 발밑 고리는 그대로 보이고, 올리거나 고르면 다시 나온다).
+      // 나를 부르는 에이전트는 숨기지 않는다 — 겹치더라도 번호는 남긴다.
+      hideable: () => this.view.status !== "blocked",
+      setLevel: (level) => {
+        this.lod = level;
+      },
+    });
+    labels.measure(this.bubble, (w, h) => {
+      this.bubbleSize = [w, h];
+    });
+    labels.measure(plate, (w, h) => {
+      // 이름을 접은 동안에 잰 것은 번호만 남은 모습의 크기다.
+      if (this.nameHidden()) this.compactSize = [w, h];
+      else this.plateSize = [w, h];
+    });
 
     this.apply(view);
   }
@@ -199,6 +240,25 @@ export class Actor {
     this.bubbleFull = full;
     const text = bubbleText(this.view, full);
     if (text !== null && this.bubble.textContent !== text) this.bubble.textContent = text;
+  }
+
+  /** 멀리서는 쉬거나 끝난 에이전트의 이름을 접는다(스타일시트의 .far 규칙과 같은 조건). */
+  private farFolds(): boolean {
+    const status = this.view.status;
+    return this.far && !this.hovered && !this.selected && status !== "working" && status !== "blocked";
+  }
+
+  private nameHidden(): boolean {
+    return this.lod >= 2 || this.farFolds();
+  }
+
+  /** 이름표가 줄어들 수 있는 모습들의 크기: 말풍선과 이름 → 이름만 → 번호만. */
+  private sizes(): readonly Size[] {
+    const plate = this.farFolds() ? this.compactSize : this.plateSize;
+    const gap = 4;
+    const foot = 6;
+    const full: Size = this.bubble.hidden ? [plate[0], plate[1] + foot] : [Math.max(this.bubbleSize[0], plate[0]), this.bubbleSize[1] + gap + plate[1] + foot];
+    return [full, [plate[0], plate[1] + foot], [this.compactSize[0], this.compactSize[1] + foot]];
   }
 
   private syncFollowers(): void {
@@ -313,10 +373,13 @@ export class Actor {
     });
 
     this.syncBubble();
-    this.tag.classList.toggle("far", camera.position.distanceTo(pos) > FAR_DISTANCE);
-    this.tag.classList.toggle("hovered", this.hovered);
-    this.tag.classList.toggle("selected", this.selected);
-    this.tag.classList.toggle("muted", this.muted);
+    this.far = camera.position.distanceTo(pos) > FAR_DISTANCE;
+    // 매 프레임 불리지만 표시는 드물게 바뀐다. 달라졌을 때만 DOM 을 건드린다.
+    const shownAs = `tag${this.far ? " far" : ""}${this.hovered ? " hovered" : ""}${this.selected ? " selected" : ""}${this.muted ? " muted" : ""} ${LOD_CLASS[this.lod] ?? "lod2"}`;
+    if (shownAs !== this.shownAs) {
+      this.tag.className = shownAs;
+      this.shownAs = shownAs;
+    }
   }
 
   /**
@@ -339,7 +402,9 @@ export class Actor {
   }
 
   dispose(): void {
-    this.tag.remove();
+    labels.unmeasure(this.bubble);
+    labels.unmeasure(this.plate);
+    labels.detach(this.tag);
     this.rig.dispose();
     for (const f of this.followers) f.rig.dispose();
     this.hit.geometry.dispose();
