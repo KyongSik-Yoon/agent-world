@@ -68,6 +68,8 @@ interface Themed {
 
 /** 문패가 기둥에 걸리는 자리: 가운데, 오른쪽으로 내어 걸기, 왼쪽으로 내어 걸기. */
 const SIGN_SHIFTS = [0, 0.5, -0.5] as const;
+/** 옆으로 비켜도 다른 문패와 겹치면 한 줄 위에, 살짝 걸친 정도면 조금 아래에 걸어 본다. 그래도 안 되면 번호만 남긴다. */
+const SIGN_LIFTS = [0, 26, -14] as const;
 
 export class Environment {
   readonly group = new THREE.Group();
@@ -377,12 +379,27 @@ export class Environment {
     sign.position.set(-1.6, 1.25, 3.3);
     sign.userData.label = el;
     g.add(sign);
-    // 문패는 줄어들지 않는다. 일하거나 쉬는 에이전트의 이름표가 문패를 덮지 않고 비켜 간다.
+    // 문패는 숨지 않는다. 일하거나 쉬는 에이전트의 이름표가 문패를 덮지 않고 비켜 간다.
+    // 다만 좁은 화면에서는 문패끼리 겹친다 — 옆으로도 한 줄 위로도 자리가 없으면 번호만 남긴다(번호가 있을 때).
     const size: [number, number] = [96, 22];
-    labels.attach({ el, anchor: sign, order: ws.id, rank: () => 1, sizes: () => [size], shifts: SIGN_SHIFTS });
+    const compact: [number, number] = [30, 22];
+    const full = [size];
+    const both = [size, compact];
+    labels.attach({
+      el,
+      anchor: sign,
+      order: ws.id,
+      rank: () => 1,
+      sizes: () => (el.classList.contains("numbered") ? both : full),
+      shifts: SIGN_SHIFTS,
+      lifts: SIGN_LIFTS,
+      setLevel: (level) => el.classList.toggle("compact", level === 1),
+    });
     labels.measure(el, (w, h) => {
-      size[0] = w;
-      size[1] = h;
+      // 올려놓아 이름이 다시 펴진 동안에 잰 것은 온전한 크기다.
+      const into = el.matches(".compact:not(:hover)") ? compact : size;
+      into[0] = w;
+      into[1] = h;
     });
     this.signs.set(ws.id, el);
     this.labelSign(ws);
@@ -392,7 +409,13 @@ export class Environment {
   labelSign(ws: WorkspaceView): void {
     const el = this.signs.get(ws.id);
     if (!el) return;
-    el.textContent = ws.number ? `${ws.number} · ${ws.label}` : ws.label;
+    // 번호와 이름을 따로 둔다 — 자리가 없으면 이름을 접고 번호만 남긴다.
+    const name = document.createElement("span");
+    name.className = "sign-name";
+    name.textContent = ws.number ? ` · ${ws.label}` : ws.label;
+    el.replaceChildren(...(ws.number ? [String(ws.number), name] : [name]));
+    el.classList.toggle("numbered", Boolean(ws.number));
+    el.setAttribute("aria-label", ws.number ? `${ws.number} · ${ws.label}` : ws.label);
     el.classList.toggle("focused", ws.focused);
     el.title = ws.topic ? `${ws.label} — ${ws.topic}` : ws.label;
   }

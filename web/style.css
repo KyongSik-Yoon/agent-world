@@ -300,8 +300,12 @@ input {
 
 /* 이름표를 덜 가리는 쪽으로 기둥 옆에 내어 걸린 문패: 그만큼 부드럽게 옮겨 간다. */
 .plot-sign {
-  translate: var(--shift, 0%) 0;
+  translate: var(--shift, 0%) var(--lift, 0px);
   transition: translate 0.2s ease-out;
+}
+
+.plot-sign.compact:not(:hover) .sign-name {
+  display: none;
 }
 
 .plot-sign.focused {
