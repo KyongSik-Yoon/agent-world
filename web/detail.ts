@@ -461,7 +461,7 @@ export class DetailPanel {
     const big = this.button("크게 보기 ⤢", () => this.callbacks.act({ type: "terminal", paneId: a.paneId! }), { cls: "" });
     const card = h("section", { class: "ask" }, h("h3", {}, "답을 기다리고 있어요", big));
     if (a.pending) card.append(this.pendingBlock(a.pending));
-    card.append(this.preview.el, h("p", { class: "hint" }, "대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 크게 보기에서 직접 입력하세요."));
+    card.append(this.preview.el, h("p", { class: "hint" }, this.snapshot?.control ? "대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 크게 보기에서 직접 입력하세요." : "보기 전용이라 여기서는 답할 수 없습니다. herdr 에서 열어 답해 주세요."));
     return card;
   }
 
