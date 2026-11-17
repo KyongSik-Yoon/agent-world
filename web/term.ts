@@ -178,19 +178,25 @@ const INPUT_RULE = /^\u2500{20,}$/;
 const FOOTER_REACH = 24;
 /** 입력창 안의 글이 차지할 수 있는 줄 수. 두 가로줄이 이보다 멀면 입력창이 아니라 대화를 가르는 줄이다. */
 const INPUT_ROWS = 12;
+/** 입력창의 첫 줄은 프롬프트 기호로 시작한다. 두 가로줄 사이가 이렇게 시작하지 않으면 입력창으로 보지 않는다. */
+const PROMPT_LINE = /^\s{0,2}[\u276f>\u203a\u00bb]/;
 
 /**
- * 화면 아래쪽의 입력창이 시작하는 줄. 없으면 -1.
+ * 입력창 아래의 꾸밈(상태줄·안내줄)이 시작하는 줄. 입력창을 확실히 찾지 못하면 -1.
  *
- * 입력창은 가로줄 두 개 사이에 있고 그 아래로 상태줄과 안내줄이 온다. 데스크톱 폭에 맞춰 그린 이 부분은
- * 좁은 미리보기에서 줄이 넘쳐 깨지는데, 담긴 것(모델·컨텍스트)은 상태 창이 이미 보여 준다.
+ * 데스크톱 폭에 맞춰 그린 상태줄은 좁은 미리보기에서 줄이 넘쳐 깨지는데, 담긴 것(모델·컨텍스트)은 상태 창이
+ * 이미 보여 준다. 입력창 자체는 남긴다 — 보낸 말이나 붙인 이미지가 거기 남아 있는지를 미리보기로 확인하기 때문이다.
+ * 가로줄 두 개와 그 사이의 프롬프트 줄이 모두 보일 때만 자르므로, 대화상자처럼 모양이 다른 화면은 그대로 나온다.
  */
-function inputBoxStart(lines: HTMLElement[]): number {
+export function footerStart(lines: readonly string[]): number {
   const rules: number[] = [];
   for (let i = lines.length - 1; i >= Math.max(0, lines.length - FOOTER_REACH) && rules.length < 2; i -= 1) {
-    if (INPUT_RULE.test(plainText(lines[i]!).trim())) rules.push(i);
+    if (INPUT_RULE.test(lines[i]!.trim())) rules.push(i);
   }
-  return rules.length === 2 && rules[0]! - rules[1]! <= INPUT_ROWS + 1 ? rules[1]! : -1;
+  const [bottom, top] = rules;
+  if (bottom === undefined || top === undefined || bottom - top > INPUT_ROWS + 1) return -1;
+  const first = lines.slice(top + 1, bottom).find((l) => l.trim() !== "");
+  return first !== undefined && PROMPT_LINE.test(first) ? bottom + 1 : -1;
 }
 
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
@@ -202,8 +208,8 @@ export class TermScreen {
   /** 화면을 보고 있어야 하는 상태인지 — 끊겼을 때 다시 붙을지 정한다. */
   private wanted = false;
   onGone: (() => void) | undefined;
-  /** 미리보기에서 입력창부터 아래를 빼고 대화 부분만 보여 준다. 대화상자를 읽어야 할 때는 끈다. */
-  hideInput = false;
+  /** 미리보기에서 입력창 아래의 상태줄·안내줄을 뺀다. */
+  hideFooter = false;
   private lastText: string | undefined;
 
   constructor(private readonly options: ScreenOptions = {}) {
@@ -263,7 +269,7 @@ export class TermScreen {
     return this.source !== undefined;
   }
 
-  /** hideInput 을 바꾼 뒤, 받아 둔 화면으로 다시 그린다. */
+  /** hideFooter 를 바꾼 뒤, 받아 둔 화면으로 다시 그린다. */
   redraw(): void {
     if (this.lastText !== undefined) this.draw(this.lastText);
   }
@@ -276,13 +282,9 @@ export class TermScreen {
       while (lines.length > 1 && plainText(lines[lines.length - 1]!).trim() === "") lines.pop();
     };
     if (tail || this.back > 0) trim();
-    if (tail && this.hideInput) {
-      const start = inputBoxStart(lines);
-      // 입력창 위에 보여 줄 것이 없으면(막 띄운 에이전트) 자르지 않는다.
-      if (start > 0 && lines.slice(0, start).some((l) => plainText(l).trim() !== "")) {
-        lines = lines.slice(0, start);
-        trim();
-      }
+    if (tail && this.hideFooter) {
+      const start = footerStart(lines.map(plainText));
+      if (start > 0) lines = lines.slice(0, start);
     }
     if (tail) lines = lines.slice(-tail);
     const stick = this.back === 0 || this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40;
