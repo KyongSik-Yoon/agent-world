@@ -74,6 +74,10 @@ export class WorldScene {
   private lastInputAt = performance.now();
   private shadowAt = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  /** 다른 화면(터미널 크게 보기)에 덮여 보이지 않는다 — 그리지 않는다. */
+  private covered = false;
+  /** 덮여 있어 다음 프레임을 걸지 않고 멈춰 있다. */
+  private parked = false;
   /** 이름표 층을 다시 놓아야 하는 프레임 수(스냅샷·크기·고르기가 바뀐 직후). */
   private labelsDirty = 3;
   /** 고른 캐릭터가 다른 자리로 가는 중이라 카메라가 따라 움직이고 있다. */
@@ -425,6 +429,14 @@ export class WorldScene {
     this.callbacks.onSelect(this.pick(e));
   }
 
+  /** 화면이 다른 것에 덮여 있는 동안에는 그리기를 멈추고, 걷히면 바로 이어 그린다. */
+  setCovered(covered: boolean): void {
+    this.covered = covered;
+    if (covered || !this.parked) return;
+    this.parked = false;
+    requestAnimationFrame(this.tick);
+  }
+
   /**
    * 지금 몇 ms 간격으로 그릴지: 조작 중 0(주사율 그대로), 가만히 두면 30장쯤, 곁눈질 화면이면 12장쯤.
    *
@@ -446,6 +458,10 @@ export class WorldScene {
    * 초당 60번 깨어나 화면 합성까지 돈다. 쉴 만큼 타이머로 기다렸다가 그때 한 번만 건다.
    */
   private readonly tick = (): void => {
+    if (this.covered) {
+      this.parked = true;
+      return;
+    }
     this.frame();
     const now = performance.now();
     const wait = this.lastFrameAt + this.pace(now) - now;

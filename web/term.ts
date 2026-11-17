@@ -428,6 +428,8 @@ export class TermOverlay {
   /** 보내고 아직 답을 받지 못한 입력의 수. */
   private sending = 0;
   onError: ((message: string) => void) | undefined;
+  /** 열리고 닫힐 때 알린다 — 열려 있는 동안에는 뒤의 월드가 가려진다. */
+  onToggle: ((open: boolean) => void) | undefined;
 
   constructor() {
     this.root.id = "term-overlay";
@@ -534,6 +536,7 @@ export class TermOverlay {
     this.syncBack();
     this.fit();
     this.ime.focus();
+    this.onToggle?.(true);
   }
 
   close(): void {
@@ -541,6 +544,7 @@ export class TermOverlay {
     this.flush();
     this.root.hidden = true;
     this.screen.stop();
+    this.onToggle?.(false);
   }
 
   private toggleBack(): void {

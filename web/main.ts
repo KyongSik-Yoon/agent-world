@@ -57,6 +57,7 @@ const hud = new Hud({
 
 const terminal = new TermOverlay();
 terminal.onError = (message) => hud.toast("입력을 보내지 못했습니다", message, "var(--blocked)");
+terminal.onToggle = (open) => scene.setCovered(open);
 void loadTermTheme();
 
 const builder = new Builder({
