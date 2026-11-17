@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 import type { AgentView, WorldSnapshot } from "../../shared/types.ts";
-import { Actor } from "./actor.ts";
+import { Actor, PICK_LAYER } from "./actor.ts";
 import { Environment, type Theme } from "./environment.ts";
 import { labels } from "./labels.ts";
 import { buildLayout, shellSpot, type Layout } from "./layout.ts";
@@ -109,6 +109,7 @@ export class WorldScene {
     this.env = new Environment((workspaceId) => this.callbacks.onPlot(workspaceId));
     this.scene.add(this.env.group);
 
+    this.raycaster.layers.set(PICK_LAYER);
     this.camera.position.set(0, 34, 44);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;

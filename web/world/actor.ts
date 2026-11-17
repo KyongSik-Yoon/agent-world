@@ -15,6 +15,9 @@ const STATUS_COLOR: Record<AgentStatus, string> = {
   unknown: "#8A93A6",
 };
 
+/** 클릭을 받는 상자들이 사는 층. 그리는 카메라는 보지 않고, 고를 때 쏘는 광선만 본다. */
+export const PICK_LAYER = 1;
+
 const WALK_SPEED = 1.9;
 const RUN_SPEED = 5.2;
 const PILLAR_HEIGHT = 6.5;
@@ -139,6 +142,8 @@ export class Actor {
     );
     this.hit.position.y = 1.0;
     this.hit.userData.actorId = view.id;
+    // 고르기 전용 층에 둔다. 카메라는 이 층을 그리지 않는다 — 보이지 않는 상자를 배우마다 한 번씩 더 그리지 않게.
+    this.hit.layers.set(PICK_LAYER);
     this.group.add(this.hit);
 
     this.ringMat = new THREE.MeshBasicMaterial({ color: STATUS_COLOR[view.status], transparent: true, opacity: 0.85, depthWrite: false });
