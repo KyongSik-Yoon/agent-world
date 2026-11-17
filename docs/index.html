@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="ko" data-lang="ko" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent World: 코딩 에이전트들이 사는 3D 마을</title>
+<meta name="description" content="herdr 에 띄워 둔 코딩 에이전트를 3D 마을로 보여 주는 로컬 대시보드. 캐릭터가 서 있는 곳이 곧 상태이고, 창을 옮기지 않고 지시하고 답합니다. A 3D village for the coding agents running in herdr.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Agent World: 코딩 에이전트들이 사는 3D 마을">
+<meta property="og:description" content="A 3D village for the coding agents running in herdr. See who needs you, talk to them, and build new workspaces from the browser.">
+<meta property="og:url" content="https://kyongsik-yoon.github.io/agent-world/">
+<meta property="og:image" content="https://kyongsik-yoon.github.io/agent-world/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#7cc4f1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 42'%3E%3Cpath d='M8 11H34V19H38V23H34V31H31.5V27H30V31H27.5V27H14.5V31H12V27H10.5V31H8V23H4V19H8Z' fill='%23D77757'/%3E%3Crect x='11.75' y='14.6' width='2.8' height='4.6' fill='%2309090B'/%3E%3Crect x='27.45' y='14.6' width='2.8' height='4.6' fill='%2309090B'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Jua&display=swap" rel="stylesheet">
+<script>
+  // 그리기 전에 말과 낮/밤을 정한다(깜빡임 방지). 저장소를 못 쓰는 브라우저에서도 그냥 지나간다.
+  (function () {
+    var d = document.documentElement, lang, theme;
+    try { lang = localStorage.getItem("aw-lang"); theme = localStorage.getItem("aw-theme"); } catch (e) {}
+    if (!lang) lang = /^ko/i.test(navigator.language || "") ? "ko" : "en";
+    if (!theme) theme = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "day";
+    d.dataset.lang = lang; d.lang = lang; d.dataset.theme = theme; d.classList.add("js");
+  })();
+</script>
+<style>
+:root {
+  --working: #f5a524; --done: #2fbf71; --blocked: #f0506e; --idle: #8a93a6;
+  --clawd: #d77757;
+  --display: "Jua", "IBM Plex Sans KR", system-ui, sans-serif;
+  --body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "D2Coding", monospace;
+  --radius: 18px;
+  --wrap: 1120px;
+}
+html[data-theme="day"] {
+  --sky: linear-gradient(180deg, #6fbcee 0%, #a9d8f5 38%, #dcefee 100%);
+  --panel: rgba(255, 255, 255, 0.78); --panel-solid: #ffffff;
+  --line: rgba(30, 40, 70, 0.12);
+  --ink: #1a2238; --ink-2: #4c5873; --ink-3: #7b859c;
+  --soft: rgba(30, 40, 70, 0.06);
+  --accent: #3b6ef5; --accent-ink: #ffffff;
+  --shadow: 0 14px 44px rgba(30, 50, 90, 0.18);
+  --code-bg: #101626; --code-ink: #e8edfb;
+  --cloud: #ffffff; --cloud-2: #e3eaf2;
+  --grass: #9ad67f; --grass-2: #86c96d; --grass-3: #b3e39b; --rim: #6fae5c;
+  --rock-1: #c9b79d; --rock-2: #b09c82; --rock-3: #96836c;
+  --sand: #e9dcc0; --stone: #e6dfd3; --stone-line: #cfc6b6;
+  --wall: #f3ecdf; --wall-2: #dbd0bf; --roof-a: #dca4dd; --roof-a2: #bb82c8; --roof-b: #f3d88e; --roof-b2: #dcb768;
+  --tree-1: #4fae62; --tree-2: #3c9652; --tree-3: #2f7f47; --trunk: #8a5a3c;
+  --plate: rgba(22, 28, 46, 0.86);
+}
+html[data-theme="night"] {
+  --sky: radial-gradient(ellipse at 72% 6%, #2b3a78 0%, transparent 42%), linear-gradient(180deg, #080c1f 0%, #141a36 55%, #2a2648 100%);
+  --panel: rgba(18, 21, 36, 0.76); --panel-solid: #161a2c;
+  --line: rgba(190, 205, 255, 0.15);
+  --ink: #eef1fb; --ink-2: #b4bdd8; --ink-3: #8490b0;
+  --soft: rgba(190, 205, 255, 0.08);
+  --accent: #7ea2ff; --accent-ink: #0b1024;
+  --shadow: 0 14px 44px rgba(0, 0, 0, 0.5);
+  --code-bg: #0a0e1c; --code-ink: #e8edfb;
+  --cloud: #3a4391; --cloud-2: #2c3478;
+  --grass: #14505c; --grass-2: #10434f; --grass-3: #1a5f68; --rim: #0b2f3b;
+  --rock-1: #3c3f66; --rock-2: #2f3256; --rock-3: #242746;
+  --sand: #2b3270; --stone: #3a3a7a; --stone-line: #4b4c94;
+  --wall: #4a4f8c; --wall-2: #3a3f76; --roof-a: #7a54c4; --roof-a2: #5e3fa5; --roof-b: #6f6f86; --roof-b2: #57586e;
+  --tree-1: #1f6c6a; --tree-2: #185a5c; --tree-3: #12494e; --trunk: #3a2f4a;
+  --plate: rgba(8, 10, 20, 0.86);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+body {
+  margin: 0; color: var(--ink); background: var(--sky) fixed; background-color: #a9d8f5;
+  font: 400 17px/1.7 var(--body); -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+html[data-theme="night"] body { background-color: #141a36; }
+html[data-lang="ko"] body { word-break: keep-all; }
+html[data-lang="ko"] [lang="en"], html[data-lang="en"] [lang="ko"] { display: none !important; }
+html[data-theme="day"] .night-only, html[data-theme="night"] .day-only { display: none !important; }
+a { color: var(--accent); text-underline-offset: 3px; }
+img { max-width: 100%; display: block; }
+code, kbd { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--soft); padding: 0.12em 0.4em; border-radius: 6px; }
+.wrap { width: min(var(--wrap), 100% - 32px); margin-inline: auto; }
+.glass { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; line-height: 1.22; margin: 0; letter-spacing: -0.005em; text-wrap: balance; }
+h1 { font-size: clamp(2.2rem, 5.6vw, 4rem); }
+h2 { font-size: clamp(1.65rem, 3.6vw, 2.5rem); }
+h3 { font-size: 1.22rem; }
+p { margin: 0; }
+
+/* 머리말 — 앱의 위쪽 막대와 같은 유리판 */
+.top { position: sticky; top: 12px; z-index: 20; margin-top: 12px; }
+.top .bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 14px; border-radius: 16px; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; color: var(--ink); text-decoration: none; margin-right: 6px; white-space: nowrap; }
+.brand svg { width: 26px; height: 26px; }
+.top nav { display: flex; gap: 2px; margin-left: 4px; }
+.top nav a { color: var(--ink-2); text-decoration: none; font-size: 0.9rem; font-weight: 500; padding: 6px 10px; border-radius: 10px; white-space: nowrap; }
+.top nav a:hover { background: var(--soft); color: var(--ink); }
+.spacer { flex: 1; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 0 13px; border-radius: 11px; border: 1px solid var(--line); background: var(--soft); color: var(--ink); font: 600 0.88rem var(--body); cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible, .chip:focus-visible, .copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.icon { width: 38px; padding: 0; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 첫 화면 */
+.hero { position: relative; padding: clamp(36px, 7vw, 76px) 0 24px; }
+.hero .lede { max-width: 760px; margin-inline: auto; text-align: center; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 600 0.82rem var(--body); color: var(--ink-2); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 13px; margin-bottom: 18px; }
+.eyebrow i { width: 8px; height: 8px; border-radius: 50%; background: var(--done); }
+.hero p.sub { margin-top: 18px; font-size: clamp(1.02rem, 1.7vw, 1.2rem); color: var(--ink-2); }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 26px; }
+.cmd { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 6px 6px 6px 16px; font: 400 0.9rem var(--mono); box-shadow: var(--shadow); }
+.cmd .line { overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.cmd .line::-webkit-scrollbar { display: none; }
+.cmd .line::before { content: "$ "; color: #7f8bb0; }
+.copy { flex: none; border: 0; border-radius: 8px; min-height: 32px; padding: 0 11px; background: rgba(255, 255, 255, 0.12); color: #fff; font: 600 0.78rem var(--body); cursor: pointer; }
+.copy:hover { background: rgba(255, 255, 255, 0.22); }
+
+/* 구름 */
+.clouds { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; }
+.cloud { position: absolute; width: 220px; opacity: 0.9; animation: drift 70s linear infinite alternate; }
+.cloud path:nth-child(1) { fill: var(--cloud-2); } .cloud path:nth-child(2) { fill: var(--cloud); }
+.cloud.c1 { top: 6%; left: 4%; } .cloud.c2 { top: 30%; right: 2%; width: 280px; animation-duration: 95s; animation-direction: alternate-reverse; }
+.cloud.c3 { top: 62%; left: -3%; width: 300px; animation-duration: 110s; } .cloud.c4 { top: 80%; right: 12%; width: 190px; animation-duration: 80s; animation-direction: alternate-reverse; }
+@keyframes drift { from { transform: translateX(-30px); } to { transform: translateX(60px); } }
+
+/* 시연 무대 */
+.stage-wrap { margin-top: clamp(20px, 4vw, 36px); }
+.stage { position: relative; width: min(860px, 100%); margin-inline: auto; aspect-ratio: 720 / 480; container-type: inline-size; }
+.island { position: absolute; inset: 0; width: 100%; height: 100%; animation: bob 7s ease-in-out infinite; overflow: visible; }
+@keyframes bob { 50% { transform: translateY(-1.1%); } }
+.island * { transition: fill 0.4s; }
+.f-grass { fill: var(--grass); } .f-grass2 { fill: var(--grass-2); } .f-grass3 { fill: var(--grass-3); } .f-rim { fill: var(--rim); }
+.f-rock1 { fill: var(--rock-1); } .f-rock2 { fill: var(--rock-2); } .f-rock3 { fill: var(--rock-3); }
+.f-sand { fill: var(--sand); } .s-sand { stroke: var(--sand); } .f-stone { fill: var(--stone); } .s-stone { stroke: var(--stone-line); fill: none; }
+.f-wall { fill: var(--wall); } .f-wall2 { fill: var(--wall-2); } .f-roofa { fill: var(--roof-a); } .f-roofa2 { fill: var(--roof-a2); } .f-roofb { fill: var(--roof-b); } .f-roofb2 { fill: var(--roof-b2); }
+.roof1 { fill: var(--r1); } .roof2 { fill: var(--r2); } .ha { --r1: var(--roof-a); --r2: var(--roof-a2); } .hb { --r1: var(--roof-b); --r2: var(--roof-b2); }
+.f-t1 { fill: var(--tree-1); } .f-t2 { fill: var(--tree-2); } .f-t3 { fill: var(--tree-3); } .f-trunk { fill: var(--trunk); }
+.layer { position: absolute; inset: 0; animation: bob 7s ease-in-out infinite; }
+.sign { position: absolute; transform: translate(-50%, -100%); background: var(--panel-solid); color: var(--ink); font: 600 clamp(9px, 1.75cqw, 13px) var(--body); padding: 0.25em 0.7em; border-radius: 0.45em; border-left: 0.35em solid #b05ad8; box-shadow: 0 2px 8px rgba(20, 30, 60, 0.2); white-space: nowrap; }
+.sign.b { border-left-color: #e0a63a; }
+.actor { position: absolute; left: 34.7%; top: 60.8%; width: 0; height: 0; transition: left 1.35s cubic-bezier(0.45, 0.05, 0.3, 1), top 1.35s cubic-bezier(0.45, 0.05, 0.3, 1); --c: var(--working); }
+.actor[data-state="blocked"] { --c: var(--blocked); } .actor[data-state="done"] { --c: var(--done); } .actor[data-state="idle"] { --c: var(--idle); }
+.actor .ring { position: absolute; left: 0; top: 0; width: 11cqw; height: 4.4cqw; transform: translate(-50%, -50%); border: 0.55cqw solid var(--c); border-radius: 50%; opacity: 0.9; transition: border-color 0.4s, opacity 0.4s; }
+.actor[data-state="idle"] .ring { opacity: 0; }
+.actor .beam { position: absolute; left: 0; bottom: 0; width: 6cqw; height: 30cqw; transform: translateX(-50%); background: linear-gradient(0deg, var(--c), transparent); opacity: 0; transition: opacity 0.5s; border-radius: 50% 50% 0 0 / 8% 8% 0 0; }
+.actor[data-state="done"]:not(.walk) .beam, .actor[data-state="blocked"]:not(.walk) .beam { opacity: 0.5; }
+.actor .body { position: absolute; left: 0; bottom: -0.6cqw; width: 9cqw; transform: translateX(-50%); transition: opacity 0.5s, filter 0.5s; }
+.actor .body svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 0.5cqw 0.4cqw rgba(30, 20, 10, 0.25)); }
+.actor.walk .body svg { animation: step 0.34s ease-in-out infinite; }
+.actor[data-state="blocked"]:not(.walk) .body svg { animation: hop 0.62s cubic-bezier(0.3, 0, 0.5, 1) infinite; }
+.actor[data-state="idle"]:not(.walk) .body { opacity: 0.6; filter: saturate(0.6); }
+@keyframes step { 50% { transform: translateY(-7%) rotate(-3deg); } }
+@keyframes hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-34%); } }
+.actor .labels { position: absolute; left: 0; bottom: 9.6cqw; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0.5cqw; white-space: nowrap; font: 600 clamp(9px, 1.8cqw, 13.5px) var(--body); }
+.bubble { background: #fff; color: #1a2238; border: 0.15em solid var(--c); border-radius: 1.2em; padding: 0.28em 0.85em; box-shadow: 0 3px 10px rgba(20, 30, 60, 0.2); transition: opacity 0.3s, border-color 0.4s; }
+.actor[data-state="blocked"] .bubble { background: var(--blocked); color: #fff; }
+.actor.walk .bubble, .actor[data-state="idle"] .bubble { opacity: 0; }
+.tag { background: var(--plate); color: #fff; border-radius: 1em; padding: 0.22em 0.8em 0.22em 0.6em; display: flex; align-items: center; gap: 0.45em; }
+.tag i { width: 0.6em; height: 0.6em; border-radius: 50%; background: var(--c); transition: background 0.4s; }
+.tag b { font-weight: 500; opacity: 0.7; }
+.zz { position: absolute; left: 4.2cqw; bottom: 7cqw; font: 400 clamp(11px, 2.4cqw, 18px) var(--display); color: var(--ink-2); opacity: 0; }
+.actor[data-state="idle"]:not(.walk) .zz { animation: zz 2.4s ease-in-out infinite; }
+@keyframes zz { 0% { opacity: 0; transform: translate(0, 0) scale(0.7); } 40% { opacity: 0.9; } 100% { opacity: 0; transform: translate(1.6cqw, -3.4cqw) scale(1.1); } }
+
+.states { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 15px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 600 0.92rem var(--body); cursor: pointer; }
+.chip i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.chip[aria-pressed="true"] { border-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 28%, transparent); }
+.caption { text-align: center; margin-top: 14px; min-height: 3.4em; color: var(--ink-2); max-width: 560px; margin-inline: auto; }
+.caption b { color: var(--ink); }
+.note { text-align: center; font-size: 0.8rem; color: var(--ink-3); margin-top: 4px; }
+
+/* 장 */
+section { padding: clamp(44px, 8vw, 96px) 0; }
+.head { max-width: 720px; margin-bottom: clamp(22px, 4vw, 40px); }
+.head.center { margin-inline: auto; text-align: center; }
+.head p { margin-top: 14px; color: var(--ink-2); font-size: 1.06rem; }
+.kicker, .head p.kicker { font: 600 0.8rem var(--mono); color: var(--accent); margin-top: 0; letter-spacing: 0.04em; margin-bottom: 10px; text-transform: uppercase; }
+.shot { border-radius: 16px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: var(--panel-solid); }
+.shot img { width: 100%; height: auto; }
+figure { margin: 0; }
+figcaption { font-size: 0.84rem; color: var(--ink-3); margin-top: 10px; text-align: center; }
+.split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(22px, 4vw, 52px); align-items: center; }
+.split.flip { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+.split.flip .text { order: 2; }
+.points { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 14px; }
+.points li { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+.points .n { width: 34px; height: 34px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line); display: grid; place-items: center; font: 600 0.8rem var(--mono); color: var(--ink); }
+.points h3 { font: 600 1.02rem var(--body); margin-bottom: 2px; }
+.points p { color: var(--ink-2); font-size: 0.97rem; }
+.legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 22px; }
+.legend div { padding: 16px; border-radius: 14px; }
+.legend h3 { font: 600 0.98rem var(--body); display: flex; align-items: center; gap: 8px; }
+.legend h3 i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.legend p { font-size: 0.92rem; color: var(--ink-2); margin-top: 6px; }
+.keys { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 22px; }
+.keys span { display: inline-flex; align-items: center; gap: 7px; font-size: 0.92rem; color: var(--ink-2); }
+kbd { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 8px; background: var(--panel-solid); border: 1px solid var(--line); border-bottom-width: 3px; color: var(--ink); font-weight: 600; }
+.phones { display: flex; justify-content: center; align-items: flex-start; gap: clamp(12px, 3vw, 28px); }
+.phone { width: min(250px, 44%); border-radius: 30px; padding: 7px; background: #0d1120; box-shadow: var(--shadow); }
+.phone img { border-radius: 24px; width: 100%; height: auto; }
+.phone:nth-child(2) { margin-top: 36px; }
+
+/* 동작 원리 */
+.flow { display: grid; grid-template-columns: 1fr auto 1.1fr auto 1fr; gap: 14px; align-items: center; }
+.flow .col { display: grid; gap: 12px; }
+.node { padding: 16px 18px; border-radius: 14px; }
+.node h3 { font: 600 1rem var(--body); }
+.node p { font-size: 0.9rem; color: var(--ink-2); margin-top: 4px; }
+.node.core { border-color: var(--accent); }
+.arrow { display: grid; gap: 4px; justify-items: center; font: 600 0.72rem var(--mono); color: var(--ink-3); text-align: center; }
+.arrow svg { width: 44px; height: 30px; fill: none; stroke: var(--ink-3); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+.cards .glass { padding: 20px; }
+.cards h3 { font: 600 1.02rem var(--body); margin-bottom: 6px; }
+.cards p { color: var(--ink-2); font-size: 0.95rem; }
+
+/* 설치 */
+.install { padding: clamp(22px, 4vw, 40px); display: grid; grid-template-columns: 1fr 1fr; gap: clamp(18px, 3vw, 36px); }
+.install > div { min-width: 0; }
+.install h3 { font: 600 1.05rem var(--body); margin-bottom: 10px; }
+.install p { color: var(--ink-2); font-size: 0.95rem; margin-top: 10px; }
+pre { margin: 0; position: relative; background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 14px 16px; font: 400 0.86rem/1.7 var(--mono); overflow-x: auto; }
+pre .c { color: #7f8bb0; }
+.pre { position: relative; }
+.pre .copy { position: absolute; top: 8px; right: 8px; }
+.pre pre { padding-right: 76px; }
+.pre.multi .copy { top: auto; bottom: 8px; }
+.pre.multi pre { padding-right: 16px; }
+
+footer { padding: 28px 0 56px; color: var(--ink-2); font-size: 0.88rem; }
+footer .in { display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 22px; }
+footer nav { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+footer p.small { flex-basis: 100%; color: var(--ink-3); font-size: 0.8rem; }
+
+/* 스크롤하면 나타난다 — 스크립트가 있고 움직임을 꺼 두지 않았을 때만 */
+html.js .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.7s ease, transform 0.7s ease; }
+html.js .reveal.in { opacity: 1; transform: none; }
+
+@media (max-width: 860px) {
+  .top nav { display: none; }
+  .split, .split.flip { grid-template-columns: 1fr; }
+  .split.flip .text { order: 0; }
+  .legend { grid-template-columns: 1fr 1fr; }
+  .flow { grid-template-columns: 1fr; }
+  .arrow svg { transform: rotate(90deg); }
+  .cards { grid-template-columns: 1fr; }
+  .install { grid-template-columns: 1fr; }
+}
+@media (max-width: 460px) {
+  body { font-size: 16px; }
+  .brand span { display: none; }
+  .cloud { width: 150px !important; }
+  .phone { border-radius: 22px; padding: 5px; } .phone img { border-radius: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  html.js .reveal { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="top wrap">
+  <div class="bar glass">
+    <a class="brand" href="#top" aria-label="Agent World">
+      <svg viewBox="2 7 38 28" aria-hidden="true"><path d="M8 11H34V19H38V23H34V31H31.5V27H30V31H27.5V27H14.5V31H12V27H10.5V31H8V23H4V19H8Z" fill="#D77757"/><rect x="11.75" y="14.6" width="2.8" height="4.6" fill="#09090B"/><rect x="27.45" y="14.6" width="2.8" height="4.6" fill="#09090B"/></svg>
+      <span>Agent World</span>
+    </a>
+    <nav aria-label="page">
+      <a href="#world"><span lang="ko">한눈에 보기</span><span lang="en">Overview</span></a>
+      <a href="#talk"><span lang="ko">지시와 답</span><span lang="en">Talk</span></a>
+      <a href="#phone"><span lang="ko">휴대폰</span><span lang="en">Phone</span></a>
+      <a href="#how"><span lang="ko">동작 원리</span><span lang="en">How it works</span></a>
+      <a href="#install"><span lang="ko">설치</span><span lang="en">Install</span></a>
+    </nav>
+    <div class="spacer"></div>
+    <button id="btn-lang" class="btn icon" type="button" aria-label="Language"><span lang="ko">EN</span><span lang="en">한</span></button>
+    <button id="btn-theme" class="btn icon" type="button" aria-label="Day / night">
+      <svg class="day-only" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+      <svg class="night-only" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg>
+    </button>
+    <a class="btn" href="https://github.com/KyongSik-Yoon/agent-world">GitHub</a>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ───────── 첫 화면 ───────── -->
+<div class="hero">
+  <div class="clouds" aria-hidden="true">
+    <svg class="cloud c1" viewBox="0 0 220 90"><path d="M10 70 30 40 62 30 88 12 124 16 150 36 186 38 210 62 196 80 24 82Z"/><path d="M22 66 40 42 66 36 90 20 120 24 142 44 178 46 196 64 186 74 34 76Z"/></svg>
+    <svg class="cloud c2" viewBox="0 0 220 90"><path d="M10 70 30 40 62 30 88 12 124 16 150 36 186 38 210 62 196 80 24 82Z"/><path d="M22 66 40 42 66 36 90 20 120 24 142 44 178 46 196 64 186 74 34 76Z"/></svg>
+    <svg class="cloud c3" viewBox="0 0 220 90"><path d="M10 70 30 40 62 30 88 12 124 16 150 36 186 38 210 62 196 80 24 82Z"/><path d="M22 66 40 42 66 36 90 20 120 24 142 44 178 46 196 64 186 74 34 76Z"/></svg>
+    <svg class="cloud c4" viewBox="0 0 220 90"><path d="M10 70 30 40 62 30 88 12 124 16 150 36 186 38 210 62 196 80 24 82Z"/><path d="M22 66 40 42 66 36 90 20 120 24 142 44 178 46 196 64 186 74 34 76Z"/></svg>
+  </div>
+
+  <div class="wrap">
+    <div class="lede">
+      <div class="eyebrow"><i></i><span lang="ko">herdr 플러그인 · 로컬에서만 동작</span><span lang="en">herdr plugin · runs on your machine</span></div>
+      <h1><span lang="ko">코딩 에이전트들이 사는 작은 마을</span><span lang="en">A small village where your coding agents live</span></h1>
+      <p class="sub">
+        <span lang="ko">herdr 에 띄워 둔 에이전트가 캐릭터가 되어 섬에 삽니다. 누가 일하고 있는지, 누가 끝냈는지, 누가 내 답을 기다리는지는 서 있는 자리만 봐도 알 수 있습니다.</span>
+        <span lang="en">The agents you run in herdr become characters on an island. Who is working, who is done and who is waiting on you: you can tell by where they stand.</span>
+      </p>
+      <div class="cta">
+        <div class="cmd"><span class="line" id="cmd-install">herdr plugin install KyongSik-Yoon/agent-world</span><button class="copy" type="button" data-copy="#cmd-install"><span lang="ko">복사</span><span lang="en">Copy</span></button></div>
+        <a class="btn primary" href="#install"><span lang="ko">설치 방법</span><span lang="en">How to install</span></a>
+      </div>
+    </div>
+
+    <div class="stage-wrap">
+      <div class="stage" id="stage">
+        <svg class="island" viewBox="0 0 720 480" aria-hidden="true">
+          <defs>
+            <g id="tree"><rect class="f-trunk" x="-3" y="-8" width="6" height="12"/><path class="f-t3" d="M-17-6 0-30 17-6Z"/><path class="f-t2" d="M-14-20 0-42 14-20Z"/><path class="f-t1" d="M-10-33 0-52 10-33Z"/><path class="f-t3" d="M0-52 10-33 0-33ZM0-42 14-20 0-20ZM0-30 17-6 0-6Z" opacity=".35"/></g>
+            <g id="bush"><path class="f-t2" d="M-13 0-9-12 0-17 10-12 13 0Z"/><path class="f-t1" d="M-9-12 0-17 2-6-7-2Z"/></g>
+            <g id="rock"><path fill="#9aa1b0" d="M-9 0-7-9 2-12 9-5 8 0Z"/><path fill="#b7bdc9" d="M-7-9 2-12 1-4-5-2Z"/></g>
+            <g id="house">
+              <path class="f-wall" d="M100 235 160 255 160 215 100 195Z"/>
+              <path class="f-wall2" d="M160 255 210 230 210 190 160 215Z"/>
+              <path class="roof1" d="M100 195 130 163 180 138 150 170Z"/>
+              <path class="f-wall" d="M100 195 160 215 130 163Z"/>
+              <path class="roof2" d="M160 215 130 163 180 138 210 190Z"/>
+              <path fill="#8a5a3c" d="M177.500 246.250 190 240 190 216 177.500 222.250Z"/>
+              <path fill="#9cc9e6" d="M118 229 136 235 136 221 118 215Z"/>
+            </g>
+          </defs>
+          <!-- 섬 아랫면 -->
+          <path class="f-rock3" d="M40 272 360 470 680 272Z"/>
+          <path class="f-rock1" d="M40 272 190 300 250 420Z"/>
+          <path class="f-rock2" d="M190 300 360 310 360 470 250 420Z"/>
+          <path class="f-rock1" d="M360 310 540 298 470 410 360 470Z" opacity=".8"/>
+          <path class="f-rock2" d="M540 298 680 272 470 410Z" opacity=".7"/>
+          <ellipse class="f-rim" cx="360" cy="270" rx="322" ry="140"/>
+          <ellipse class="f-grass" cx="360" cy="258" rx="322" ry="138"/>
+          <ellipse class="f-grass3" cx="560" cy="330" rx="70" ry="24" opacity=".7"/>
+          <ellipse class="f-grass2" cx="170" cy="335" rx="80" ry="22" opacity=".7"/>
+          <ellipse class="f-grass3" cx="330" cy="160" rx="90" ry="20" opacity=".6"/>
+          <!-- 집터와 길, 광장 -->
+          <ellipse class="f-sand" cx="208" cy="250" rx="128" ry="56"/>
+          <ellipse class="f-sand" cx="590" cy="196" rx="86" ry="36"/>
+          <path class="s-sand" d="M318 268 392 290" stroke-width="24" stroke-linecap="round" fill="none"/>
+          <path class="s-sand" d="M560 220 520 262" stroke-width="20" stroke-linecap="round" fill="none"/>
+          <ellipse class="f-stone" cx="470" cy="306" rx="122" ry="54"/>
+          <ellipse class="s-stone" cx="470" cy="306" rx="88" ry="38" stroke-width="2.5"/>
+          <ellipse class="s-stone" cx="470" cy="306" rx="50" ry="21" stroke-width="2.5"/>
+          <!-- 뒤쪽 나무 -->
+          <use href="#tree" x="300" y="150"/><use href="#tree" x="345" y="142" transform="translate(345 142) scale(1.2) translate(-345 -142)"/><use href="#tree" x="395" y="156"/>
+          <use href="#tree" x="450" y="170"/><use href="#bush" x="250" y="168"/><use href="#tree" x="70" y="215"/>
+          <!-- 집 B (docs) -->
+          <g transform="translate(455 -28) scale(0.86)"><use href="#house" class="hb"/></g>
+          <g transform="translate(628 210)" opacity=".6"><rect x="-9" y="-18" width="18" height="16" rx="3" fill="#aab6cc"/><rect x="-5" y="-13" width="3" height="4" fill="#1a2238"/><rect x="2" y="-13" width="3" height="4" fill="#1a2238"/><rect x="-7" y="-2" width="4" height="4" fill="#8794ad"/><rect x="3" y="-2" width="4" height="4" fill="#8794ad"/></g>
+          <!-- 집 A (shop-api) -->
+          <use href="#house" class="ha"/>
+          <!-- 마당의 책상 -->
+          <path fill="#7a5233" d="M232 286h3v12h-3zM268 280h3v12h-3zM250 292h3v10h-3z"/>
+          <path fill="#b9824f" d="M224 280 250 290 276 278 250 268Z"/><path fill="#9a6a3e" d="M224 280 250 290 250 294 224 284Z"/><path fill="#8a5d36" d="M250 290 276 278 276 282 250 294Z"/>
+          <path fill="#4a5568" d="M243 276 255 280 262 277 250 273Z"/><path fill="#64748b" d="M243 276 250 273 250 265 243 268Z"/>
+          <!-- 대문 -->
+          <rect class="f-trunk" x="322" y="240" width="4" height="20"/><rect class="f-trunk" x="337" y="274" width="4" height="20"/>
+          <!-- 앞쪽 나무와 돌 -->
+          <use href="#rock" x="386" y="250"/><use href="#rock" x="600" y="300"/><use href="#bush" x="610" y="262"/>
+          <use href="#tree" x="84" y="318"/><use href="#tree" x="300" y="372"/><use href="#tree" x="345" y="386" transform="translate(345 386) scale(1.25) translate(-345 -386)"/>
+          <use href="#tree" x="610" y="345"/><use href="#tree" x="648" y="270"/><use href="#bush" x="200" y="362"/><use href="#tree" x="540" y="378"/><use href="#rock" x="250" y="352"/>
+        </svg>
+        <div class="layer">
+          <div class="sign" style="left:25%;top:70.5%">1 · shop-api</div>
+          <div class="sign b" style="left:76%;top:31%">2 · docs</div>
+          <div class="actor" id="actor" data-state="working">
+            <div class="beam"></div>
+            <div class="ring"></div>
+            <div class="labels">
+              <div class="bubble" id="bubble"></div>
+              <div class="tag"><i></i><b>1</b><span lang="ko">결제 웹훅 재시도</span><span lang="en">Webhook retries</span></div>
+            </div>
+            <div class="body"><svg viewBox="2 9 38 24"><path d="M8 11H34V19H38V23H34V31H31.5V27H30V31H27.5V27H14.5V31H12V27H10.5V31H8V23H4V19H8Z" fill="#D77757"/><path d="M8 11H34V14H8Z" fill="#E58A68"/><rect x="11.75" y="14.6" width="2.8" height="4.6" fill="#09090B"/><rect x="27.45" y="14.6" width="2.8" height="4.6" fill="#09090B"/></svg></div>
+            <div class="zz">z</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="states" role="group" aria-label="status">
+        <button class="chip" type="button" data-state="working" style="--c:var(--working)" aria-pressed="true"><i></i><span lang="ko">작업 중</span><span lang="en">Working</span></button>
+        <button class="chip" type="button" data-state="blocked" style="--c:var(--blocked)" aria-pressed="false"><i></i><span lang="ko">확인 필요</span><span lang="en">Needs input</span></button>
+        <button class="chip" type="button" data-state="done" style="--c:var(--done)" aria-pressed="false"><i></i><span lang="ko">완료</span><span lang="en">Done</span></button>
+        <button class="chip" type="button" data-state="idle" style="--c:var(--idle)" aria-pressed="false"><i></i><span lang="ko">대기</span><span lang="en">Idle</span></button>
+      </div>
+      <p class="caption" id="caption" aria-live="polite"></p>
+      <p class="note">
+        <span lang="ko">상태를 눌러 보세요. 동작을 그림으로 옮긴 시연이고, 실제 화면은 바로 아래에 있습니다.</span>
+        <span lang="en">Press a status. This is a drawn demo of the behaviour; the real screen is right below.</span>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ───────── 한눈에 보기 ───────── -->
+<section id="world">
+  <div class="wrap">
+    <div class="head center reveal">
+      <p class="kicker">Overview</p>
+      <h2><span lang="ko">에이전트가 아홉이어도 한 화면입니다</span><span lang="en">Nine agents, one screen</span></h2>
+      <p>
+        <span lang="ko">집 한 채가 워크스페이스 하나입니다. 터미널 탭을 하나씩 넘겨 보지 않아도, 광장에 누가 나와 있고 대문 앞에서 누가 뛰고 있는지 보면 됩니다.</span>
+        <span lang="en">One house is one workspace. Instead of flipping through terminal tabs, look at who has walked out to the plaza and who is jumping at a gate.</span>
+      </p>
+    </div>
+    <figure class="reveal">
+      <div class="shot">
+        <img class="day-only" src="img/overview.webp" width="1920" height="1147" alt="Agent World 의 낮 화면. 섬 위에 집 네 채가 있고 에이전트 아홉이 상태에 따라 마당·대문·광장에 서 있다">
+        <img class="night-only" src="img/night.webp" width="1920" height="1147" alt="Agent World 의 밤 화면" loading="lazy">
+      </div>
+      <figcaption>
+        <span lang="ko">실제 화면입니다(가상의 프로젝트 시나리오). 오른쪽 위 달 단추로 이 페이지의 낮과 밤을 바꾸면 화면도 같이 바뀝니다.</span>
+        <span lang="en">The real screen, running a made-up project. Switch this page between day and night with the button in the top bar and the screenshot follows.</span>
+      </figcaption>
+    </figure>
+    <div class="legend">
+      <div class="glass reveal" style="--c:var(--working)"><h3><i></i><span lang="ko">작업 중</span><span lang="en">Working</span></h3><p><span lang="ko">집터 마당에서 일합니다. 말풍선에 지금 하는 일이 뜹니다.</span><span lang="en">In the yard of its house. The speech bubble shows what it is doing.</span></p></div>
+      <div class="glass reveal" style="--c:var(--blocked)"><h3><i></i><span lang="ko">확인 필요</span><span lang="en">Needs input</span></h3><p><span lang="ko">대문 앞에 나와 뜁니다. 빨간 빛기둥이 섭니다.</span><span lang="en">Comes out to its gate and jumps, under a red beam.</span></p></div>
+      <div class="glass reveal" style="--c:var(--done)"><h3><i></i><span lang="ko">완료</span><span lang="en">Done</span></h3><p><span lang="ko">가운데 광장으로 걸어 나와 초록 빛기둥 아래에서 기다립니다.</span><span lang="en">Walks out to the plaza and waits under a green beam.</span></p></div>
+      <div class="glass reveal" style="--c:var(--idle)"><h3><i></i><span lang="ko">대기</span><span lang="en">Idle</span></h3><p><span lang="ko">집 옆에서 좁니다. 흐릿하게 보입니다.</span><span lang="en">Dozes beside the house, dimmed.</span></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 지시와 답 ───────── -->
+<section id="talk">
+  <div class="wrap split">
+    <div class="text reveal">
+      <p class="kicker">Talk</p>
+      <h2><span lang="ko">창을 옮기지 않고 지시하고 답합니다</span><span lang="en">Prompt and answer without switching windows</span></h2>
+      <ul class="points">
+        <li><span class="n">C</span><div>
+          <h3><span lang="ko">지시 보내기</span><span lang="en">Send a prompt</span></h3>
+          <p><span lang="ko">캐릭터를 눌러 상태 창을 열고 아래 입력창에 씁니다. 에이전트의 로그에 내 지시가 찍힌 것을 확인한 뒤에 전달됐다고 알려 줍니다.</span><span lang="en">Click a character and type in the input at the bottom of its status window. Delivery is confirmed from the user turn that appears in the agent's log.</span></p>
+        </div></li>
+        <li><span class="n">1</span><div>
+          <h3><span lang="ko">질문과 권한 요청에 답하기</span><span lang="en">Answer questions and permission requests</span></h3>
+          <p><span lang="ko">에이전트가 무언가 물으면 그 대화상자가 상태 창 위쪽에 그대로 뜹니다. 적힌 번호를 빠른 키 줄에서 누르면 됩니다. 하네스마다 선택지가 달라서 버튼으로 바꾸지 않고 화면을 그대로 보여 줍니다.</span><span lang="en">When an agent asks something, its real dialog appears at the top of the status window. Press the number it shows on the quick-key row. Choices differ by harness, so the screen is shown as it is instead of being turned into buttons.</span></p>
+        </div></li>
+        <li><span class="n">＋</span><div>
+          <h3><span lang="ko">이미지 보여 주기</span><span lang="en">Show an image</span></h3>
+          <p><span lang="ko">입력창에 붙여 넣거나 끌어다 놓으면 지시와 함께 전달됩니다(PNG·JPEG·GIF·WebP, 장당 10MB, 한 번에 8장).</span><span lang="en">Paste or drop it into the input and it goes with the prompt (PNG, JPEG, GIF, WebP; 10MB each, 8 at a time).</span></p>
+        </div></li>
+      </ul>
+    </div>
+    <figure class="reveal">
+      <div class="shot"><img src="img/blocked-close.webp" width="1400" height="1208" loading="lazy" alt="확인 필요 상태의 캐릭터와 상태 창. 에이전트가 띄운 권한 대화상자가 그대로 보이고 아래에 1·2·3 빠른 키가 있다"></div>
+      <figcaption><span lang="ko">대문 앞에 나온 캐릭터와, 상태 창에 그대로 뜬 권한 대화상자</span><span lang="en">A character at its gate, and its permission dialog shown as it is</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ───────── 터미널 ───────── -->
+<section id="terminal">
+  <div class="wrap split flip">
+    <figure class="reveal">
+      <div class="shot"><img src="img/terminal-close.webp" width="1400" height="812" loading="lazy" alt="크게 연 터미널 화면. 에이전트의 출력이 색과 함께 보인다"></div>
+    </figure>
+    <div class="text reveal">
+      <p class="kicker">Terminal</p>
+      <h2><span lang="ko">터미널이 필요하면 그 자리에서 엽니다</span><span lang="en">Need the terminal? Open it right there</span></h2>
+      <div class="head" style="margin:0"><p>
+        <span lang="ko"><kbd>`</kbd> 를 누르면 그 pane 의 화면이 크게 열립니다. 열려 있는 동안에는 키 입력이 그대로 pane 으로 가고, 한글도 됩니다. 지난 출력은 스크롤백으로 볼 수 있습니다. 색은 ghostty 설정의 배경·글자색·팔레트를 읽어 그대로 씁니다.</span>
+        <span lang="en">Press <kbd>`</kbd> and that pane's screen opens large. While it is open, keystrokes go straight to the pane. Earlier output is available as scrollback, and colours come from your ghostty config.</span>
+      </p></div>
+      <div class="keys" aria-label="shortcuts">
+        <span><kbd>N</kbd><span lang="ko">다음 확인 대상</span><span lang="en">next to check</span></span>
+        <span><kbd>C</kbd><span lang="ko">말 걸기</span><span lang="en">talk</span></span>
+        <span><kbd>D</kbd><span lang="ko">확인 완료</span><span lang="en">mark as seen</span></span>
+        <span><kbd>B</kbd><span lang="ko">집 짓기</span><span lang="en">build a house</span></span>
+        <span><kbd>Enter</kbd><span lang="ko">herdr 로 이동</span><span lang="en">open in herdr</span></span>
+        <span><kbd>/</kbd><span lang="ko">찾기</span><span lang="en">search</span></span>
+        <span><kbd>T</kbd><span lang="ko">낮/밤</span><span lang="en">day/night</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 집 짓기 ───────── -->
+<section id="build">
+  <div class="wrap split">
+    <div class="text reveal">
+      <p class="kicker">Build</p>
+      <h2><span lang="ko">새 일은 집을 한 채 지어서 시작합니다</span><span lang="en">Start new work by building a house</span></h2>
+      <div class="head" style="margin:0"><p>
+        <span lang="ko">폴더, 이름, 워크트리 여부, 들일 에이전트와 첫 지시까지 한 번에 정합니다. 지어 둔 집의 문패를 누르면 주민과 탭을 더하거나, 이름을 바꾸거나, 철거할 수 있습니다. 닫을 때는 함께 꺼지는 에이전트를 먼저 보여 주고 확인을 받습니다.</span>
+        <span lang="en">Folder, name, worktree or not, the agent to add and its first prompt, in one go. Click a house sign to add residents and tabs, rename it or demolish it. Closing anything lists the agents that will stop with it and asks first.</span>
+      </p></div>
+    </div>
+    <figure class="reveal" style="max-width:420px;margin-inline:auto">
+      <div class="shot"><img src="img/build.webp" width="760" height="954" loading="lazy" alt="집 짓기 대화상자. 폴더, 집 이름, 워크트리, 주민(에이전트), 주민 이름, 실행 인자, 첫 지시 칸이 있다"></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ───────── 휴대폰 ───────── -->
+<section id="phone">
+  <div class="wrap split flip">
+    <div class="phones reveal">
+      <div class="phone"><img src="img/phone.webp" width="780" height="1688" loading="lazy" alt="휴대폰 폭의 Agent World"></div>
+      <div class="phone"><img src="img/phone-detail.webp" width="780" height="1688" loading="lazy" alt="휴대폰에서 연 상태 창. 대화상자 아래에 빠른 키 버튼이 두 줄로 있다"></div>
+    </div>
+    <div class="text reveal">
+      <p class="kicker">Phone</p>
+      <h2><span lang="ko">자리를 비워도 휴대폰으로 이어 갑니다</span><span lang="en">Step away and carry on from your phone</span></h2>
+      <div class="head" style="margin:0"><p>
+        <span lang="ko">좁은 화면에서는 목록이 서랍으로 바뀌고 상태 창과 터미널이 화면 전체를 씁니다. 화면 자판에 없는 Esc·Tab·화살표·Ctrl+C 는 버튼 줄로 나옵니다. 홈 화면에 앱으로 설치하면 주소창 없이 뜹니다.</span>
+        <span lang="en">On a narrow screen the list becomes a drawer and the status window and terminal take the whole screen. Keys the on-screen keyboard lacks (Esc, Tab, arrows, Ctrl+C) appear as a row of buttons. Install it to the home screen and it opens without the address bar.</span>
+      </p><p>
+        <span lang="ko">다른 기기에서는 <code>tailscale serve</code> 로 tailnet 안에서만 엽니다. 공인 인터넷에는 내보내지 않습니다.</span>
+        <span lang="en">Other devices reach it through <code>tailscale serve</code>, inside your tailnet only. It is never exposed to the public internet.</span>
+      </p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 동작 원리 ───────── -->
+<section id="how">
+  <div class="wrap">
+    <div class="head reveal">
+      <p class="kicker">How it works</p>
+      <h2><span lang="ko">하네스에 훅을 걸지 않습니다</span><span lang="en">No hooks into your harnesses</span></h2>
+      <p>
+        <span lang="ko">읽는 것은 두 가지뿐입니다. herdr 소켓에서 어느 pane 에 어떤 에이전트가 있고 상태가 무엇인지 읽고, 하네스가 직접 남기는 로그의 끝부분에서 모델·effort·지금 하는 일을 읽습니다. 조작도 같은 herdr 소켓으로 보냅니다.</span>
+        <span lang="en">It reads two things. The herdr socket says which pane runs which agent and its status; the tail of the log each harness writes for itself gives the model, effort and current activity. Control goes back through the same herdr socket.</span>
+      </p>
+    </div>
+    <div class="flow reveal">
+      <div class="col">
+        <div class="node glass"><h3><span lang="ko">herdr 소켓</span><span lang="en">herdr socket</span></h3><p><code>session.snapshot</code></p></div>
+        <div class="node glass"><h3><span lang="ko">하네스 로그</span><span lang="en">Harness logs</span></h3><p>Claude Code · Antigravity · Codex</p></div>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 44 30"><path d="M4 15h34M29 7l9 8-9 8"/></svg><span lang="ko">읽기</span><span lang="en">read</span></div>
+      <div class="node core glass"><h3><span lang="ko">Agent World 서버</span><span lang="en">Agent World server</span></h3><p><span lang="ko">Bun · 127.0.0.1 에만 묶입니다</span><span lang="en">Bun · bound to 127.0.0.1 only</span></p></div>
+      <div class="arrow"><svg viewBox="0 0 44 30"><path d="M4 15h34M29 7l9 8-9 8"/></svg><span>SSE</span></div>
+      <div class="node glass"><h3><span lang="ko">브라우저</span><span lang="en">Browser</span></h3><p><span lang="ko">three.js 로 그린 마을과 상태 창</span><span lang="en">the village in three.js, and the status window</span></p></div>
+    </div>
+    <div class="cards">
+      <div class="glass reveal"><h3><span lang="ko">접속 열쇠</span><span lang="en">Access key</span></h3><p><span lang="ko">모든 <code>/api</code> 요청에 열쇠를 요구합니다. 열쇠는 이 사용자만 읽을 수 있는 파일에 둡니다.</span><span lang="en">Every <code>/api</code> request needs the key, kept in a file only you can read.</span></p></div>
+      <div class="glass reveal"><h3><span lang="ko">바꾸는 요청은 좁게</span><span lang="en">Narrow writes</span></h3><p><span lang="ko">같은 출처에서 온 POST 만 받고, 지금 herdr 에 실제로 있는 pane·탭·스페이스만 대상으로 합니다.</span><span lang="en">Only same-origin POSTs, and only for panes, tabs and workspaces that exist in herdr right now.</span></p></div>
+      <div class="glass reveal"><h3><span lang="ko">보기 전용</span><span lang="en">Read-only mode</span></h3><p><span lang="ko"><code>AGENT_WORLD_READONLY=1</code> 이면 지시·키 입력·만들기·닫기를 모두 거절합니다.</span><span lang="en"><code>AGENT_WORLD_READONLY=1</code> refuses prompts, keystrokes, creating and closing.</span></p></div>
+    </div>
+    <p class="note reveal" style="margin-top:18px;text-align:left">
+      <span lang="ko">그 밖의 하네스는 herdr 가 알려 주는 제목과 상태만으로 캐릭터가 섭니다. <a href="https://github.com/KyongSik-Yoon/agent-world#동작-원리">README 의 동작 원리</a>에 로그 경로와 어댑터 추가 방법이 있습니다.</span>
+      <span lang="en">Other harnesses get a character from the title and status herdr reports. Log paths and how to add an adapter are in the <a href="https://github.com/KyongSik-Yoon/agent-world/blob/main/README.en.md#how-it-knows">README</a>.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ───────── 설치 ───────── -->
+<section id="install">
+  <div class="wrap">
+    <div class="head center reveal">
+      <p class="kicker">Install</p>
+      <h2><span lang="ko">한 줄이면 됩니다</span><span lang="en">One line to install</span></h2>
+    </div>
+    <div class="install glass reveal">
+      <div>
+        <h3><span lang="ko">herdr 플러그인으로</span><span lang="en">As a herdr plugin</span></h3>
+        <div class="pre"><pre id="code-plugin">herdr plugin install KyongSik-Yoon/agent-world</pre><button class="copy" type="button" data-copy="#code-plugin"><span lang="ko">복사</span><span lang="en">Copy</span></button></div>
+        <p>
+          <span lang="ko">herdr 가 시작할 때마다 서버를 띄워 둡니다. 명령 팔레트에서 <code>Agent World: open in browser</code> 를 고르면 브라우저로 열립니다.</span>
+          <span lang="en">herdr starts the server whenever it starts. Pick <code>Agent World: open in browser</code> from the command palette to open it.</span>
+        </p>
+        <p>
+          <span lang="ko"><a href="https://bun.sh">Bun</a> 이 필요합니다(1.4.4 에서 확인했습니다). herdr 0.9.5 이상, Linux·macOS.</span>
+          <span lang="en">Needs <a href="https://bun.sh">Bun</a> (checked on 1.4.4), herdr 0.9.5 or later, Linux or macOS.</span>
+        </p>
+      </div>
+      <div>
+        <h3><span lang="ko">직접 실행</span><span lang="en">Run it yourself</span></h3>
+        <div class="pre multi"><pre id="code-run">git clone https://github.com/KyongSik-Yoon/agent-world
+cd agent-world
+bun install
+bun start</pre><button class="copy" type="button" data-copy="#code-run"><span lang="ko">복사</span><span lang="en">Copy</span></button></div>
+        <p>
+          <span lang="ko">출력된 주소에는 접속 열쇠가 붙어 있습니다. 브라우저마다 처음 한 번만 그 주소로 열면 됩니다. 환경 변수와 tailnet 설정은 <a href="https://github.com/KyongSik-Yoon/agent-world#readme">README</a> 에 있습니다.</span>
+          <span lang="en">The printed address carries the access key; open it once per browser. Environment variables and tailnet setup are in the <a href="https://github.com/KyongSik-Yoon/agent-world/blob/main/README.en.md">README</a>.</span>
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap in">
+    <span>MIT © 2026 KyongSik Yoon</span>
+    <nav>
+      <a href="https://github.com/KyongSik-Yoon/agent-world">GitHub</a>
+      <a href="https://github.com/KyongSik-Yoon/agent-world/issues"><span lang="ko">이슈</span><span lang="en">Issues</span></a>
+      <a href="https://herdr.dev">herdr</a>
+      <a href="https://github.com/KyongSik-Yoon/agent-world/blob/main/THIRD_PARTY_NOTICES.md"><span lang="ko">서드파티 고지</span><span lang="en">Third-party notices</span></a>
+    </nav>
+    <p class="small">
+      <span lang="ko">화면 그림은 가상의 프로젝트를 흉내 낸 시험용 세션에서 찍었습니다. 일부 하네스의 브랜드 마크와 타일 색은 Collie(MIT)의 아이콘 데이터에서 가져왔습니다.</span>
+      <span lang="en">Screenshots come from a test session imitating a made-up project. Brand marks and tile colours for some harnesses come from Collie's (MIT) icon data.</span>
+    </p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function save(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  // 말과 낮/밤
+  document.getElementById("btn-lang").addEventListener("click", function () {
+    var next = root.dataset.lang === "ko" ? "en" : "ko";
+    root.dataset.lang = next; root.lang = next; save("aw-lang", next); render();
+  });
+  document.getElementById("btn-theme").addEventListener("click", function () {
+    var next = root.dataset.theme === "day" ? "night" : "day";
+    root.dataset.theme = next; save("aw-theme", next);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = next === "day" ? "#7cc4f1" : "#080c1f";
+  });
+
+  // 복사
+  document.querySelectorAll("[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var text = document.querySelector(btn.dataset.copy).textContent;
+      var done = function () {
+        var old = btn.innerHTML;
+        btn.innerHTML = '<span lang="ko">복사됨</span><span lang="en">Copied</span>';
+        setTimeout(function () { btn.innerHTML = old; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+      else fallback();
+      function fallback() {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); done(); } catch (e) {}
+        ta.remove();
+      }
+    });
+  });
+
+  // 시연 — 상태마다 캐릭터가 서는 자리(섬 그림의 좌표, 720×480)
+  var STATES = {
+    working: { x: 250, y: 300, bubble: { ko: "⚡ 웹훅 테스트 실행", en: "⚡ Running webhook tests" },
+      cap: { ko: "<b>작업 중</b>에는 자기 집터 마당에서 일합니다. 말풍선에 지금 하는 일이 뜹니다.", en: "<b>Working</b>: in the yard of its house. The speech bubble shows what it is doing." } },
+    blocked: { x: 352, y: 290, bubble: { ko: "🙋 확인이 필요해요", en: "🙋 Needs your input" },
+      cap: { ko: "<b>확인 필요</b>가 되면 대문 앞에 나와 뜁니다. 빨간 빛기둥이 서고, 내 답을 기다립니다.", en: "<b>Needs input</b>: it comes out to its gate and jumps under a red beam, waiting for your answer." } },
+    done: { x: 470, y: 312, bubble: { ko: "✅ 다 했어요!", en: "✅ All done!" },
+      cap: { ko: "<b>완료</b>하면 가운데 광장으로 걸어 나와 초록 빛기둥 아래에서 기다립니다.", en: "<b>Done</b>: it walks out to the plaza and waits under a green beam." } },
+    idle: { x: 82, y: 268, bubble: { ko: "", en: "" },
+      cap: { ko: "결과를 확인해 주면 집으로 돌아가 <b>대기</b>합니다. 집 옆에서 졸고, 흐릿하게 보입니다.", en: "Once you have seen the result it goes home and is <b>idle</b>: dozing beside the house, dimmed." } }
+  };
+  var ORDER = ["working", "blocked", "done", "idle"];
+  var actor = document.getElementById("actor"), bubble = document.getElementById("bubble"), caption = document.getElementById("caption");
+  var chips = document.querySelectorAll(".chip");
+  var current = "working", walkTimer = 0, autoTimer = 0, resumeTimer = 0;
+
+  function render() {
+    var s = STATES[current], lang = root.dataset.lang;
+    bubble.textContent = s.bubble[lang];
+    caption.innerHTML = s.cap[lang];
+  }
+  function go(state) {
+    if (state === current) return;
+    current = state;
+    var s = STATES[state];
+    actor.dataset.state = state;
+    actor.style.left = (s.x / 720 * 100) + "%";
+    actor.style.top = (s.y / 480 * 100) + "%";
+    clearTimeout(walkTimer);
+    if (!reduce) {
+      actor.classList.add("walk");
+      walkTimer = setTimeout(function () { actor.classList.remove("walk"); }, 1350);
+    }
+    chips.forEach(function (c) { c.setAttribute("aria-pressed", String(c.dataset.state === state)); });
+    render();
+  }
+  function auto() {
+    clearInterval(autoTimer);
+    if (reduce) return;
+    autoTimer = setInterval(function () { go(ORDER[(ORDER.indexOf(current) + 1) % ORDER.length]); }, 3800);
+  }
+  chips.forEach(function (c) {
+    c.addEventListener("click", function () {
+      clearInterval(autoTimer); clearTimeout(resumeTimer);
+      go(c.dataset.state);
+      resumeTimer = setTimeout(auto, 14000);
+    });
+  });
+  var s0 = STATES.working;
+  actor.style.left = (s0.x / 720 * 100) + "%"; actor.style.top = (s0.y / 480 * 100) + "%";
+  render(); auto();
+
+  // 스크롤하면 나타나기
+  var items = document.querySelectorAll(".reveal");
+  if (reduce || !("IntersectionObserver" in window)) items.forEach(function (el) { el.classList.add("in"); });
+  else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    items.forEach(function (el) { io.observe(el); });
+  }
+})();
+</script>
+</body>
+</html>
