@@ -35,8 +35,13 @@ export class WorldScene {
   private shellKey = "";
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
-  /** 카메라가 부드럽게 옮겨 갈 목표. 사용자가 직접 움직이면 지운다. */
-  private flight: { target: THREE.Vector3; distance: number } | null = null;
+  /**
+   * 카메라가 부드럽게 옮겨 갈 목표. 사용자가 직접 움직이면 지운다.
+   * position 이 있으면 바라보는 방향까지 그 자리로 되돌린다(고르기 전 시점으로 돌아갈 때).
+   */
+  private flight: { target: THREE.Vector3; distance: number; position?: THREE.Vector3 } | null = null;
+  /** 무언가를 고르기 직전의 시점 — 고르기를 풀면 여기로 돌아간다. */
+  private home: { target: THREE.Vector3; position: THREE.Vector3 } | null = null;
   private downAt: { x: number; y: number } | null = null;
 
   constructor(
@@ -234,7 +239,20 @@ export class WorldScene {
 
   /** 고른 에이전트를 표시하고, fly 면 카메라가 따라간다. */
   select(id: string | null, fly = true): void {
+    const before = this.selectedId;
+    if (id && !before && fly) {
+      // 돌아오는 중에 다시 골랐으면, 가던 곳이 돌아갈 자리다.
+      const returning = this.flight?.position ? this.flight : null;
+      this.home = { target: (returning?.target ?? this.controls.target).clone(), position: (returning?.position ?? this.camera.position).clone() };
+    }
     this.selectedId = id;
+    if (!id) {
+      // 고르기를 풀면 다가가기 전에 보던 자리와 배율로 돌아간다.
+      if (before && this.home && fly) {
+        this.flight = { target: this.home.target, position: this.home.position, distance: this.home.position.distanceTo(this.home.target) };
+      }
+      this.home = null;
+    }
     for (const [actorId, actor] of this.actors) actor.selected = actorId === id;
     const actor = id ? this.actors.get(id) : undefined;
     if (actor && fly) {
@@ -269,6 +287,7 @@ export class WorldScene {
 
   /** 마을 전체가 보이는 자리로 돌아간다. */
   overview(animate = true): void {
+    this.home = null;
     const distance = this.layout.islandRadius * 2.35 + 6;
     const target = new THREE.Vector3(0, 0.5, 1.5);
     if (animate) {
@@ -337,7 +356,12 @@ export class WorldScene {
     // 고른 에이전트가 걸어가면 카메라의 목표도 같이 간다.
     const selected = this.selectedId ? this.actors.get(this.selectedId) : undefined;
     if (selected && this.flight) this.flight.target.copy(selected.group.position).setY(0.9);
-    if (this.flight) {
+    if (this.flight?.position) {
+      const k = 1 - Math.exp(-dt * 4.2);
+      this.controls.target.lerp(this.flight.target, k);
+      this.camera.position.lerp(this.flight.position, k);
+      if (this.camera.position.distanceTo(this.flight.position) < 0.03) this.flight = null;
+    } else if (this.flight) {
       const k = 1 - Math.exp(-dt * 4.2);
       const offset = this.camera.position.clone().sub(this.controls.target);
       const distance = offset.length() + (this.flight.distance - offset.length()) * k;
