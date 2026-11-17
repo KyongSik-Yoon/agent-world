@@ -328,8 +328,8 @@ function renderLine(raw: string, start: Style, reflow: boolean): Row {
   emit(raw.slice(last));
   const text = line.textContent ?? "";
   if (!line.hasChildNodes()) line.append("\u200b");
-  // 가로줄뿐인 줄은 접히면 여러 줄을 차지하므로 한 줄로 잘라 보여 준다.
-  else if (reflow && /^[\s\u2500-\u257F]+$/.test(text)) line.classList.add("rule");
+  // 가로줄뿐인 줄(이름표가 낀 것도)은 접히면 여러 줄을 차지하므로 한 줄로 잘라 보여 준다.
+  else if (reflow && RULE_LINE.test(text)) line.classList.add("rule");
   return { key: styleKey(start) + raw, node: line, text, end: style };
 }
 
@@ -340,8 +340,14 @@ export interface ScreenOptions {
   live?: boolean;
 }
 
-/** 입력창 테두리로 볼 가로줄: ─ 만으로 된 긴 줄. 표의 테두리(┼ ┬ 가 섞인 줄)는 아니다. */
-const INPUT_RULE = /^\u2500{20,}$/;
+/**
+ * 선 글자로만 된 줄. 가운데 짧은 이름표 하나는 낄 수 있다 — 지난 입력을 ↑ 로 불러오면 Claude Code 가 입력창 위
+ * 테두리에 `─── History 76/77 ───` 처럼 적는다.
+ */
+const RULE_LINE = /^\s*[\u2500-\u257F]+(?: [^\u2500-\u257F]{1,40} [\u2500-\u257F]+)?\s*$/;
+/** 입력창 테두리로 볼 가로줄: ─ 가 스무 개 넘는 줄(이름표는 낄 수 있다). 표의 테두리(┼ ┬ 가 섞인 줄)는 아니다. */
+const INPUT_RULE = /^\u2500+(?: [^\u2500-\u257F]{1,40} \u2500+)?$/;
+const isInputRule = (line: string): boolean => INPUT_RULE.test(line) && line.split("\u2500").length > 20;
 /** 입력창과 그 아래 꾸밈(상태줄·안내줄)이 차지할 수 있는 줄 수. */
 const FOOTER_REACH = 24;
 /** 입력창 안의 글이 차지할 수 있는 줄 수. 두 가로줄이 이보다 멀면 입력창이 아니라 대화를 가르는 줄이다. */
@@ -359,7 +365,7 @@ const PROMPT_LINE = /^\s{0,2}[\u276f>\u203a\u00bb]/;
 export function footerStart(lines: readonly string[]): number {
   const rules: number[] = [];
   for (let i = lines.length - 1; i >= Math.max(0, lines.length - FOOTER_REACH) && rules.length < 2; i -= 1) {
-    if (INPUT_RULE.test(lines[i]!.trim())) rules.push(i);
+    if (isInputRule(lines[i]!.trim())) rules.push(i);
   }
   const [bottom, top] = rules;
   if (bottom === undefined || top === undefined || bottom - top > INPUT_ROWS + 1) return -1;
