@@ -90,6 +90,8 @@ export class WorldScene {
     const h = this.container.clientHeight || 1;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    // 브라우저 확대/축소가 바뀌면 화소 비율도 바뀐다. 처음 값에 묶어 두면 필요 이상으로 그리거나 흐려진다.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(w, h);
     this.labels.setSize(w, h);
   }
