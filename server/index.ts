@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import index from "../web/index.html";
 import type { SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
 import { controlRoutes } from "./control.ts";
+import { MAX_IMAGE_BYTES } from "./images.ts";
 import { herdrFocus, herdrScreen, herdrSocketPath } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
 import { World } from "./world.ts";
@@ -144,18 +145,29 @@ const TAILNET_HOSTS = new Set(
 );
 
 let owner: Promise<string | null> | undefined;
+let ownerAskedAt = 0;
+/** 계정을 알아내지 못했을 때 다시 물어보기까지의 간격. */
+const OWNER_RETRY_MS = 30_000;
 
 /** 이 PC 를 tailnet 에 올린 계정. 알아내지 못하면 null — 그러면 tailnet 으로 온 요청은 모두 거절된다. */
 function tailnetOwner(): Promise<string | null> {
-  owner ??= (async () => {
+  if (owner && Date.now() - ownerAskedAt < OWNER_RETRY_MS) return owner;
+  const asked = (async () => {
     try {
-      const proc = Bun.spawn(["tailscale", "status", "--json"], { stdout: "pipe", stderr: "ignore" });
+      const proc = Bun.spawn(["tailscale", "status", "--json"], { stdout: "pipe", stderr: "ignore", timeout: 5000 });
       const status = (await new Response(proc.stdout).json()) as { Self?: { UserID?: number }; User?: Record<string, { LoginName?: string }> };
       return status.User?.[String(status.Self?.UserID)]?.LoginName ?? null;
-    } catch {
+    } catch (e) {
+      console.error("tailscale 에서 이 PC 의 계정을 알아내지 못했습니다(tailnet 으로 온 요청은 거절됩니다):", (e as Error).message);
       return null;
     }
   })();
+  owner = asked;
+  ownerAskedAt = Date.now();
+  // 알아낸 답은 계속 쓴다. 못 알아낸 답만(서버를 띄울 때 tailscale 이 아직 안 떠 있었을 수 있다) 조금 뒤에 다시 묻는다.
+  void asked.then((login) => {
+    if (login !== null && owner === asked) ownerAskedAt = Number.POSITIVE_INFINITY;
+  });
   return owner;
 }
 
@@ -166,6 +178,10 @@ async function trusted(req: Request): Promise<boolean> {
     const login = req.headers.get("tailscale-user-login");
     if (!login || login !== (await tailnetOwner())) return false;
   } else if (!loopback(host)) return false;
+  // 다른 사이트의 페이지가 <img> 나 no-cors fetch 로 보낸 GET 은 답을 읽지는 못해도 herdr 를 읽는 흐름을 열어 둘 수 있다.
+  // 브라우저는 그런 요청에 출처 관계를 적어 보낸다 — 이 화면이 보낸 것(same-origin)과 주소창에서 연 것(none)만 받는다.
+  const site = req.headers.get("sec-fetch-site");
+  if (site !== null && site !== "same-origin" && site !== "none") return false;
   const origin = req.headers.get("origin");
   if (origin === null) return req.method === "GET";
   try {
@@ -239,6 +255,8 @@ const listen = (at: number) =>
   port: at,
   // 같은 포트를 여러 프로세스가 나눠 쓰지 않는다. 나눠 쓰면 요청이 서로 다른 herdr 에 붙은 서버들 사이를 오간다.
   reusePort: false,
+  // 가장 큰 요청은 이미지 한 장(10MB)이다. 그보다 훨씬 큰 본문은 읽기 전에 끊는다.
+  maxRequestBodySize: MAX_IMAGE_BYTES + 1024 * 1024,
   idleTimeout: 0,
   // 평소에는 한 번 묶어 둔 번들을 내보낸다. 화면을 고치는 동안에는 AGENT_WORLD_DEV=1 로 띄운다.
   development: process.env.AGENT_WORLD_DEV === "1",
