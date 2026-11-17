@@ -1,8 +1,21 @@
 // 서버의 조작 엔드포인트를 부르는 얇은 층. 실패는 사람이 읽을 메시지와 herdr 의 오류 코드를 함께 던진다.
 import { lang, t } from "./i18n.ts";
+import { key } from "./key.ts";
 
-/** 서버가 오류 문장을 이 화면의 말로 돌려주도록, 요청마다 고른 말을 알린다. */
-export const LANG_HEADER = { "x-agent-world-lang": lang };
+/** 요청마다 싣는 머리말: 접속 열쇠와, 서버가 오류 문장을 이 화면의 말로 돌려주도록 고른 말. */
+export function headers(): Record<string, string> {
+  return { "x-agent-world-key": key, "x-agent-world-lang": lang };
+}
+
+/** 이 브라우저의 열쇠가 서버에 통하는지. 서버에 닿지 못하면 null. */
+export async function hasAccess(): Promise<boolean | null> {
+  try {
+    const res = await fetch("/api/identity", { headers: headers() });
+    return res.status !== 401;
+  } catch {
+    return null;
+  }
+}
 
 export class ApiError extends Error {
   constructor(
@@ -17,7 +30,7 @@ export class ApiError extends Error {
 export async function post<T = Record<string, unknown>>(path: string, body: Record<string, unknown>): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method: "POST", headers: { "content-type": "application/json", ...LANG_HEADER }, body: JSON.stringify(body) });
+    res = await fetch(path, { method: "POST", headers: { "content-type": "application/json", ...headers() }, body: JSON.stringify(body) });
   } catch {
     throw new ApiError(t("서버에 닿지 못했습니다."));
   }
@@ -30,7 +43,7 @@ export async function post<T = Record<string, unknown>>(path: string, body: Reco
 export async function uploadImage(paneId: string, image: Blob): Promise<string> {
   let res: Response;
   try {
-    res = await fetch(`/api/image?pane=${encodeURIComponent(paneId)}`, { method: "POST", headers: { "content-type": "application/octet-stream", ...LANG_HEADER }, body: image });
+    res = await fetch(`/api/image?pane=${encodeURIComponent(paneId)}`, { method: "POST", headers: { "content-type": "application/octet-stream", ...headers() }, body: image });
   } catch {
     throw new ApiError(t("서버에 닿지 못했습니다."));
   }
@@ -40,7 +53,7 @@ export async function uploadImage(paneId: string, image: Blob): Promise<string> 
 }
 
 export async function get<T>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: LANG_HEADER });
+  const res = await fetch(path, { headers: headers() });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new ApiError(data.error ?? `HTTP ${res.status}`, undefined, res.status);
   return data as T;

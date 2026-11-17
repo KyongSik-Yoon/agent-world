@@ -3,17 +3,12 @@
 // herdr 는 화면을 그 pane 으로 옮겼을 때만 "봤다"고 친다. 월드에서 응답을 다 읽어도 완료로 남으므로,
 // 월드가 따로 적어 둔다: pane 과 그때의 herdr 상태 변경 번호. 에이전트가 다시 일하면 번호가 바뀌어
 // 기록은 저절로 무효가 된다. herdr 의 초점은 건드리지 않는다.
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { readFile, rename, stat } from "node:fs/promises";
+import { join } from "node:path";
 
 import { herdrSessionTag } from "./herdr.ts";
+import { stateDir, writePrivate } from "./key.ts";
 import { L, say } from "./text.ts";
-
-/** 이 사용자의 Agent World 가 상태를 적어 두는 폴더. */
-export function stateDir(): string {
-  return join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "agent-world");
-}
 
 /**
  * 기록 파일은 herdr 세션마다 따로 둔다. pane id 는 세션 안에서만 고유해서(w1:p1 …), 한 파일을 같이 쓰면
@@ -98,10 +93,9 @@ export class SeenStore {
     this.writing = this.writing
       .then(async () => {
         const path = storePath();
-        await mkdir(dirname(path), { recursive: true });
-        // 임시 파일은 프로세스마다 따로 — 둘이 같은 이름에 쓰다 섞이지 않게.
+        // 임시 파일은 프로세스마다 따로 — 둘이 같은 이름에 쓰다 섞이지 않게. 이 사용자만 읽게 적는다.
         const tmp = `${path}.${process.pid}.tmp`;
-        await writeFile(tmp, body);
+        await writePrivate(tmp, body);
         await rename(tmp, path);
         const info = await stat(path);
         this.stamp = `${info.mtimeMs}:${info.size}`;

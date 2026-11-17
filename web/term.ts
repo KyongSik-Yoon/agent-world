@@ -3,7 +3,8 @@
 // herdr 는 화면을 "지금 보이는 그대로"의 줄들로 준다 — 커서 이동이 없고 색·굵기 코드만 있다. 그래서
 // 터미널 에뮬레이터 없이 줄마다 span 으로 그리면 된다. 표와 테두리가 어긋나지 않도록 한글 같은
 // 전각 문자는 2칸, 글꼴에 없을 법한 기호는 1칸 너비의 상자에 넣는다.
-import { get, sendInput } from "./api.ts";
+import { get, sendInput, headers } from "./api.ts";
+import { withKey } from "./key.ts";
 import { t } from "./i18n.ts";
 
 interface TermTheme {
@@ -294,7 +295,7 @@ export class TermScreen {
       this.raw = undefined;
       this.clear(t("화면을 읽는 중…"));
     }
-    const source = new EventSource(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}${this.options.live ? "&live=1" : ""}`);
+    const source = new EventSource(withKey(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}${this.options.live ? "&live=1" : ""}`));
     this.source = source;
     source.addEventListener("screen", (e) => {
       this.raw = (JSON.parse((e as MessageEvent<string>).data) as { text: string }).text.split(/\r?\n/);
@@ -324,7 +325,7 @@ export class TermScreen {
       // 가려서, 꺼진 것이면 조금 뒤에 새로 연다.
       if (source.readyState !== EventSource.CLOSED || this.source !== source) return;
       this.source = undefined;
-      void fetch(`/api/screen?pane=${encodeURIComponent(paneId)}`)
+      void fetch(`/api/screen?pane=${encodeURIComponent(paneId)}`, { headers: headers() })
         .then((res) => res.status)
         .catch(() => 0)
         .then((status) => {

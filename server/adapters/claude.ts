@@ -36,10 +36,25 @@ const WANTED_BOOKKEEPING = ['{"type":"ai-title"', '{"type":"last-prompt"', '{"ty
 /** 사용자 행의 텍스트에서 하네스가 끼워 넣은 꼬리표를 걷어낸다. 사람이 친 말이 아니면 빈 문자열. */
 function userText(raw: string): string {
   if (/^<(local-command-|command-name|command-message|task-notification|bash-input|bash-stdout)/.test(raw.trimStart())) return "";
-  return raw
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+  return withoutBlocks(raw, "<system-reminder>", "</system-reminder>")
     .replace(/<\/?pasted_content[^>]*>/g, "")
     .trim();
+}
+
+/**
+ * 여는 꼬리표와 닫는 꼬리표 사이를 걷어낸다. 닫는 꼬리표가 없으면 그대로 둔다.
+ * 정규식의 게으른 되짚기로 하면 닫히지 않은 꼬리표가 많은 긴 글에서 걸리는 시간이 길이의 제곱으로 는다.
+ */
+function withoutBlocks(text: string, open: string, close: string): string {
+  let out = "";
+  let from = 0;
+  for (;;) {
+    const a = text.indexOf(open, from);
+    const b = a < 0 ? -1 : text.indexOf(close, a + open.length);
+    if (b < 0) return out + text.slice(from);
+    out += text.slice(from, a);
+    from = b + close.length;
+  }
 }
 
 function feedAssistant(s: LogSummary, row: Record<string, unknown>, at: string): void {

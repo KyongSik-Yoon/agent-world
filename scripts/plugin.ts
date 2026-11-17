@@ -9,11 +9,11 @@
 // 설정은 플러그인 설정 폴더(`herdr plugin config-dir <id>`)의 `env` 파일에 `이름=값` 으로 적는다:
 //   AGENT_WORLD_LANG=en        AGENT_WORLD_PORT=4790        AGENT_WORLD_READONLY=1        AGENT_WORLD_TRUST_HOSTS=…
 import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { chmodSync, closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { runningServers, type Address } from "../server/address.ts";
-import { stateDir } from "../server/seen.ts";
+import { existingKey, keyedUrl, stateDir, writePrivate } from "../server/key.ts";
 import { L, say } from "../server/text.ts";
 
 const ROOT = resolve(process.env.HERDR_PLUGIN_ROOT ?? join(import.meta.dir, ".."));
@@ -37,7 +37,10 @@ function configured(): Record<string, string> {
     const line = raw.trim();
     const eq = line.indexOf("=");
     if (!line || line.startsWith("#") || eq < 1) continue;
-    out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim().replace(/^(["'])(.*)\1$/, "$2");
+    const name = line.slice(0, eq).trim();
+    // 이 서버의 설정만 받는다. 아무 이름이나 받으면 설정 파일 한 줄로 서버가 읽어 들일 코드를 바꿀 수 있다(LD_PRELOAD 등).
+    if (!/^AGENT_WORLD_[A-Z_]+$/.test(name)) continue;
+    out[name] = line.slice(eq + 1).trim().replace(/^(["'])(.*)\1$/, "$2");
   }
   return out;
 }
@@ -56,8 +59,10 @@ async function start(): Promise<Address | null> {
     console.log(say(L(`Agent World 가 이미 떠 있습니다 → ${describe(already)}`, `Agent World is already running → ${describe(already)}`)));
     return already;
   }
-  mkdirSync(LOG_DIR, { recursive: true });
-  const out = openSync(LOG, "a");
+  mkdirSync(LOG_DIR, { recursive: true, mode: 0o700 });
+  // 기록에는 열쇠가 붙은 주소가 찍힌다 — 이 사용자만 읽게 둔다.
+  const out = openSync(LOG, "a", 0o600);
+  chmodSync(LOG, 0o600);
   // 제 세션을 갖는 프로세스로 떼어 띄운다 — 이 명령이 끝나도, herdr 가 이 명령의 무리를 정리해도 서버는 남는다.
   const child = spawn(process.execPath, [join(ROOT, "server", "index.ts")], { cwd: ROOT, detached: true, stdio: ["ignore", out, out], env: process.env });
   child.unref();
@@ -113,16 +118,28 @@ async function status(): Promise<boolean> {
   return servers.length > 0;
 }
 
-/** 브라우저로 연다. 띄울 수 없으면(화면이 없는 서버 등) 주소만 알려 준다. */
+/** 열쇠가 붙은 주소. 열쇠 파일이 없으면(있을 수 없지만) 맨 주소. */
+async function keyed(server: Address): Promise<string> {
+  const key = await existingKey();
+  return key ? keyedUrl(server.url, key) : server.url;
+}
+
+/**
+ * 브라우저로 연다. 열쇠가 붙은 주소를 여는 프로그램의 인자로 넘기면 그 순간 다른 계정이 프로세스 목록에서 읽을 수 있다.
+ * 그래서 이 사용자만 읽는 작은 문서를 하나 써 두고 그것을 연다 — 문서가 열쇠 붙은 주소로 넘겨 준다.
+ */
 async function open(): Promise<boolean> {
   const server = await start();
   if (!server) return false;
   const opener = process.platform === "darwin" ? "open" : "xdg-open";
   if (!Bun.which(opener)) {
-    console.log(say(L(`브라우저를 열 방법이 없습니다. 이 주소를 직접 열어 주세요: ${server.url}`, `No way to open a browser here. Open this address yourself: ${server.url}`)));
+    console.log(say(L("브라우저를 열 방법이 없습니다. 터미널에서 `bun run url` 이 찍는 주소를 직접 열어 주세요.", "No way to open a browser here. Open the address printed by `bun run url` yourself.")));
     return true;
   }
-  spawn(opener, [server.url], { detached: true, stdio: "ignore" }).unref();
+  const target = JSON.stringify(await keyed(server));
+  const door = join(stateDir(), "open.html");
+  await writePrivate(door, `<!doctype html><meta charset="utf-8"><title>Agent World</title><script>location.replace(${target})</script>\n`);
+  spawn(opener, [door], { detached: true, stdio: "ignore" }).unref();
   return true;
 }
 
@@ -131,7 +148,10 @@ async function info(): Promise<boolean> {
   const server = await start();
   console.log("");
   if (server) {
-    console.log(say(L("  브라우저에서 위 주소를 열면 마을이 보입니다.", "  Open the address above in a browser to see the village.")));
+    // 이 팝업은 사용자의 터미널이다 — 열쇠가 붙은 주소를 여기에는 보여 준다(휴대폰 등 다른 브라우저에서 처음 열 때 쓴다).
+    console.log(`  ${await keyed(server)}`);
+    console.log("");
+    console.log(say(L("  브라우저마다 처음 한 번은 위 주소(열쇠 포함)로 엽니다. 그 뒤로는 기억합니다.", "  Open the address above (it carries the key) once per browser. It is remembered after that.")));
     console.log(say(L("  o 브라우저로 열기 · r 다시 띄우기 · s 끄기 · 그 밖의 키로 닫기", "  o open in browser · r restart · s stop · any other key to close")));
   } else console.log(say(L("  아무 키나 누르면 닫습니다.", "  Press any key to close.")));
   const key = await new Promise<string>((done) => {

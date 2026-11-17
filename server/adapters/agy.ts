@@ -41,9 +41,26 @@ function decodeArgs(args: unknown): Record<string, unknown> {
   return out;
 }
 
+/** 여는 꼬리표와 닫는 꼬리표 사이를 걷어낸다. 닫는 꼬리표가 없으면 그대로 둔다. */
+function withoutBlocks(text: string, open: string, close: string): string {
+  let out = "";
+  let from = 0;
+  for (;;) {
+    const a = text.indexOf(open, from);
+    const b = a < 0 ? -1 : text.indexOf(close, a + open.length);
+    if (b < 0) return out + text.slice(from);
+    out += text.slice(from, a);
+    from = b + close.length;
+  }
+}
+
+// 로그의 글은 남이 쓴 것이고 길이도 제멋대로다. 꼬리표 사이를 정규식의 게으른 되짚기로 찾으면 닫는 꼬리표가 없는 긴 글에서
+// 걸리는 시간이 길이의 세제곱으로 늘어 서버가 몇 초씩 멈춘다. 위치를 찾아 잘라 낸다.
 function userRequest(content: string): string {
-  const m = /<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/.exec(content);
-  return (m ? m[1]! : content.replace(/<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>/g, "")).trim();
+  const open = "<USER_REQUEST>";
+  const a = content.indexOf(open);
+  const b = a < 0 ? -1 : content.indexOf("</USER_REQUEST>", a + open.length);
+  return (b >= 0 ? content.slice(a + open.length, b) : withoutBlocks(content, "<ADDITIONAL_METADATA>", "</ADDITIONAL_METADATA>")).trim();
 }
 
 export const agyReader: LogReader<LogSummary> = {

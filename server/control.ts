@@ -5,7 +5,7 @@
 //   - 대상 id 는 지금 herdr 에 실제로 있는 것만 통과시키고,
 //   - 만들 때는 초점을 옮기지 않으며, 묶음 닫기·강제 삭제·저장소 신뢰는 요청이 명시했을 때만 싣는다.
 // AGENT_WORLD_READONLY=1 이면 바꾸는 요청을 모두 거절한다.
-import { readdir, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
@@ -113,6 +113,13 @@ async function directory(path: string): Promise<string> {
     throw new Reject(L(`폴더가 없습니다: ${full}`, `No such folder: ${full}`), 400);
   }
   return full;
+}
+
+/** 브랜치나 기준 커밋의 이름. `-` 로 시작하면 git 이 선택지로 읽을 수 있어 받지 않는다. */
+function gitName(raw: string): string | undefined {
+  const name = raw.trim();
+  if (name.startsWith("-")) throw new Reject(L(`브랜치 이름은 - 로 시작할 수 없습니다: ${name}`, `A branch name cannot start with -: ${name}`), 400);
+  return name || undefined;
 }
 
 async function isDir(path: string): Promise<boolean> {
@@ -398,8 +405,8 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       return herdrCreateWorktree({
         workspaceId: workspaceId ? await need("workspace", workspaceId) : undefined,
         cwd: workspaceId ? undefined : await directory(cwd),
-        branch: text(body, "branch").trim() || undefined,
-        base: text(body, "base").trim() || undefined,
+        branch: gitName(text(body, "branch")),
+        base: gitName(text(body, "base")),
         label: text(body, "label").trim() || undefined,
         trust: body.trust === true,
       });
@@ -475,6 +482,10 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         if (full !== home && !full.startsWith(`${home}/`)) return json({ dirs: [] });
         // 홈 자체(`~`)를 쳤을 때는 홈 안을 보여 준다 — 홈의 부모를 훑으면 다른 계정의 폴더 이름이 나온다.
         const [dir, head] = prefix.endsWith("/") || full === home ? [full, ""] : [dirname(full), basename(full)];
+        // 글자로는 홈 안이어도 중간에 낀 심볼릭 링크가 밖을 가리킬 수 있다. 실제 자리로 다시 본다.
+        const real = await realpath(dir).catch(() => "");
+        const realHome = await realpath(home).catch(() => home);
+        if (real !== realHome && !real.startsWith(`${realHome}/`)) return json({ dirs: [] });
         let names: string[];
         try {
           names = await readdir(dir);

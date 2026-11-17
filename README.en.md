@@ -64,8 +64,8 @@ It needs [Bun](https://bun.sh) (checked on 1.4.4). Once installed, herdr starts 
 
 | Action | What it does |
 | --- | --- |
-| `Agent World: open in browser` | Starts it if needed and opens it in the browser. |
-| `Agent World: show address` | Shows where it is running in a popup (`o` open · `r` restart · `s` stop). |
+| `Agent World: open in browser` | Starts it if needed and opens it in the browser, handing over the access key. |
+| `Agent World: show address` | Shows the keyed address in a popup — for the first visit from another browser such as a phone (`o` open · `r` restart · `s` stop). |
 | `Agent World: restart` | Stops and starts it again — after an update or a config change. |
 | `Agent World: stop` | Stops the server for this herdr session. |
 
@@ -85,14 +85,17 @@ Logs are in `herdr plugin log list --plugin kyongsik-yoon.agent-world` and in `s
 
 ```sh
 bun install
-bun start            # http://127.0.0.1:4780
+bun start            # Agent World → http://127.0.0.1:4780/#k=<key>
 ```
+
+The printed address carries an **access key**. Open that address once in each browser; after that the browser
+remembers it and plain `http://127.0.0.1:4780` works. `bun run url` prints the address again.
 
 | Environment variable | Meaning |
 | --- | --- |
 | `AGENT_WORLD_PORT` | Port. Without it, each herdr session uses a fixed one — 4780 for the default session, and for a named session one port in 4781–4879 derived from its socket path (the same session always gets the same port). If that port is taken it moves to the next one, and if a server is already running for the same herdr it just prints that address and exits. `bun run url` prints the current address. Bound to loopback only. |
 | `AGENT_WORLD_LANG` | Default language: `en` for English, Korean otherwise. Each browser can switch with the `EN`/`한` button in the top bar (remembered) or by opening `?lang=en`. |
-| `AGENT_WORLD_READONLY=1` | Read-only. Refuses prompts, keystrokes, creating, closing and `Open in herdr` (moving herdr's screen). |
+| `AGENT_WORLD_READONLY=1` | Read-only. Refuses prompts, keystrokes, creating, closing and `Open in herdr` (moving herdr's screen). Viewing still needs the key. |
 | `AGENT_WORLD_TRUST_HOSTS` | The address(es) used when serving through `tailscale serve` (`host.tailnet.ts.net:4780`, comma-separated). Only requests from the account that put this machine on the tailnet are accepted. |
 | `AGENT_WORLD_OUTSIDE=1` | Also show sessions outside herdr (other terminals, desktop apps) while attached to herdr. |
 | `AGENT_WORLD_RAISE=0` | Do not bring the terminal window to the front on `Open in herdr`. |
@@ -105,9 +108,16 @@ zoom and angle.
 Shortcuts: `N` next agent to check · `C` talk · `` ` `` terminal · `D` mark as seen · `B` build a house · `Enter` open
 in herdr · `/` search · `H` home · `T` day/night · `Esc` close. Shortcuts are off while you type in an input or the terminal.
 
-This server can type into your terminals. So it binds to 127.0.0.1 only, accepts changes only as same-origin POSTs,
-and only targets panes, tabs and workspaces that exist in herdr right now. It does not protect against other user
-accounts on the same machine — on a shared machine run it with `AGENT_WORLD_READONLY=1`.
+This server shows your terminal screens and can type into your terminals. So:
+
+- It binds to 127.0.0.1 only and requires an **access key** on every `/api` request. The key is created on first
+  start and kept in a file only you can read (`~/.local/state/agent-world/key`), so other accounts on the same
+  machine, or a program that merely knows the address, can neither read screens nor type. To rotate the key, delete
+  that file and restart (each browser then needs the new address once).
+- Changes are accepted only as same-origin POSTs and only target panes, tabs and workspaces that exist in herdr now.
+- The page is served with a Content-Security-Policy, a second barrier against agent-written text running as script.
+
+Treat the keyed address like a password — do not paste it where others can see it.
 
 To use it from another device, expose it inside your tailnet only (never to the public internet):
 
@@ -115,6 +125,11 @@ To use it from another device, expose it inside your tailnet only (never to the 
 AGENT_WORLD_TRUST_HOSTS=<host>.<tailnet>.ts.net:4780 bun start
 tailscale serve --bg --https=4780 http://127.0.0.1:4780
 ```
+
+At start the server also prints the tailnet address with the key — open that once on the other device. A request
+from the tailnet must carry the key and come from the account that put this machine on the tailnet. Use
+`tailscale serve` in HTTPS mode only: requests arriving through `tailscale funnel` (public internet) are refused, and
+raw `--tcp` forwarding should not be used because the sender cannot be identified.
 
 ## How it knows
 
@@ -144,6 +159,7 @@ server/   Bun server — herdr RPC, log tailing, snapshots pushed over SSE
   control.ts  control endpoints (prompts, keys, terminal mirror, create, close)
   adapters/   log readers per harness
   text.ts     server messages in both languages
+  key.ts      the access key and owner-only state files
 web/      three.js scene and HUD
   detail.ts   status window (agent, shell, house), term.ts terminal mirror, build.ts create/close dialogs
   world/      island and plots (environment), characters, actors, layout, label layer (labels)
@@ -154,7 +170,7 @@ dev/      mock-herdr.ts — a fake herdr socket for testing the UI; i18n-check.t
 ```
 
 `bun run probe` prints the current snapshot as a table without starting the server. `bun run url` prints the address
-of the server running for this herdr session. `bun run i18n` checks that every UI string has an English entry.
+(with the key) of the server running for this herdr session. `bun run i18n` checks that every UI string has an English entry.
 
 To test control features, use a named test session instead of the herdr you are working in:
 

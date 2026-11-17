@@ -4,8 +4,7 @@
 // 그래서 127.0.0.1 밖으로는 열지 않고, Host 와 Origin 을 확인해 다른 사이트가 브라우저를 거쳐
 // 읽어 가거나 조작하는 길을 막는다. 조작을 아예 끄려면 AGENT_WORLD_READONLY=1 로 띄운다.
 import { unlinkSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 
 import index from "../web/index.html";
@@ -14,7 +13,8 @@ import { controlRoutes } from "./control.ts";
 import { MAX_IMAGE_BYTES } from "./images.ts";
 import { herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag, herdrSocketPath } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
-import { addressFile, type Address } from "./address.ts";
+import { addressFile, isOurs, type Address } from "./address.ts";
+import { accessKey, keyMatches, keyedUrl, proofOf, writePrivate } from "./key.ts";
 import { L, defaultLang, langOf, say } from "./text.ts";
 import { World } from "./world.ts";
 
@@ -264,7 +264,10 @@ function tailnetOwner(): Promise<string | null> {
 /** 믿을 수 있는 이름으로 들어온 요청인지, 그리고 다른 출처의 페이지가 보낸 것은 아닌지. */
 async function trusted(req: Request): Promise<boolean> {
   const host = (req.headers.get("host") ?? "").toLowerCase();
-  if (TAILNET_HOSTS.has(host)) {
+  // tailscale serve 같은 앞단을 거친 요청은 모두 루프백으로 들어오고 Host 는 보낸 쪽이 적는다. 그래서 Host 가 루프백이라는
+  // 것만으로는 "이 PC 의 브라우저"라고 할 수 없다 — 앞단이 붙이는 머리말이 있으면 tailnet 으로 온 요청으로 다룬다.
+  if (TAILNET_HOSTS.has(host) || proxied(req)) {
+    if (!TAILNET_HOSTS.has(host) || req.headers.has("tailscale-funnel-request")) return false;
     const login = req.headers.get("tailscale-user-login");
     if (!login || login !== (await tailnetOwner())) return false;
   } else if (!loopback(host)) return false;
@@ -281,8 +284,23 @@ async function trusted(req: Request): Promise<boolean> {
   }
 }
 
+/** 앞단(되받아 넘기는 프록시)을 거쳐 온 요청인지. tailscale serve 는 X-Forwarded-* 를 늘 붙이고, 보낸 쪽이 뗄 수 없다. */
+function proxied(req: Request): boolean {
+  for (const name of req.headers.keys()) if (name.startsWith("x-forwarded-") || name === "forwarded" || name.startsWith("tailscale-")) return true;
+  return false;
+}
+
+/** 이 요청이 열쇠를 가져왔는지. 머리말로 받고, 머리말을 달 수 없는 EventSource 는 주소의 k 로 받는다. */
+function keyed(req: Request): boolean {
+  return keyMatches(req.headers.get("x-agent-world-key") ?? new URL(req.url).searchParams.get("k"), KEY);
+}
+
 function guarded(handler: (req: Request) => Response | Promise<Response>) {
-  return async (req: Request) => ((await trusted(req)) ? handler(req) : json({ error: "forbidden" }, 403));
+  return async (req: Request) => {
+    if (!(await trusted(req))) return json({ error: "forbidden" }, 403);
+    if (!keyed(req)) return json({ error: say(L("접속 열쇠가 없거나 맞지 않습니다.", "The access key is missing or wrong."), langOf(req)), code: "key" }, 401);
+    return handler(req);
+  };
 }
 
 /** 이 서버가 무엇에 붙어 있는지. 같은 포트를 두고 만난 다른 Agent World 가 서로를 알아보는 데 쓴다. */
@@ -293,6 +311,9 @@ interface Identity {
 }
 const identity: Identity = { app: "agent-world", socket: resolve(herdrSocketPath()), readonly: READONLY };
 
+/** 접속 열쇠. 모든 /api 요청이 이것을 가져와야 한다(server/key.ts). */
+const KEY = await accessKey();
+
 /**
  * 지금 어느 주소에 떠 있는지를 상태 폴더에 적어 둔다. 서버를 herdr 가 대신 띄우면(플러그인) 이 출력은 아무도 보지
  * 않으므로, 주소를 열어 주는 쪽(`bun run url`)이 읽을 곳이 있어야 한다. 끝날 때 지운다.
@@ -300,9 +321,8 @@ const identity: Identity = { app: "agent-world", socket: resolve(herdrSocketPath
 async function announce(at: number): Promise<void> {
   const path = addressFile(READONLY);
   try {
-    await mkdir(dirname(path), { recursive: true });
     const address: Address = { url: `http://127.0.0.1:${at}`, port: at, pid: process.pid, socket: identity.socket, session: herdrSessionName() ?? null, readonly: READONLY };
-    await writeFile(path, `${JSON.stringify(address)}\n`);
+    await writePrivate(path, `${JSON.stringify(address)}\n`);
   } catch (e) {
     console.error(say(L("주소를 적어 두지 못했습니다:", "Could not record the address:")), (e as Error).message);
     return;
@@ -318,12 +338,18 @@ async function announce(at: number): Promise<void> {
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => process.exit(0));
 }
 
-/** 그 포트에 떠 있는 것이 Agent World 면 그 정체를, 아니면(다른 프로그램이거나 답이 없으면) null 을 준다. */
+/**
+ * 그 포트에 떠 있는 것이 이 사용자의 Agent World 면 그 정체를, 아니면(다른 프로그램이거나, 다른 계정의 것이거나, 답이 없으면)
+ * null 을 준다. 열쇠를 아는 서버만 만들 수 있는 증명으로 가린다.
+ */
 async function identify(at: number): Promise<Identity | null> {
+  const ours = await isOurs(`http://127.0.0.1:${at}`, identity.socket, KEY);
+  if (ours) return { ...identity, readonly: ours.readonly };
+  // 같은 사용자의 것이지만 다른 herdr 세션에 붙은 서버 — 소켓이 달라 위의 증명은 맞지 않는다. 열쇠가 통하는지만 본다.
   try {
-    const res = await fetch(`http://127.0.0.1:${at}/api/identity`, { signal: AbortSignal.timeout(1000) });
+    const res = await fetch(`http://127.0.0.1:${at}/api/identity`, { headers: { "x-agent-world-key": KEY }, signal: AbortSignal.timeout(1000) });
     const body = (await res.json()) as Partial<Identity>;
-    return body.app === "agent-world" && typeof body.socket === "string" ? (body as Identity) : null;
+    return res.ok && body.app === "agent-world" && typeof body.socket === "string" && body.socket !== identity.socket ? (body as Identity) : null;
   } catch {
     return null;
   }
@@ -384,7 +410,8 @@ const listen = (at: number) =>
   development: DEV,
   routes: {
     ...page,
-    "/api/identity": { GET: guarded(() => json(identity)) },
+    // 묻는 쪽이 준 값(n)에 열쇠로 답을 달아, 이 서버가 열쇠를 가진 진짜 Agent World 임을 보인다.
+    "/api/identity": { GET: guarded((req) => json({ ...identity, proof: proofOf(KEY, new URL(req.url).searchParams.get("n") ?? "", identity.socket) })) },
     "/api/snapshot": {
       GET: guarded(async () => json(await world.snapshot())),
     },
@@ -453,8 +480,11 @@ const listen = (at: number) =>
 const server = await start();
 
 const session = herdrSessionName();
+// 열쇠가 붙은 주소를 찍는다. 브라우저마다 처음 한 번은 이 주소로 열어야 한다(그 뒤로는 브라우저가 기억한다).
 console.log(
-  `Agent World → http://127.0.0.1:${server.port}${READONLY ? say(L(" (보기 전용)", " (read-only)")) : ""}${session ? say(L(` · herdr 세션 ${session}`, ` · herdr session ${session}`)) : ""}`,
+  `Agent World → ${keyedUrl(`http://127.0.0.1:${server.port}`, KEY)}${READONLY ? say(L(" (보기 전용)", " (read-only)")) : ""}${session ? say(L(` · herdr 세션 ${session}`, ` · herdr session ${session}`)) : ""}`,
 );
 void announce(server.port ?? port);
-for (const host of TAILNET_HOSTS) console.log(say(L(`  tailnet 에서도 받음(이 PC 의 계정만) → https://${host}`, `  also served on the tailnet (this machine's account only) → https://${host}`)));
+for (const host of TAILNET_HOSTS) {
+  console.log(say(L(`  tailnet 에서도 받음(이 PC 의 계정만) → ${keyedUrl(`https://${host}`, KEY)}`, `  also served on the tailnet (this machine's account only) → ${keyedUrl(`https://${host}`, KEY)}`)));
+}

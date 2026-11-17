@@ -1,12 +1,13 @@
 // 들머리: 서버의 스냅샷 흐름을 받아 장면과 HUD 에 나눠 주고, 둘 사이의 고르기·필터·단축키를 잇는다.
 import type { AgentStatus, AgentView, SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
-import { post, LANG_HEADER } from "./api.ts";
+import { post, hasAccess, headers } from "./api.ts";
 import { Builder } from "./build.ts";
 import { type Action, workspaceKey } from "./detail.ts";
 import { STATUS_VAR, h, store, stored } from "./dom.ts";
 import { STATUS_LABEL, bubbleText, needsAttention } from "./format.ts";
 import { Hud } from "./hud.ts";
 import { lang, localizeStatic, t, setLang } from "./i18n.ts";
+import { acceptKey, withKey } from "./key.ts";
 import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
@@ -70,7 +71,6 @@ terminal.onToggle = (open) => {
   scene.setCovered(open);
   hud.setCovered(open);
 };
-void loadTermTheme();
 
 const builder = new Builder({
   snapshot: () => hud.latest,
@@ -152,7 +152,7 @@ function act(action: Action): void {
 async function openInHerdr(a: AgentView): Promise<void> {
   if (!a.paneId || !hud.latest?.control) return;
   try {
-    const res = await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json", ...LANG_HEADER }, body: JSON.stringify({ paneId: a.paneId }) });
+    const res = await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json", ...headers() }, body: JSON.stringify({ paneId: a.paneId }) });
     const data = (await res.json()) as { ok?: boolean; raised?: boolean; error?: string };
     if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
     hud.toast(t("herdr 로 이동"), data.raised ? t("{title} — 터미널 창을 앞으로 가져왔습니다.", { title: a.title }) : t("{title} — herdr 화면을 이 pane 으로 옮겼습니다.", { title: a.title }), "var(--accent)");
@@ -250,7 +250,7 @@ function show(snapshot: WorldSnapshot): void {
 }
 
 function connect(): void {
-  const events = new EventSource("/api/events");
+  const events = new EventSource(withKey("/api/events"));
   /** 이 연결로 받은 최신 상태. 서버는 전체를 한 번 보낸 뒤로 달라진 것만 보낸다. */
   let current: WorldSnapshot | undefined;
   events.onmessage = (e) => {
@@ -307,7 +307,54 @@ rosterBtn.addEventListener("click", () => setRoster(document.body.dataset.roster
   syncInsets();
 }
 
-connect();
+/**
+ * 이 브라우저가 열쇠를 모를 때: 어떻게 여는지 알려 주고, 열쇠(또는 열쇠가 든 주소)를 붙여 넣을 수 있게 한다.
+ * 닫을 수 없다 — 열쇠 없이는 아무것도 보여 줄 수 없다.
+ */
+function askForKey(): void {
+  const input = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: t("열쇠 또는 열쇠가 든 주소") });
+  const error = h("p", { class: "dlg-error" });
+  error.hidden = true;
+  const form = h(
+    "form",
+    { method: "dialog" },
+    h("h2", {}, t("접속 열쇠가 필요합니다")),
+    h("p", {}, t("이 브라우저는 아직 이 Agent World 의 열쇠를 모릅니다. 열쇠가 붙은 주소로 한 번 열면 그 뒤로는 기억합니다.")),
+    h("p", {}, t("herdr 플러그인이면 명령 팔레트의 “Agent World: open in browser” 로 열고, 직접 띄웠으면 서버를 띄운 터미널이나 `bun run url` 이 찍는 주소로 엽니다.")),
+    h("label", { class: "field" }, h("span", {}, t("또는 여기에 붙여 넣기")), input),
+    error,
+    h("div", { class: "dlg-actions" }, h("button", { class: "btn primary", type: "submit" }, t("열기"))),
+  );
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!acceptKey(input.value)) {
+      error.textContent = t("열쇠 모양이 아닙니다. 열쇠가 붙은 주소를 통째로 붙여 넣어도 됩니다.");
+      error.hidden = false;
+      return;
+    }
+    void hasAccess().then((ok) => {
+      if (ok) return location.reload();
+      error.textContent = ok === false ? t("열쇠가 맞지 않습니다.") : t("서버에 닿지 못했습니다.");
+      error.hidden = false;
+    });
+  });
+  const dlg = h("dialog", { class: "dlg" }, form);
+  dlg.addEventListener("cancel", (e) => e.preventDefault());
+  document.body.append(dlg);
+  dlg.showModal();
+  input.focus();
+}
+
+// 열쇠가 통하는지 먼저 본다. 서버에 닿지 못한 것이면(잠깐 꺼져 있다) 평소처럼 붙기를 되풀이한다.
+void hasAccess().then((ok) => {
+  if (ok === false) {
+    hud.setConnection("down", t("접속 열쇠가 필요합니다"));
+    askForKey();
+    return;
+  }
+  void loadTermTheme();
+  connect();
+});
 
 // ── 단추와 단축키 ────────────────────────────────────────────────────────────────────────────
 

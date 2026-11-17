@@ -55,8 +55,8 @@ herdr plugin install KyongSik-Yoon/agent-world
 
 | 동작 | 하는 일 |
 | --- | --- |
-| `Agent World: open in browser` | 떠 있지 않으면 띄우고 브라우저로 연다. |
-| `Agent World: show address` | 어디에 떠 있는지 팝업으로 보여 준다(`o` 열기 · `r` 다시 띄우기 · `s` 끄기). |
+| `Agent World: open in browser` | 떠 있지 않으면 띄우고 브라우저로 연다(접속 열쇠까지 넘겨 준다). |
+| `Agent World: show address` | 열쇠가 붙은 주소를 팝업으로 보여 준다 — 휴대폰 같은 다른 브라우저에서 처음 열 때 쓴다(`o` 열기 · `r` 다시 띄우기 · `s` 끄기). |
 | `Agent World: restart` | 껐다가 다시 띄운다 — 업데이트하거나 설정을 바꾼 뒤에. |
 | `Agent World: stop` | 이 herdr 세션의 서버를 끈다. |
 
@@ -74,14 +74,17 @@ AGENT_WORLD_READONLY=1
 
 ```sh
 bun install
-bun start            # http://127.0.0.1:4780
+bun start            # Agent World → http://127.0.0.1:4780/#k=<열쇠>
 ```
+
+찍힌 주소에는 **접속 열쇠**가 붙어 있다. 브라우저마다 처음 한 번은 이 주소로 열어야 하고, 그 뒤로는 그 브라우저가 기억한다
+(`http://127.0.0.1:4780` 만으로 열린다). 주소를 다시 보려면 `bun run url`.
 
 | 환경 변수 | 뜻 |
 | --- | --- |
 | `AGENT_WORLD_PORT` | 포트. 주지 않으면 herdr 세션마다 정해진 자리를 쓴다 — 기본 세션은 4780, 이름 붙은 세션은 소켓 경로에서 정해지는 4781~4879 의 한 포트(세션이 같으면 늘 같다). 그 자리가 차 있으면 옆 포트로 옮겨 띄우고, 같은 herdr 에 이미 떠 있으면 그 주소만 알리고 끝난다. 지금 주소는 `bun run url` 이 찍는다. 루프백에만 묶인다. |
 | `AGENT_WORLD_LANG` | 기본 말. `en` 이면 영어, 그 밖에는 한국어. 화면 오른쪽 위의 `EN`/`한` 단추로 브라우저마다 따로 바꿀 수 있고(기억된다), 주소에 `?lang=en` 을 붙여 열어도 된다. |
-| `AGENT_WORLD_READONLY=1` | 보기 전용. 지시·키 입력·만들기·닫기와 `herdr 에서 열기`(herdr 화면 옮기기) 요청을 모두 거절한다. |
+| `AGENT_WORLD_READONLY=1` | 보기 전용. 지시·키 입력·만들기·닫기와 `herdr 에서 열기`(herdr 화면 옮기기) 요청을 모두 거절한다. 보는 데에도 열쇠는 필요하다. |
 | `AGENT_WORLD_TRUST_HOSTS` | `tailscale serve` 로 내보낼 때의 주소(`host.tailnet.ts.net:4780`, 쉼표로 여럿). 이 PC 를 tailnet 에 올린 계정의 요청만 받는다. |
 | `AGENT_WORLD_OUTSIDE=1` | herdr 에 붙어 있는 동안에도 herdr 밖 세션(다른 터미널, 데스크톱 앱)을 함께 보여 준다. |
 | `AGENT_WORLD_RAISE=0` | `herdr 에서 열기`가 터미널 창을 앞으로 가져오지 않게 한다. |
@@ -94,9 +97,15 @@ bun start            # http://127.0.0.1:4780
 단축키: `N` 다음 확인 대상 · `C` 말 걸기 · `` ` `` 터미널 · `D` 확인 완료 · `B` 집 짓기 · `Enter` herdr 로 이동 ·
 `/` 찾기 · `H` 처음 화면 · `T` 낮/밤 · `Esc` 닫기. 입력란이나 터미널에 글을 치는 동안에는 단축키가 듣지 않는다.
 
-이 서버는 터미널에 글자를 넣을 수 있다. 그래서 127.0.0.1 에만 묶이고, 바꾸는 요청은 같은 출처에서 온 POST 만
-받으며, 대상은 지금 herdr 에 실제로 있는 pane·탭·스페이스로 한정한다. 같은 PC 의 다른 사용자 계정까지는 막지
-않으므로, 여럿이 쓰는 기계에서는 `AGENT_WORLD_READONLY=1` 로 띄운다.
+이 서버는 터미널 화면을 내보내고 터미널에 글자를 넣을 수 있다. 그래서:
+
+- 127.0.0.1 에만 묶이고, 모든 `/api` 요청에 **접속 열쇠**를 요구한다. 열쇠는 처음 뜰 때 만들어 이 사용자만 읽는 파일
+  (`~/.local/state/agent-world/key`)에 둔다 — 같은 PC 의 다른 계정이나, 주소만 아는 다른 프로그램은 화면을 읽지도 글자를 넣지도 못한다.
+  열쇠를 바꾸려면 그 파일을 지우고 서버를 다시 띄운다(브라우저마다 새 주소로 한 번 다시 열어야 한다).
+- 바꾸는 요청은 같은 출처에서 온 POST 만 받고, 대상은 지금 herdr 에 실제로 있는 pane·탭·스페이스로 한정한다.
+- 화면 문서에는 콘텐츠 보안 정책을 붙여, 에이전트가 쓴 글이 스크립트로 돌 길을 한 겹 더 막는다.
+
+열쇠가 붙은 주소는 비밀번호처럼 다룬다 — 남에게 보이는 곳에 붙여 넣지 않는다.
 
 다른 기기에서 쓰려면 tailnet 안으로만 내보낸다(공인 인터넷 공개는 하지 않는다):
 
@@ -104,6 +113,10 @@ bun start            # http://127.0.0.1:4780
 AGENT_WORLD_TRUST_HOSTS=<host>.<tailnet>.ts.net:4780 bun start
 tailscale serve --bg --https=4780 http://127.0.0.1:4780
 ```
+
+서버가 뜰 때 tailnet 주소도 열쇠와 함께 찍어 준다 — 다른 기기에서는 그 주소로 한 번 연다. tailnet 으로 온 요청은 열쇠에 더해,
+이 PC 를 tailnet 에 올린 계정의 것일 때만 받는다. `tailscale serve` 의 HTTPS 방식만 쓴다: `tailscale funnel`(공인 인터넷 공개)로 온
+요청은 거절하고, `--tcp` 로 그대로 넘기는 방식은 누가 보냈는지 알 수 없으므로 쓰지 않는다.
 
 ## 어떻게 아는가
 
@@ -131,6 +144,7 @@ server/   Bun 서버 — herdr RPC, 로그 tail, 스냅샷을 SSE 로 밀어 준
   control.ts  조작 엔드포인트(지시·키 입력·터미널 미러·만들기·닫기)
   adapters/   하네스별 로그 리더
   text.ts     서버가 건네는 말(한국어·영어)
+  key.ts      접속 열쇠와 이 사용자만 읽는 상태 파일
 web/      three.js 장면과 HUD
   detail.ts   상태 창(에이전트·셸·집), term.ts 터미널 미러, build.ts 만들기·닫기 대화상자
   world/      섬·집터(environment), 캐릭터(characters), 배우(actor), 배치(layout), 이름표 층(labels)
@@ -141,7 +155,7 @@ dev/      mock-herdr.ts — 실제 herdr 없이 화면을 시험하는 흉내 �
 ```
 
 `bun run probe` 는 서버를 띄우지 않고 지금의 스냅샷을 표로 찍는다. `bun run url` 은 이 herdr 세션에 떠 있는 서버의 주소를 찍는다
-(서버가 `~/.local/state/agent-world/server*.json` 에 적어 둔다) — `xdg-open "$(bun run --silent url)"`. `bun run i18n` 은 화면의 문장마다
+(열쇠 포함. 서버가 `~/.local/state/agent-world/server*.json` 에 적어 둔 것을 읽는다). `bun run i18n` 은 화면의 문장마다
 영어 풀이가 있는지 본다 — 화면에 글을 더하면 `t("…")` 로 감싸고 `web/locale/en.ts` 에 풀이를 적는다.
 
 조작을 시험할 때는 쓰고 있는 herdr 대신 이름 붙은 테스트 세션을 쓴다:

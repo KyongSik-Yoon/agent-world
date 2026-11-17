@@ -53,5 +53,5 @@ id = "info"
 title = "Agent World"
 placement = "popup"
 width = 76
-height = 9
+height = 11
 command = ["sh", "scripts/with-bun.sh", "scripts/plugin.ts", "info"]
