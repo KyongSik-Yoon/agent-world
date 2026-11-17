@@ -176,10 +176,19 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
   });
 
   /**
+   * 질문 카드(desk-look·desk-plan)가 답을 기다리면 지시를 막는다. herdr 는 그 pane 을 working 으로 알아 `agent_blocked` 로
+   * 거절해 주지 않는다. 그대로 넣으면 글이 입력창에 차서, 입력창이 비어 있을 때만 받는 카드의 숫자 키가 먹지 않는다.
+   */
+  const refuseIfAsking = async (paneId: string): Promise<void> => {
+    if (await world.waitingOnCard(paneId)) throw new Reject(L("에이전트가 질문에 대한 답을 기다리는 중입니다.", "The agent is waiting for an answer to its question."), 409, "agent_blocked");
+  };
+
+  /**
    * 지시를 보낸다. herdr 가 제때 답하지 않은 것은 "못 보냈다"가 아니다 — 늦게라도 들어갔을 수 있어서,
    * 실패로만 알리면 다시 보내 같은 지시가 두 번 들어간다.
    */
   const deliver = async (paneId: string, prompt: string): Promise<void> => {
+    await refuseIfAsking(paneId);
     try {
       await herdrPrompt(paneId, prompt);
     } catch (e) {
@@ -349,6 +358,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         const pane = (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId);
         // 질문에 막혀 있으면 붙여넣은 경로가 대화상자로 들어간다. agent.prompt 가 거절하는 것과 같은 이유로 먼저 막는다.
         if (pane?.agent_status === "blocked") throw new Reject(L("에이전트가 질문에 대한 답을 기다리는 중입니다.", "The agent is waiting for an answer to its question."), 409, "agent_blocked");
+        await refuseIfAsking(paneId);
         if (pane?.agent === "claude") {
           // Claude Code 는 경로만 붙여넣으면 그 파일을 읽어 [Image #N] 으로 단다. 새 번호가 장수만큼 보인 뒤에만 보낸다 —
           // 붙지 않았다면 입력창이 아닌 무언가(herdr 가 못 알아본 대화상자 등)가 떠 있는 것이라, Enter 가 엉뚱한 것을 누른다.

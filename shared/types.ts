@@ -45,8 +45,11 @@ export interface AgentView {
   name?: string;
   title: string;
   status: AgentStatus;
-  /** 상태를 어디서 읽었는지 — herdr 가 알려준 값인지, 로그 시각으로 추정한 값인지. */
-  statusSource: "herdr" | "log";
+  /**
+   * 상태를 어디서 읽었는지 — herdr 가 알려준 값인지, 로그 시각으로 추정한 값인지,
+   * herdr 는 working 이라 했지만 답을 기다리는 질문 카드(desk-look·desk-plan)를 찾아 올린 값인지.
+   */
+  statusSource: "herdr" | "log" | "card";
   /** 완료를 월드에서 이미 확인했다 — status 는 idle 로 내려가 있다. */
   seen?: boolean;
   /** 아직 결과가 오지 않은 마지막 도구 호출. */

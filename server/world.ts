@@ -9,6 +9,7 @@ import { agy } from "./adapters/agy.ts";
 import { claude } from "./adapters/claude.ts";
 import { codex } from "./adapters/codex.ts";
 import type { Harness, LogFile } from "./adapters/types.ts";
+import { AskingPanes } from "./asking.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Text } from "./text.ts";
 import { SeenStore } from "./seen.ts";
@@ -71,6 +72,8 @@ export class World {
   /** 이번 스냅샷에서 읽은 로그들 — 끝나면 나머지는 놓아준다. */
   private used = new Set<string>();
   private readonly seen = new SeenStore();
+  /** herdr 는 working 이라 하지만 카드를 띄워 답을 기다리는 pane 들. */
+  private readonly asking = new AskingPanes();
   /** herdr pane 안에서 돌던 세션을 마지막으로 본 시각. pane 을 닫은 세션이 "herdr 밖 세션"으로 되살아나지 않게 한다. */
   private readonly lastInHerdr = new Map<string, number>();
   /** 완료 상태인 pane 의 herdr 상태 변경 번호 — 확인 기록을 남길 때 쓴다. */
@@ -150,7 +153,7 @@ export class World {
     return s;
   }
 
-  private async paneView(pane: HerdrPane, snap: HerdrSnapshot): Promise<AgentView> {
+  private async paneView(pane: HerdrPane, snap: HerdrSnapshot, asking: ReadonlySet<string>): Promise<AgentView> {
     const ws = snap.workspaces.find((w) => w.workspace_id === pane.workspace_id);
     const tab = snap.tabs.find((t) => t.tab_id === pane.tab_id);
     const vendor = (pane.agent ?? "unknown").toLowerCase();
@@ -198,7 +201,13 @@ export class World {
       ws?.tokens?.topic ||
       view.workspaceLabel;
 
-    // 로그의 대기 요청은 확인 필요 카드에 보탤 내용일 뿐, 상태를 바꾸지는 않는다 — 상태는 herdr 가 정본이다.
+    // 상태는 herdr 가 정본이다. 하나만 덧쓴다: desk-look·desk-plan 이 엔진 대화상자 대신 띄운 카드는 도구가 도는 중이라
+    // herdr 가 working 으로 본다. 그 카드가 답을 기다리는 것을 프로세스로 확인했으면 확인 필요로 올린다(asking.ts).
+    if (status === "working" && asking.has(pane.pane_id)) {
+      status = "blocked";
+      view.statusSource = "card";
+    }
+    // 로그의 대기 요청은 확인 필요 카드에 보탤 내용일 뿐, 상태를 바꾸지는 않는다.
     if (status !== "blocked") view.pending = undefined;
     const seq = pane.state_change_seq ?? 0;
     const seen = this.seen.check(pane.pane_id, seq);
@@ -311,7 +320,8 @@ export class World {
       }
       for (const tab of snap.tabs) tabs.push({ id: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? "", number: tab.number ?? 0 });
 
-      const views = await Promise.all(snap.agents.filter((p) => p.agent).map((p) => this.paneView(p, snap)));
+      const asking = snap.agents.some((p) => p.agent_status === "working") ? await this.asking.check() : new Set<string>();
+      const views = await Promise.all(snap.agents.filter((p) => p.agent).map((p) => this.paneView(p, snap, asking)));
       for (const view of views) {
         agents.push(view);
         if (view.sessionId) inHerdr.add(`${harnessFor(view.vendor)?.vendor ?? view.vendor}:${view.sessionId}`);
@@ -405,6 +415,11 @@ export class World {
     if (kind === "tab") return snap.tabs.some((t) => t.tab_id === id);
     if (kind === "agent") return snap.agents.some((p) => p.pane_id === id && p.agent);
     return snap.panes.some((p) => p.pane_id === id);
+  }
+
+  /** 카드를 띄워 답을 기다리는 중인지 — herdr 가 막아 주지 않으므로 지시를 보내기 전에 따로 묻는다. */
+  async waitingOnCard(paneId: string): Promise<boolean> {
+    return (await this.asking.check()).has(paneId);
   }
 
   hasPane(paneId: string): Promise<boolean> {
