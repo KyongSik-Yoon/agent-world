@@ -32,17 +32,19 @@ export interface DetailCallbacks {
 // 글자 키는 raw(키보드로 친 바이트 그대로)로 보낸다. 그냥 text 로 보내면 herdr 가 붙여넣기로 감싸서,
 // 키 입력을 기다리는 대화상자(권한 확인 등)가 무시한다.
 /** icon 이 있으면 글자 기호 대신 선 아이콘을 그리고 title 을 읽어 주는 이름으로 쓴다. caption 은 아이콘 옆에 붙는 글. */
+// 차례가 곧 자리다. 손가락 화면은 다섯 개씩 두 줄로 세우므로, 앞의 다섯은 선택지를 고르는 키(번호·화살표),
+// 뒤의 다섯은 멈추기·모드·확정 키다. Enter 는 보내기 단추 바로 위인 끝자리에 둔다.
 const QUICK_KEYS: Array<{ label: string; title: string; icon?: IconName; caption?: string; keys?: string[]; text?: string; raw?: boolean }> = [
-  { label: "Esc", title: t("하던 일 멈추기 / 대화상자 닫기"), keys: ["esc"] },
-  { label: "Enter", title: "Enter", icon: "enter", keys: ["enter"] },
-  { label: "Up", title: t("위"), icon: "up", keys: ["up"] },
-  { label: "Down", title: t("아래"), icon: "down", keys: ["down"] },
   { label: "1", title: t("{key} 누르기", { key: "1" }), text: "1", raw: true },
   { label: "2", title: t("{key} 누르기", { key: "2" }), text: "2", raw: true },
   { label: "3", title: t("{key} 누르기", { key: "3" }), text: "3", raw: true },
+  { label: "Up", title: t("위"), icon: "up", keys: ["up"] },
+  { label: "Down", title: t("아래"), icon: "down", keys: ["down"] },
+  { label: "Esc", title: t("하던 일 멈추기 / 대화상자 닫기"), keys: ["esc"] },
+  { label: "^C", title: "Ctrl+C", text: "\x03", raw: true },
   { label: "Tab", title: "Tab", keys: ["tab"] },
   { label: "Shift+Tab", title: t("Shift+Tab (권한 모드 바꾸기)"), icon: "shift", caption: "Tab", keys: ["shift+tab"] },
-  { label: "^C", title: "Ctrl+C", text: "\x03", raw: true },
+  { label: "Enter", title: "Enter", icon: "enter", keys: ["enter"] },
 ];
 
 const PREVIEW_LINES = 18;
