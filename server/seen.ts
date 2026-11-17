@@ -3,13 +3,21 @@
 // herdr 는 화면을 그 pane 으로 옮겼을 때만 "봤다"고 친다. 월드에서 응답을 다 읽어도 완료로 남으므로,
 // 월드가 따로 적어 둔다: pane 과 그때의 herdr 상태 변경 번호. 에이전트가 다시 일하면 번호가 바뀌어
 // 기록은 저절로 무효가 된다. herdr 의 초점은 건드리지 않는다.
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { herdrDefaultSocket } from "./herdr.ts";
 
+/**
+ * 기록 파일은 herdr 세션마다 따로 둔다. pane id 는 세션 안에서만 고유해서(w1:p1 …), 한 파일을 같이 쓰면
+ * 다른 세션에 붙은 월드가 서로의 기록을 "사라진 pane"으로 보고 지운다. 기본 소켓은 예전 이름 그대로다.
+ */
 function storePath(): string {
   const base = process.env.XDG_STATE_HOME || join(homedir(), ".local", "state");
-  return join(base, "agent-world", "seen.json");
+  const socket = process.env.HERDR_SOCKET_PATH;
+  const tag = socket && resolve(socket) !== herdrDefaultSocket() ? `-${createHash("sha1").update(resolve(socket)).digest("hex").slice(0, 10)}` : "";
+  return join(base, "agent-world", `seen${tag}.json`);
 }
 
 export class SeenStore {
