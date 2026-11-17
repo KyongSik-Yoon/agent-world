@@ -280,6 +280,22 @@ export function keyToInput(e: KeyboardEvent): { text?: string; keys?: string[]; 
 
 const BACK_LINES = 1200;
 
+/** 화면 자판에 없는 키들 — 크게 보기 위쪽에 단추로 둔다(터치 기기에서만 보인다). */
+const SOFT_KEYS: Array<{ label: string; keys?: string[]; text?: string }> = [
+  { label: "Esc", keys: ["esc"] },
+  { label: "Tab", keys: ["tab"] },
+  { label: "⇧Tab", keys: ["shift+tab"] },
+  { label: "←", keys: ["left"] },
+  { label: "↓", keys: ["down"] },
+  { label: "↑", keys: ["up"] },
+  { label: "→", keys: ["right"] },
+  { label: "⏎", keys: ["enter"] },
+  { label: "⌫", keys: ["backspace"] },
+  { label: "^C", text: "\x03" },
+  { label: "^D", text: "\x04" },
+  { label: "^R", text: "\x12" },
+];
+
 /**
  * 크게 보는 터미널. 화면 전체를 덮고, 열려 있는 동안 키 입력은 모두 pane 으로 간다.
  * 한글은 숨은 입력란으로 조합을 받아 완성된 글자만 보낸다. Shift+Esc 로 닫는다.
@@ -318,13 +334,37 @@ export class TermOverlay {
     names.append(this.title, this.sub);
     head.append(names, hint, this.backBtn, close);
 
+    const soft = document.createElement("div");
+    soft.className = "soft-keys";
+    for (const key of SOFT_KEYS) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = key.label;
+      // 단추를 눌러도 입력란의 초점(과 화면 자판)이 그대로 있도록 한다.
+      btn.addEventListener("pointerdown", (e) => e.preventDefault());
+      btn.addEventListener("click", () => {
+        this.flush();
+        this.send(key.keys ? { keys: key.keys } : { text: key.text, raw: true });
+      });
+      soft.append(btn);
+    }
+    const keyboard = document.createElement("button");
+    keyboard.type = "button";
+    keyboard.textContent = "⌨";
+    keyboard.title = "자판 열기";
+    keyboard.addEventListener("click", () => this.ime.focus());
+    soft.append(keyboard);
+
     this.ime.className = "ime";
     this.ime.setAttribute("aria-label", "터미널 입력");
+    // 터치 기기에서는 이 입력란이 화면 아래에 보인다(조합 중인 글자를 볼 수 있게).
+    this.ime.placeholder = "여기에 치면 터미널로 들어갑니다";
+    this.ime.rows = 1;
     this.ime.autocapitalize = "off";
     this.ime.spellcheck = false;
     this.body.className = "body";
     this.body.append(this.screen.el, this.ime);
-    this.root.append(head, this.body);
+    this.root.append(head, soft, this.body);
     document.body.append(this.root);
 
     this.body.addEventListener("mouseup", () => {
@@ -336,6 +376,19 @@ export class TermOverlay {
       if ((e as InputEvent).isComposing) return;
       this.type(this.ime.value);
       this.ime.value = "";
+    });
+    // 화면 자판은 지우기·줄바꿈을 keydown 이 아니라 이 이벤트로만 알려 주는 경우가 많다.
+    this.ime.addEventListener("beforeinput", (e) => {
+      if (e.isComposing) return;
+      if (e.inputType === "deleteContentBackward" && this.ime.value === "") {
+        e.preventDefault();
+        this.flush();
+        this.send({ keys: ["backspace"] });
+      } else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+        e.preventDefault();
+        this.flush();
+        this.send({ keys: ["enter"] });
+      }
     });
     this.ime.addEventListener("compositionend", (e) => {
       this.type(e.data);
@@ -390,7 +443,9 @@ export class TermOverlay {
   private fit(): void {
     if (this.root.hidden) return;
     const width = this.body.clientWidth - 28;
-    const size = Math.max(7, Math.min(14, width / (this.cols * 0.6)));
+    // 좁은 화면에서는 칸을 다 넣으려다 글자가 깨알이 되느니, 읽을 만한 크기로 두고 가로로 민다.
+    const floor = window.innerWidth < 760 ? 10 : 7;
+    const size = Math.max(floor, Math.min(14, width / (this.cols * 0.6)));
     this.screen.el.style.fontSize = `${size.toFixed(2)}px`;
   }
 

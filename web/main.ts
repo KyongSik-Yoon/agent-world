@@ -77,6 +77,8 @@ function select(id: string | null): void {
   }
   selectedId = id;
   selectedAt = Date.now();
+  // 좁은 화면에서는 목록이 마을을 덮고 있으므로, 고르면 접는다.
+  if (id) setRoster(false);
   scene.select(id);
   hud.select(id);
 }
@@ -230,6 +232,14 @@ function connect(): void {
 }
 
 const buildBtn = document.getElementById("btn-build")!;
+
+// 좁은 화면(휴대폰)에서는 목록을 접어 두고 단추로 여닫는다. 넓은 화면에서는 늘 보인다.
+const rosterBtn = document.getElementById("btn-roster")!;
+function setRoster(open: boolean): void {
+  document.body.dataset.roster = open ? "open" : "closed";
+  rosterBtn.setAttribute("aria-expanded", String(open));
+}
+rosterBtn.addEventListener("click", () => setRoster(document.body.dataset.roster !== "open"));
 
 connect();
 

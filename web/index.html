@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>Agent World</title>
     <link
       rel="icon"
@@ -14,7 +14,8 @@
     <div id="world"></div>
 
     <header id="topbar" class="glass">
-      <div class="brand"><span class="brand-mark"></span>Agent World</div>
+      <button id="btn-roster" class="btn icon" type="button" title="에이전트 목록" aria-expanded="false">☰</button>
+      <div class="brand"><span class="brand-mark"></span><span class="brand-name">Agent World</span></div>
       <div id="chips" role="group" aria-label="상태별 에이전트 수"></div>
       <div class="spacer"></div>
       <span id="conn" class="conn" data-state="wait">연결 중…</span>
