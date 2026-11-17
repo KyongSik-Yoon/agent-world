@@ -67,7 +67,9 @@ function fail(code: string, message: string): never {
 
 function screen(paneId: string): string[] {
   let lines = screens.get(paneId);
-  if (!lines) screens.set(paneId, (lines = [`\x1b[1m\x1b[38;5;2m(흉내 화면)\x1b[0m ${paneId}`, "$ "]));
+  // 시나리오의 pane 에 screen(줄 배열)을 적어 두면 그 화면으로 시작한다.
+  const preset = (state?.panes.find((p) => p.pane_id === paneId) ?? state?.agents.find((p) => p.pane_id === paneId))?.screen;
+  if (!lines) screens.set(paneId, (lines = Array.isArray(preset) ? preset.map(String) : [`\x1b[1m\x1b[38;5;2m(흉내 화면)\x1b[0m ${paneId}`, "$ "]));
   return lines;
 }
 

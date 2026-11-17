@@ -4,7 +4,8 @@
   --blocked: #f0506e;
   --idle: #8a93a6;
   --font: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
-  --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "D2Coding", ui-monospace, monospace;
+  /* AW Nerd·AW Symbols 는 이 PC 의 기호 글꼴을 서버가 내준 것 — 아이콘·기술 기호 범위에만 걸려 있어 그 글자가 나올 때만 받는다. */
+  --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "D2Coding", "AW Nerd", "AW Symbols", ui-monospace, monospace;
   --radius: 14px;
 }
 
@@ -1331,6 +1332,12 @@ kbd {
   width: 2ch;
 }
 
+/* 한글·한자는 대개 1em 폭이라 두 칸(영문 0.6em×2)에 못 미쳐, 칸 가운데 떠서 글자 사이가 벌어진다. 이 기기에서 잰 배율로
+   글자만 키워 두 칸을 채운다 — transform 이라 칸 자리와 줄 배치는 그대로다. 배율(가로·세로)은 term.ts 의 fitWide 가 정한다. */
+.term .w2.cjk {
+  transform: scale(var(--wide-x, 1), var(--wide-y, 1));
+}
+
 /* 터미널이 그림을 그려 둔 자리. 그림은 받아 올 수 없어 자리만 옅게 칠한다. */
 .term .img {
   /* 줄 높이를 다 채워, 여러 줄에 걸친 그림 자리가 줄무늬 없이 한 덩어리로 보이게 한다. */
@@ -2042,6 +2049,10 @@ dialog.dlg .warn {
 
 .soft-keys button {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   min-width: 40px;
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -2049,6 +2060,16 @@ dialog.dlg .warn {
   background: var(--soft);
   color: var(--ink);
   font: 600 13px var(--mono);
+}
+
+.soft-keys .ico {
+  width: 17px;
+  height: 17px;
+}
+
+.soft-keys .ico:has(+ span) {
+  width: 14px;
+  height: 14px;
 }
 
 /* 터치 기기: 화면 자판에 없는 키를 단추로 내놓고, 조합 중인 글자가 보이도록 입력란을 드러낸다. */

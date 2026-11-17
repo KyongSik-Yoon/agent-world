@@ -5,6 +5,7 @@
 // 전각 문자는 2칸, 글꼴에 없을 법한 기호는 1칸 너비의 상자에 넣는다.
 import { get, sendInput, headers } from "./api.ts";
 import { withKey } from "./key.ts";
+import { type IconName, icon } from "./dom.ts";
 import { t } from "./i18n.ts";
 
 interface TermTheme {
@@ -28,6 +29,49 @@ export async function loadTermTheme(): Promise<void> {
     // 못 받아 오면 스타일시트의 기본색을 쓴다.
   }
 }
+
+/**
+ * 한글·한자가 두 칸을 채우도록 키울 배율을 이 기기의 글꼴로 재서 --wide-scale 에 둔다. 데스크톱 터미널은 한글을 두 칸에
+ * 맞춘 글꼴을 쓰지만, 휴대폰의 한글은 대개 두 칸보다 좁아 그대로 두면 글자 사이가 벌어진다. 글꼴이 늦게 오면 다시 잰다.
+ */
+function fitWide(): void {
+  const probe = document.createElement("div");
+  probe.className = "term";
+  probe.style.cssText = "position:absolute;left:-9999px;top:0;visibility:hidden;padding:0;overflow:visible";
+  const latin = probe.appendChild(document.createElement("span"));
+  latin.textContent = "0".repeat(20);
+  probe.append(document.createElement("br"));
+  const wide = probe.appendChild(document.createElement("span"));
+  wide.textContent = "한".repeat(10);
+  document.body.append(probe);
+  const cell = latin.getBoundingClientRect().width / 20;
+  const glyph = wide.getBoundingClientRect().width / 10;
+  probe.remove();
+  if (!(cell > 0 && glyph > 0)) return;
+  // 두 칸보다 넓은 글꼴은 줄이지 않는다(칸 밖으로 넘치는 것은 줄여도 보기 나쁘다). 크게 어긋난 값은 믿지 않는다.
+  // 세로는 1.15배까지만 — 더 키우면 줄 높이(1.22em)를 넘어 윗줄·아랫줄 글자에 닿는다. 그 이상은 가로로만 채운다.
+  const x = Math.min(1.4, Math.max(1, (2 * cell) / glyph));
+  const root = document.documentElement.style;
+  root.setProperty("--wide-x", x.toFixed(3));
+  root.setProperty("--wide-y", Math.min(x, 1.15).toFixed(3));
+}
+
+/** 터미널 기호 글꼴(서버가 이 PC 의 것을 내준다)을 아이콘·기술 기호 범위에만 건다. 범위 밖의 글자에는 쓰이지 않는다. */
+function installGlyphFonts(): void {
+  const style = document.createElement("style");
+  style.textContent = [
+    // Nerd Font 아이콘: 사설 영역(Powerline·Font Awesome·Octicons 등)과 Material Design 아이콘(보조 사설 영역).
+    `@font-face{font-family:"AW Nerd";src:url("font/nerd");font-display:block;unicode-range:U+E000-F8FF,U+F0000-FFFFD}`,
+    // 기술 기호(⏵ ⏸ ⎿ ⌘ …): Claude Code 의 auto mode 표시 등.
+    `@font-face{font-family:"AW Symbols";src:url("font/symbols");font-display:block;unicode-range:U+2300-23FF}`,
+  ].join("\n");
+  document.head.append(style);
+}
+
+installGlyphFonts();
+if (document.body) fitWide();
+else addEventListener("DOMContentLoaded", fitWide, { once: true });
+document.fonts?.addEventListener("loadingdone", fitWide);
 
 const CUBE = [0, 95, 135, 175, 215, 255];
 
@@ -103,6 +147,8 @@ function css(s: Style): string {
 
 const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F300}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{20000}-\u{3FFFD}]/u;
 /** 고정폭 글꼴이 제 너비로 그려 주는 글자들 — 나머지는 상자에 넣어 칸을 맞춘다. */
+/** 두 칸 글자 가운데 그림 글자. 한글·한자와 달리 이미 두 칸쯤 넓어 키우지 않는다. */
+const EMOJI = /[\u{1F300}-\u{1FAFF}]/u;
 const SAFE = /[ -\u024F\u2500-\u259F\u2800-\u28FF]/;
 
 /** 칸을 차지하지 않고 앞 글자에 얹히는 글자: 결합 문자, 이음 문자, 한글 자모의 가운뎃·끝소리. */
@@ -149,7 +195,7 @@ function cells(text: string, into: HTMLElement): void {
     }
     flush();
     const box = document.createElement("span");
-    box.className = WIDE.test(cell) ? "w2" : "w1";
+    box.className = WIDE.test(cell) ? (EMOJI.test(cell) ? "w2" : "w2 cjk") : "w1";
     box.textContent = cell;
     into.append(box);
   }
@@ -474,16 +520,17 @@ export function keyToInput(e: KeyboardEvent): { text?: string; keys?: string[]; 
 const BACK_LINES = 1200;
 
 /** 화면 자판에 없는 키들 — 크게 보기 위쪽에 단추로 둔다(터치 기기에서만 보인다). */
-const SOFT_KEYS: Array<{ label: string; keys?: string[]; text?: string }> = [
+/** 글자 기호(← ⏎ ⌫ ⇧)는 기기의 글꼴마다 굵기와 높이가 달라 선 아이콘으로 그린다. label 은 읽어 주는 이름이 된다. */
+const SOFT_KEYS: Array<{ label: string; icon?: IconName; caption?: string; keys?: string[]; text?: string }> = [
   { label: "Esc", keys: ["esc"] },
   { label: "Tab", keys: ["tab"] },
-  { label: "⇧Tab", keys: ["shift+tab"] },
-  { label: "←", keys: ["left"] },
-  { label: "↓", keys: ["down"] },
-  { label: "↑", keys: ["up"] },
-  { label: "→", keys: ["right"] },
-  { label: "⏎", keys: ["enter"] },
-  { label: "⌫", keys: ["backspace"] },
+  { label: "Shift+Tab", icon: "shift", caption: "Tab", keys: ["shift+tab"] },
+  { label: "Left", icon: "left", keys: ["left"] },
+  { label: "Down", icon: "down", keys: ["down"] },
+  { label: "Up", icon: "up", keys: ["up"] },
+  { label: "Right", icon: "right", keys: ["right"] },
+  { label: "Enter", icon: "enter", keys: ["enter"] },
+  { label: "Backspace", icon: "backspace", keys: ["backspace"] },
   { label: "^C", text: "\x03" },
   { label: "^D", text: "\x04" },
   { label: "^R", text: "\x12" },
@@ -525,8 +572,9 @@ export class TermOverlay {
     const close = document.createElement("button");
     close.type = "button";
     close.className = "btn icon";
-    close.textContent = "✕";
+    close.append(icon("close"));
     close.title = t("닫기 (Shift+Esc)");
+    close.setAttribute("aria-label", t("닫기 (Shift+Esc)"));
     close.addEventListener("click", () => this.close());
     const names = document.createElement("div");
     names.className = "names";
@@ -538,7 +586,12 @@ export class TermOverlay {
     for (const key of SOFT_KEYS) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.textContent = key.label;
+      if (key.icon) {
+        btn.setAttribute("aria-label", key.label);
+        btn.title = key.label;
+        btn.append(icon(key.icon));
+        if (key.caption) btn.append(Object.assign(document.createElement("span"), { textContent: key.caption }));
+      } else btn.textContent = key.label;
       // 단추를 눌러도 입력란의 초점(과 화면 자판)이 그대로 있도록 한다.
       btn.addEventListener("pointerdown", (e) => e.preventDefault());
       btn.addEventListener("click", () => {
@@ -549,7 +602,8 @@ export class TermOverlay {
     }
     const keyboard = document.createElement("button");
     keyboard.type = "button";
-    keyboard.textContent = "⌨";
+    keyboard.append(icon("keyboard"));
+    keyboard.setAttribute("aria-label", t("자판 열기"));
     keyboard.title = t("자판 열기");
     keyboard.addEventListener("click", () => this.ime.focus());
     soft.append(keyboard);
