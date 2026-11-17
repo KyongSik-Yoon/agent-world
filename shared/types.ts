@@ -54,6 +54,8 @@ export interface AgentView {
   focused: boolean;
   cwd: string;
   sessionId?: string;
+  /** 이 하네스의 로그를 읽는 어댑터가 있는지. 없으면 herdr 가 알려 주는 제목과 상태가 전부다. */
+  readable?: boolean;
   /** 트랜스크립트를 찾아 읽었는지. false 면 아래 필드는 대부분 비어 있다. */
   hasLog: boolean;
   model?: string;

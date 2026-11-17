@@ -443,7 +443,9 @@ export class DetailPanel {
     if (!a.hasLog) {
       const why = a.sessionId
         ? "이 세션의 로그 파일을 아직 찾지 못했습니다. 모델과 활동은 로그가 생기면 채워집니다."
-        : "이 하네스의 로그는 아직 읽지 못합니다. herdr 가 알려 준 제목과 상태만 보여 줍니다.";
+        : a.readable
+          ? "아직 대화를 시작하지 않았습니다. 첫 지시를 보내면 모델과 활동이 채워집니다."
+          : "이 하네스의 로그는 아직 읽지 못합니다. herdr 가 알려 준 제목과 상태만 보여 줍니다.";
       parts.push(h("p", { class: "note" }, why));
     }
     if (a.lastPrompt) parts.push(this.textSection("마지막 지시", a.lastPrompt, "prompt"));

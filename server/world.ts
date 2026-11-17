@@ -170,6 +170,7 @@ export class World {
     };
 
     const harness = harnessFor(vendor);
+    view.readable = harness !== undefined;
     const session = pane.agent_session;
     let summary: LogSummary | undefined;
     let harnessTitle: string | undefined;
