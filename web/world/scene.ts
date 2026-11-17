@@ -17,6 +17,20 @@ export interface SceneCallbacks {
 
 const FOG: Record<Theme, string> = { day: "#CBE7F6", night: "#161B33" };
 
+/** 한 프레임에 칠할 화소 수의 상한. 4K 창에서 화소마다 그림자를 계산하면 내장 그래픽이 버티지 못한다. */
+const MAX_PIXELS = 3.6e6;
+/** 그리는 데 이보다 오래 걸리면 해상도를 한 단계 낮추고, 충분히 빠르면 다시 올린다(ms). */
+const SLOW_RENDER_MS = 20;
+const FAST_RENDER_MS = 8;
+const MIN_SCALE = 0.6;
+/**
+ * 손대지 않고 켜 둔 동안의 최소 프레임 간격(ms). 종일 띄워 두는 화면이라 평소에는 초당 30장쯤이면 충분하다.
+ * 60Hz 화면에서는 두 프레임에 한 번(약 30장)이 되고, 더 느린 주사율에서는 거르지 않는다.
+ */
+const IDLE_FRAME_MS = 24;
+/** 마지막 조작 뒤 이만큼은 화면 주사율 그대로 그린다. */
+const ACTIVE_MS = 2500;
+
 export class WorldScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly labels = new CSS2DRenderer();
@@ -43,6 +57,14 @@ export class WorldScene {
   /** 무언가를 고르기 직전의 시점 — 고르기를 풀면 여기로 돌아간다. */
   private home: { target: THREE.Vector3; position: THREE.Vector3 } | null = null;
   private downAt: { x: number; y: number } | null = null;
+  /** 화면 부하에 따라 조절하는 해상도 배율(1 = 기기 화소 그대로, 상한 안에서). */
+  private scale = 1;
+  private renderMs = 0;
+  private tunedAt = 0;
+  private goodStreak = 0;
+  private lastFrameAt = 0;
+  private lastInputAt = 0;
+  private frameNo = 0;
 
   constructor(
     private readonly container: HTMLElement,
@@ -51,7 +73,10 @@ export class WorldScene {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // 부드러운 그림자(PCFSoft)는 화소마다 표본을 두 배 넘게 뜬다. 큰 창에서 차이가 커서 한 단계 가벼운 것을 쓴다.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // 그림자 지도는 두 프레임에 한 번만 다시 그린다(frame 에서 직접 요청한다).
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     container.append(this.renderer.domElement);
@@ -98,6 +123,12 @@ export class WorldScene {
     el.addEventListener("pointerup", (e) => this.onPointerUp(e));
     el.addEventListener("pointerleave", () => this.setHover(null));
 
+    // 조작하는 동안에는 화면 주사율 그대로, 가만히 두면 느긋하게 그린다.
+    const touched = (): void => {
+      this.lastInputAt = performance.now();
+    };
+    for (const type of ["pointermove", "pointerdown", "wheel", "keydown", "touchstart"]) window.addEventListener(type, touched, { passive: true });
+
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
     this.overview(false);
@@ -110,9 +141,38 @@ export class WorldScene {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     // 브라우저 확대/축소가 바뀌면 화소 비율도 바뀐다. 처음 값에 묶어 두면 필요 이상으로 그리거나 흐려진다.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this.pixelRatio(w, h));
     this.renderer.setSize(w, h);
     this.labels.setSize(w, h);
+  }
+
+  /** 기기 화소 비율에 부하 배율을 곱하되, 한 프레임의 화소 수가 상한을 넘지 않게 한다. */
+  private pixelRatio(w: number, h: number): number {
+    const native = Math.min(window.devicePixelRatio, 2);
+    return Math.min(native, Math.sqrt(MAX_PIXELS / (w * h))) * this.scale;
+  }
+
+  /** 그리는 시간을 보고 해상도 배율을 한 단계씩 조절한다. 올릴 때는 한동안 여유가 이어진 뒤에만. */
+  private tune(now: number): void {
+    // 처음 몇 초는 셰이더를 만드느라 느리다. 그걸 부하로 읽고 해상도를 내리지 않는다.
+    if (this.tunedAt === 0) this.tunedAt = now + 4000;
+    if (now - this.tunedAt < 1000) return;
+    this.tunedAt = now;
+    let next = this.scale;
+    if (this.renderMs > SLOW_RENDER_MS) {
+      next = Math.max(MIN_SCALE, this.scale * 0.85);
+      this.goodStreak = 0;
+    } else if (this.renderMs < FAST_RENDER_MS && this.scale < 1) {
+      this.goodStreak += 1;
+      if (this.goodStreak >= 3) {
+        next = Math.min(1, this.scale * 1.1);
+        this.goodStreak = 0;
+      }
+    } else this.goodStreak = 0;
+    if (next !== this.scale) {
+      this.scale = next;
+      this.resize();
+    }
   }
 
   setTheme(theme: Theme): void {
@@ -340,6 +400,13 @@ export class WorldScene {
   }
 
   private frame(): void {
+    // 가만히 둔 화면은 프레임을 걸러 초당 30장쯤만 그린다. 조작 중이거나 카메라가 날아가는 중이면 거르지 않는다.
+    const now = performance.now();
+    const active = this.flight !== null || now - this.lastInputAt < ACTIVE_MS;
+    if (!active && now - this.lastFrameAt < IDLE_FRAME_MS) return;
+    this.lastFrameAt = now;
+    this.frameNo += 1;
+
     const dt = Math.min(this.clock.getDelta(), 0.1);
     const t = this.clock.elapsedTime;
 
@@ -394,7 +461,12 @@ export class WorldScene {
       this.camera.position.x += dx;
       this.camera.position.z += dz;
     }
+    if (this.frameNo % 2 === 0) this.renderer.shadowMap.needsUpdate = true;
+    const startedAt = performance.now();
     this.renderer.render(this.scene, this.camera);
+    // 어쩌다 한 번 튀는 프레임(셰이더 컴파일, 탭 전환)에 끌려가지 않게 표본을 눌러 담는다.
+    this.renderMs += (Math.min(performance.now() - startedAt, 60) - this.renderMs) * 0.1;
     this.labels.render(this.scene, this.camera);
+    this.tune(now);
   }
 }

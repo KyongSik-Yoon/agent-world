@@ -19,6 +19,34 @@ function mulberry(seed: number): () => number {
   };
 }
 
+/** 여러 메시를 꼭짓점 배열 하나로 합친다. 행렬은 합쳐질 메시가 놓일 좌표계 기준이다. */
+function mergeParts(parts: ReadonlyArray<{ geo: THREE.BufferGeometry; matrix: THREE.Matrix4 }>): { geometry: THREE.BufferGeometry; counts: number[] } {
+  const flat = parts.map((p) => (p.geo.index ? p.geo.toNonIndexed() : p.geo));
+  const counts = flat.map((g) => g.getAttribute("position").count);
+  const total = counts.reduce((a, b) => a + b, 0);
+  const position = new Float32Array(total * 3);
+  const normal = new Float32Array(total * 3);
+  const v = new THREE.Vector3();
+  const normalMatrix = new THREE.Matrix3();
+  let at = 0;
+  flat.forEach((g, i) => {
+    const pos = g.getAttribute("position");
+    const nor = g.getAttribute("normal");
+    const matrix = parts[i]!.matrix;
+    normalMatrix.getNormalMatrix(matrix);
+    for (let k = 0; k < pos.count; k += 1) {
+      v.fromBufferAttribute(pos, k).applyMatrix4(matrix).toArray(position, (at + k) * 3);
+      if (nor) v.fromBufferAttribute(nor, k).applyMatrix3(normalMatrix).normalize().toArray(normal, (at + k) * 3);
+    }
+    at += pos.count;
+    if (g !== parts[i]!.geo) g.dispose();
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(position, 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(normal, 3));
+  return { geometry, counts };
+}
+
 interface Themed {
   mat: THREE.MeshStandardMaterial;
   day: THREE.Color;
@@ -36,7 +64,11 @@ export class Environment {
   readonly crystal: THREE.Mesh;
   readonly crystalMat: THREE.MeshStandardMaterial;
 
-  private readonly themed: Themed[] = [];
+  private themed: Themed[] = [];
+  /** 합친 메시의 꼭짓점 색 구간 — 낮/밤이 바뀌면 이 구간들을 다시 칠한다. */
+  private ranges: Array<{ attr: THREE.BufferAttribute; start: number; count: number; day: THREE.Color; night: THREE.Color }> = [];
+  /** 합친 메시 가운데 밤에 빛나는 것(창문, 등불)의 재질. */
+  private glows: Array<{ mat: THREE.MeshStandardMaterial; glow: number }> = [];
   private readonly staticGroup = new THREE.Group();
   private plotGroup = new THREE.Group();
   private readonly clouds: THREE.Group[] = [];
@@ -77,7 +109,10 @@ export class Environment {
   rebuild(layout: Layout, workspaces: readonly WorkspaceView[]): void {
     this.disposeTree(this.staticGroup);
     this.disposeTree(this.plotGroup);
-    this.themed.length = 0;
+    this.themed = [];
+    this.ranges = [];
+    for (const g of this.glows) g.mat.dispose();
+    this.glows = [];
     this.clouds.length = 0;
     this.signs.clear();
     this.islandRadius = layout.islandRadius;
@@ -89,6 +124,7 @@ export class Environment {
       if (plot) this.buildPlot(plot, ws);
     }
     this.buildNature(layout);
+    this.batch();
 
     const reach = layout.islandRadius + 4;
     const cam = this.sun.shadow.camera;
@@ -101,11 +137,81 @@ export class Environment {
     this.setTheme(this.theme);
   }
 
+  /**
+   * 움직이지 않는 것들(땅, 집, 나무, 바위 …)을 몇 개의 메시로 합친다.
+   *
+   * 하나하나가 그리기 호출이라, 집과 나무가 늘수록 한 프레임에 수백 번을 부르게 된다(그림자까지 두 번씩).
+   * 그림자 설정과 재질 성질이 같은 것끼리 꼭짓점을 모으고, 색은 꼭짓점마다 칠해 재질 하나로 그린다.
+   */
+  private batch(): void {
+    this.group.updateMatrixWorld(true);
+    const toLocal = this.staticGroup.matrixWorld.clone().invert();
+    const moving = new Set<THREE.Object3D>();
+    for (const cloud of this.clouds) cloud.traverse((o) => moving.add(o));
+    const themedOf = new Map(this.themed.map((t) => [t.mat as THREE.Material, t]));
+
+    interface Part {
+      mesh: THREE.Mesh;
+      themed: Themed;
+    }
+    const buckets = new Map<string, Part[]>();
+    for (const root of [this.staticGroup, this.plotGroup]) {
+      root.traverse((o) => {
+        if (!(o instanceof THREE.Mesh) || o === this.crystal || moving.has(o) || Array.isArray(o.material)) return;
+        const themed = themedOf.get(o.material);
+        if (!themed) return;
+        const m = themed.mat;
+        const key = [o.castShadow, o.receiveShadow, m.roughness, m.metalness, m.flatShading, m.transparent, m.opacity, m.side, m.emissive.getHex(), themed.glow ?? ""].join("|");
+        const list = buckets.get(key);
+        if (list) list.push({ mesh: o, themed });
+        else buckets.set(key, [{ mesh: o, themed }]);
+      });
+    }
+
+    const gone = new Set<THREE.Material>();
+    for (const parts of buckets.values()) {
+      const first = parts[0]!;
+      const { geometry, counts } = mergeParts(parts.map((p) => ({ geo: p.mesh.geometry, matrix: new THREE.Matrix4().multiplyMatrices(toLocal, p.mesh.matrixWorld) })));
+      const color = new THREE.BufferAttribute(new Float32Array(geometry.getAttribute("position").count * 3), 3);
+      geometry.setAttribute("color", color);
+      let start = 0;
+      parts.forEach((p, i) => {
+        this.ranges.push({ attr: color, start, count: counts[i]!, day: p.themed.day, night: p.themed.night });
+        start += counts[i]!;
+        p.mesh.removeFromParent();
+        p.mesh.geometry.dispose();
+        gone.add(p.themed.mat);
+      });
+      const src = first.themed.mat;
+      const mat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: src.roughness,
+        metalness: src.metalness,
+        flatShading: src.flatShading,
+        transparent: src.transparent,
+        opacity: src.opacity,
+        side: src.side,
+        emissive: src.emissive.clone(),
+        emissiveIntensity: src.emissiveIntensity,
+      });
+      if (first.themed.glow !== undefined) this.glows.push({ mat, glow: first.themed.glow });
+      const merged = new THREE.Mesh(geometry, mat);
+      merged.castShadow = first.mesh.castShadow;
+      merged.receiveShadow = first.mesh.receiveShadow;
+      this.staticGroup.add(merged);
+    }
+    // 합쳐져 더는 쓰이지 않는 재질은 치운다. 남은 것(구름 등)만 재질 색으로 테마를 따른다.
+    this.themed = this.themed.filter((t) => !gone.has(t.mat));
+    for (const mat of gone) mat.dispose();
+  }
+
   private disposeTree(root: THREE.Object3D): void {
     root.traverse((o) => {
       if (o instanceof CSS2DObject) o.element.remove();
-      if (o instanceof THREE.Mesh) {
-        if (o !== this.crystal) o.geometry.dispose();
+      if (o instanceof THREE.Mesh && o !== this.crystal) {
+        o.geometry.dispose();
+        // 합친 메시의 재질은 여기서만 쓰인다(테마 목록의 재질은 rebuild 가 목록째 버린다).
+        if (o.material instanceof THREE.MeshStandardMaterial && o.material.vertexColors) o.material.dispose();
       }
     });
     root.clear();
@@ -327,11 +433,15 @@ export class Environment {
     for (let i = 0; i < 16; i += 1) {
       const cloud = new THREE.Group();
       const puffs = 3 + Math.floor(rng() * 3);
+      // 구름 한 덩이는 송이 여럿이지만 함께 움직이므로 메시 하나로 합쳐 그린다.
+      const parts: Array<{ geo: THREE.BufferGeometry; matrix: THREE.Matrix4 }> = [];
       for (let k = 0; k < puffs; k += 1) {
-        const puff = this.mesh(new THREE.IcosahedronGeometry(1.6 + rng() * 1.5, 1), cloudMat, cloud, { cast: false });
-        puff.position.set(k * 2.1 - puffs * 1.05, rng() * 0.7, rng() * 1.8);
-        puff.scale.y = 0.55;
+        const geo = new THREE.IcosahedronGeometry(1.6 + rng() * 1.5, 1);
+        const at = new THREE.Vector3(k * 2.1 - puffs * 1.05, rng() * 0.7, rng() * 1.8);
+        parts.push({ geo, matrix: new THREE.Matrix4().compose(at, new THREE.Quaternion(), new THREE.Vector3(1, 0.55, 1)) });
       }
+      this.mesh(mergeParts(parts).geometry, cloudMat, cloud, { cast: false });
+      for (const part of parts) part.geo.dispose();
       cloud.userData.radius = layout.islandRadius * (1.12 + rng() * 0.75);
       cloud.userData.angle = (i / 16) * Math.PI * 2 + rng() * 0.3;
       cloud.userData.speed = 0.006 + rng() * 0.01;
@@ -348,6 +458,19 @@ export class Environment {
       t.mat.color.copy(night ? t.night : t.day);
       if (t.glow !== undefined) t.mat.emissiveIntensity = night ? t.glow : 0;
     }
+    const touched = new Set<THREE.BufferAttribute>();
+    for (const r of this.ranges) {
+      const c = night ? r.night : r.day;
+      const data = r.attr.array as Float32Array;
+      for (let i = r.start * 3, end = (r.start + r.count) * 3; i < end; i += 3) {
+        data[i] = c.r;
+        data[i + 1] = c.g;
+        data[i + 2] = c.b;
+      }
+      touched.add(r.attr);
+    }
+    for (const attr of touched) attr.needsUpdate = true;
+    for (const g of this.glows) g.mat.emissiveIntensity = night ? g.glow : 0;
     this.sun.color.set(night ? "#B4C6FF" : "#FFF1D6");
     this.sun.intensity = night ? 1.9 : 2.6;
     this.sky.color.set(night ? "#7083D6" : "#CFE6FF");

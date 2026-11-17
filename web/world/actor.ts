@@ -98,6 +98,8 @@ export class Actor {
   private placed = false;
   private dim = 0;
   private arrivedAt = 0;
+  private bubbleFor: AgentView | undefined;
+  private bubbleFull = false;
   private inTransit = false;
 
   constructor(view: AgentView, onSelect: (id: string) => void, onHover: (id: string | null) => void) {
@@ -189,8 +191,12 @@ export class Actor {
 
   /** 올리거나 골랐을 때, 그리고 막 끝난 직후에는 긴 말풍선을, 그 밖에는 짧은 것을 보인다. */
   private syncBubble(): void {
-    const fresh = Date.now() - this.view.statusSince < FRESH_DONE_MS;
-    const text = bubbleText(this.view, this.hovered || this.selected || fresh);
+    const full = this.hovered || this.selected || Date.now() - this.view.statusSince < FRESH_DONE_MS;
+    // 매 프레임 불리지만 말풍선 글은 스냅샷이 오거나 고르기·올리기가 바뀔 때만 달라진다.
+    if (this.bubbleFor === this.view && this.bubbleFull === full) return;
+    this.bubbleFor = this.view;
+    this.bubbleFull = full;
+    const text = bubbleText(this.view, full);
     if (text !== null && this.bubble.textContent !== text) this.bubble.textContent = text;
   }
 
