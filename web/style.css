@@ -542,6 +542,11 @@ kbd {
   overflow: hidden;
 }
 
+/* 서랍 손잡이 — 휴대폰에서만 보인다. */
+.sheet-grip {
+  display: none;
+}
+
 #search {
   margin: 10px 10px 6px;
   padding: 7px 10px;
@@ -1255,10 +1260,21 @@ kbd {
   }
 }
 
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tag .bubble,
-  .dot {
+  .dot,
+  #roster {
     animation: none !important;
+  }
+
+  #roster {
+    transition: none !important;
   }
 }
 
@@ -2238,6 +2254,40 @@ dialog.dlg .warn {
 
   body[data-roster="open"] #roster {
     display: flex;
+    animation: sheet-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* 끌어내리다 놓으면 제자리로 돌아가거나 화면 밖으로 내려간다. 끄는 동안은 손가락을 그대로 따른다. */
+  #roster {
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    touch-action: pan-y;
+  }
+
+  #roster.dragging {
+    transition: none;
+  }
+
+  #roster-list {
+    overscroll-behavior: contain;
+  }
+
+  /* 손잡이는 잡기 쉽게 넉넉한 칸, 보이는 막대는 작게. */
+  .sheet-grip {
+    display: block;
+    flex: none;
+    height: 18px;
+    margin-bottom: -6px;
+  }
+
+  .sheet-grip::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 2px;
+    background: var(--ink-3);
+    opacity: 0.6;
   }
 
   /* 상태 창은 화면 전체를 쓴다. */

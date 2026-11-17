@@ -8,6 +8,7 @@ import { STATUS_LABEL, bubbleText, needsAttention } from "./format.ts";
 import { Hud } from "./hud.ts";
 import { lang, localizeStatic, t, setLang } from "./i18n.ts";
 import { acceptKey, withKey } from "./key.ts";
+import { swipeToClose } from "./sheet.ts";
 import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
@@ -314,6 +315,13 @@ function setRoster(open: boolean): void {
   rosterBtn.setAttribute("aria-expanded", String(open));
 }
 rosterBtn.addEventListener("click", () => setRoster(document.body.dataset.roster !== "open"));
+// 휴대폰의 서랍은 아래로 끌어내려도 닫힌다.
+swipeToClose(
+  document.getElementById("roster")!,
+  document.getElementById("roster-list")!,
+  () => document.body.dataset.roster === "open" && matchMedia("(max-width: 760px)").matches,
+  () => setRoster(false),
+);
 
 // 목록과 상태 창이 장면을 얼마나 덮는지 알려 준다 — 장면이 그 사이 빈 자리의 한가운데에 오게.
 // 좁은 화면(휴대폰)에서는 패널이 화면 전체를 쓰는 서랍이라 밀지 않는다.
