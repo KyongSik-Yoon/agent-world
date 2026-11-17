@@ -1049,6 +1049,24 @@ kbd {
   width: 2ch;
 }
 
+/* 터미널이 그림을 그려 둔 자리. 그림은 받아 올 수 없어 자리만 옅게 칠한다. */
+.term .img {
+  /* 줄 높이를 다 채워, 여러 줄에 걸친 그림 자리가 줄무늬 없이 한 덩어리로 보이게 한다. */
+  display: inline-block;
+  position: relative;
+  vertical-align: top;
+  background: color-mix(in srgb, var(--term-fg) 9%, transparent);
+  color: var(--term-fg);
+}
+
+.term .img.first::before {
+  content: "이미지";
+  position: absolute;
+  left: 1ch;
+  font-size: 0.85em;
+  opacity: 0.55;
+}
+
 .term.preview {
   max-height: 320px;
   overflow-x: hidden;

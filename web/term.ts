@@ -101,6 +101,16 @@ const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF
 /** 고정폭 글꼴이 제 너비로 그려 주는 글자들 — 나머지는 상자에 넣어 칸을 맞춘다. */
 const SAFE = /[ -\u024F\u2500-\u259F\u2800-\u28FF]/;
 
+/** 칸을 차지하지 않고 앞 글자에 얹히는 글자: 결합 문자, 이음 문자, 한글 자모의 가운뎃·끝소리. */
+const JOINS = /[\p{M}\u200D\u1160-\u11FF]/u;
+/**
+ * 터미널이 그림을 그릴 자리에 채워 두는 글자(kitty 그래픽 프로토콜). 뒤따르는 결합 문자 둘이 그림의 몇째 줄·칸인지를
+ * 적는다. 그림 자체는 herdr 가 읽어 주는 화면에 없으므로, 그 자리를 빈칸으로 두고 옅게 칠해 그림이 있음을 알린다.
+ */
+const IMAGE_CELL = "\u{10EEEE}";
+/** 그림의 맨 윗줄 첫 칸 — 여기에 "이미지" 라고 적는다. */
+const IMAGE_ORIGIN = "\u0305\u0305";
+
 /** 한 줄 안의 글을 칸에 맞춰 노드로 만든다. */
 function cells(text: string, into: HTMLElement): void {
   let plain = "";
@@ -108,15 +118,35 @@ function cells(text: string, into: HTMLElement): void {
     if (plain) into.append(plain);
     plain = "";
   };
-  for (const ch of text) {
-    if (SAFE.test(ch)) {
-      plain += ch;
+  const chars = [...text];
+  for (let i = 0; i < chars.length; ) {
+    let cell = chars[i]!;
+    let joined = "";
+    for (i += 1; i < chars.length && JOINS.test(chars[i]!); i += 1) joined += chars[i];
+    if (cell === IMAGE_CELL) {
+      flush();
+      const origin = joined === IMAGE_ORIGIN;
+      let width = 1;
+      // 같은 줄에 이어지는 자리표시는 한 덩어리로 묶는다.
+      while (chars[i] === IMAGE_CELL) {
+        width += 1;
+        for (i += 1; i < chars.length && JOINS.test(chars[i]!); i += 1);
+      }
+      const image = document.createElement("span");
+      image.className = origin ? "img first" : "img";
+      image.textContent = " ".repeat(width);
+      into.append(image);
+      continue;
+    }
+    cell += joined;
+    if (SAFE.test(cell[0]!)) {
+      plain += cell;
       continue;
     }
     flush();
     const box = document.createElement("span");
-    box.className = WIDE.test(ch) ? "w2" : "w1";
-    box.textContent = ch;
+    box.className = WIDE.test(cell) ? "w2" : "w1";
+    box.textContent = cell;
     into.append(box);
   }
   flush();
