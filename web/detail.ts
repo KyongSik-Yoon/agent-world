@@ -6,7 +6,7 @@
 import type { AgentView, PaneView, PendingRequest, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
 import { ApiError, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
-import { type Child, STATUS_VAR, h, prose } from "./dom.ts";
+import { type Child, STATUS_VAR, h, prose, store, stored } from "./dom.ts";
 import { STATUS_LABEL, activityLine, bubbleText, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
 import { TermScreen } from "./term.ts";
 
@@ -46,6 +46,8 @@ const QUICK_KEYS: Array<{ label: string; title: string; keys?: string[]; text?: 
 const PREVIEW_LINES = 18;
 /** 한 번에 붙일 수 있는 이미지 수(서버의 MAX_IMAGES 와 같다). */
 const MAX_SHOTS = 8;
+/** 끌어서 맞춘 상태 창의 폭을 적어 두는 자리. */
+const WIDTH_KEY = "agent-world.detail-width";
 
 function norm(text: string): string {
   return text.replace(/\s+/g, " ").trim();
@@ -128,12 +130,63 @@ export class DetailPanel {
     });
     this.attachBtn.addEventListener("click", () => picker.click());
     this.dock.append(this.quick, this.shotsEl, h("div", { class: "compose" }, this.attachBtn, this.input, this.sendBtn), picker, this.note);
-    this.root.replaceChildren(this.head, this.body, this.dock);
+    this.root.replaceChildren(this.head, this.body, this.dock, this.grip());
     this.preview.el.classList.add("preview");
     this.preview.el.title = "눌러서 크게 보기";
     this.preview.el.addEventListener("click", () => {
       if (this.preview.pane && !window.getSelection()?.toString()) this.callbacks.act({ type: "terminal", paneId: this.preview.pane });
     });
+  }
+
+  /**
+   * 왼쪽 가장자리의 손잡이 — 끌어서 창의 폭을 바꾸고, 두 번 누르면 처음 폭으로 돌린다.
+   * 폭은 CSS 변수로만 건네고 위아래 한계는 스타일이 정한다(좁은 화면의 규칙이 그대로 이기도록).
+   */
+  private grip(): HTMLElement {
+    const grip = h("div", { class: "d-grip", title: "끌어서 폭 조절 · 두 번 눌러 처음 폭으로" });
+    const saved = Number(stored(WIDTH_KEY));
+    if (saved > 0) this.root.style.setProperty("--detail-w", `${saved}px`);
+    let drag: { x: number; width: number; moved: boolean } | null = null;
+    let next = 0;
+    let frame = 0;
+    grip.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      drag = { x: e.clientX, width: this.root.getBoundingClientRect().width, moved: false };
+      this.root.classList.add("resizing");
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      drag.moved = true;
+      // 창은 오른쪽에 붙어 있으니 왼쪽으로 끈 만큼 넓어진다.
+      next = Math.round(drag.width + drag.x - e.clientX);
+      frame ||= requestAnimationFrame(() => {
+        frame = 0;
+        this.root.style.setProperty("--detail-w", `${next}px`);
+      });
+    });
+    const end = (): void => {
+      if (!drag) return;
+      const moved = drag.moved;
+      drag = null;
+      this.root.classList.remove("resizing");
+      // 누르기만 한 것은 폭을 정한 것이 아니다(두 번 누르기의 되돌림을 덮어쓰지 않게).
+      if (!moved) return;
+      // 한계에 걸려 실제로 그려진 폭을 적어 둔다 — 끈 거리가 아니라.
+      requestAnimationFrame(() => {
+        const width = Math.round(this.root.getBoundingClientRect().width);
+        this.root.style.setProperty("--detail-w", `${width}px`);
+        store(WIDTH_KEY, String(width));
+      });
+    };
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+    grip.addEventListener("dblclick", () => {
+      this.root.style.removeProperty("--detail-w");
+      store(WIDTH_KEY, null);
+    });
+    return grip;
   }
 
   /** 지금 그 pane 의 입력창이 열려 있으면 보낼 말을 적어 둔다. */

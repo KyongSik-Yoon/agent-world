@@ -3,28 +3,12 @@ import type { AgentStatus, AgentView, SnapshotPatch, WorldSnapshot } from "../sh
 import { post } from "./api.ts";
 import { Builder } from "./build.ts";
 import { type Action, workspaceKey } from "./detail.ts";
-import { STATUS_VAR } from "./dom.ts";
+import { STATUS_VAR, store, stored } from "./dom.ts";
 import { STATUS_LABEL, bubbleText, needsAttention } from "./format.ts";
 import { Hud } from "./hud.ts";
 import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
-
-function stored(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function store(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // 저장소를 못 써도 화면은 그대로 돈다.
-  }
-}
 
 let selectedId: string | null = null;
 /** 지금 고른 것을 고른 시각 — 얼마나 들여다봤는지 잰다. */

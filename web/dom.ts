@@ -13,6 +13,24 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<s
   return el;
 }
 
+export function stored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** 값이 null 이면 지운다. */
+export function store(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    // 저장소를 못 써도 화면은 그대로 돈다.
+  }
+}
+
 export const STATUS_VAR: Record<AgentStatus, string> = {
   blocked: "var(--blocked)",
   done: "var(--done)",

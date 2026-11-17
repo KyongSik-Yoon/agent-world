@@ -588,11 +588,42 @@ kbd {
   top: 66px;
   right: 12px;
   bottom: 44px;
-  width: 400px;
+  /* 폭은 손잡이로 바꾼다. 아무리 끌어도 읽을 만한 폭과 화면 안쪽에 머문다. */
+  --detail-default: 400px;
+  width: clamp(min(320px, 100vw - 24px), var(--detail-w, var(--detail-default)), 100vw - 24px);
   display: flex;
   flex-direction: column;
   z-index: 16;
   overflow: hidden;
+}
+
+.d-grip {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 8px;
+  z-index: 2;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.d-grip::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.d-grip:hover::after,
+#detail.resizing .d-grip::after {
+  opacity: 0.7;
+}
+
+/* 끄는 동안 글이 긁히지 않게. */
+#detail.resizing {
+  user-select: none;
 }
 
 #detail[hidden] {
@@ -986,7 +1017,7 @@ kbd {
     width: 240px;
   }
   #detail {
-    width: 340px;
+    --detail-default: 340px;
   }
   #help {
     display: none;
@@ -1804,6 +1835,10 @@ dialog.dlg .warn {
   }
 
   /* 상태 창은 화면 전체를 쓴다. */
+  .d-grip {
+    display: none;
+  }
+
   #detail {
     inset: 0;
     width: auto;
