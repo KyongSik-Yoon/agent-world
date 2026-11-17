@@ -38,6 +38,11 @@ On a narrow screen such as a phone, the list becomes a drawer opened with `☰`,
 use the whole screen. On touch devices the terminal shows a row of keys the on-screen keyboard lacks (Esc, Tab,
 arrows, Ctrl+C …) and an input line that shows what you type.
 
+You can **install it to the home screen** as an app: `Add to Home screen` (or `Install app`) in Android Chrome's menu,
+or Share → `Add to Home Screen` in iOS Safari. It then opens full-screen without the address bar. On iOS a home-screen
+app has storage separate from Safari, so paste the keyed address once after installing. When the server comes back
+with a new version, open pages reload themselves (they wait while you are typing or have something open).
+
 Worth knowing:
 
 - **"Seen" is Agent World's own record.** herdr only counts a result as seen when its screen moves to that pane, and
@@ -163,6 +168,7 @@ server/   Bun server — herdr RPC, log tailing, snapshots pushed over SSE
 web/      three.js scene and HUD
   detail.ts   status window (agent, shell, house), term.ts terminal mirror, build.ts create/close dialogs
   world/      island and plots (environment), characters, actors, layout, label layer (labels)
+  app/        manifest and icons for installing to the home screen
   i18n.ts     t() and the language switch; locale/en.ts holds the English strings
 shared/   snapshot types used by both sides
 scripts/  plugin.ts — start/stop/open when run as a herdr plugin

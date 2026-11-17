@@ -160,6 +160,7 @@ const PAGE_GUARDS: Record<string, string> = {
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self'",
+    "manifest-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
     "form-action 'none'",
@@ -175,6 +176,9 @@ const PAGE_GUARDS: Record<string, string> = {
  * 묶은 스크립트는 700KB 쯤인데 압축하면 그 1/4 이다. 이 PC 에서 열 때는 차이가 없지만, tailnet 너머의 휴대폰에서
  * 처음 열 때는 그만큼이 기다리는 시간이다(tailscale serve 는 압축해 주지 않는다).
  */
+/** 지금 내주는 화면의 판. 문서에는 스크립트와 스타일의 해시 이름이 적혀 있어, 무엇이 바뀌든 이 값이 바뀐다. 개발 중에는 없다. */
+let pageBuild: string | undefined;
+
 async function bundledPage(): Promise<Record<string, { GET: (req: Request) => Response }>> {
   const built = await Bun.build({ entrypoints: [join(import.meta.dir, "..", "web", "index.html")], minify: true });
   if (!built.success) {
@@ -197,6 +201,7 @@ async function bundledPage(): Promise<Record<string, { GET: (req: Request) => Re
       "cache-control": isPage ? "no-cache" : "public, max-age=31536000, immutable",
       etag: `"${Bun.hash(raw).toString(16)}"`,
     };
+    if (isPage) pageBuild = base.etag;
     routes[isPage ? "/" : `/${basename(out.path)}`] = {
       GET: (req) => {
         if (req.headers.get("if-none-match") === base.etag) return new Response(null, { status: 304, headers: base });
@@ -394,8 +399,26 @@ async function start() {
   }
 }
 
+/**
+ * 홈 화면에 앱으로 설치할 때 쓰는 아이콘. 매니페스트(web/app/manifest.webmanifest)는 문서와 함께 묶여 나가지만, 그 안에
+ * 적힌 아이콘 주소는 묶는 쪽이 고쳐 주지 않으므로 적힌 이름 그대로 내준다. 비밀이 아니라 열쇠를 요구하지 않는다.
+ */
+async function appFiles(): Promise<Record<string, { GET: (req: Request) => Response }>> {
+  const dir = join(import.meta.dir, "..", "web", "app");
+  const types: Record<string, string> = { "icon-192.png": "image/png", "icon-512.png": "image/png" };
+  const routes: Record<string, { GET: (req: Request) => Response }> = {};
+  for (const [name, type] of Object.entries(types)) {
+    const body = new Uint8Array(await Bun.file(join(dir, name)).arrayBuffer());
+    const headers = { "content-type": type, "x-content-type-options": "nosniff", "cache-control": "public, max-age=3600", etag: `"${Bun.hash(body).toString(16)}"` };
+    routes[`/${name}`] = { GET: (req) => (req.headers.get("if-none-match") === headers.etag ? new Response(null, { status: 304, headers }) : new Response(body, { headers })) };
+  }
+  return routes;
+}
+
 /** 화면(HTML·JS·CSS). 개발 중에는 Bun 이 고칠 때마다 다시 묶어 주고, 평소에는 미리 묶어 압축해 둔 것을 내보낸다. */
 const page = (DEV ? { "/": index } : await bundledPage()) as Record<string, typeof index>;
+
+const app = await appFiles();
 
 const listen = (at: number) =>
   Bun.serve({
@@ -410,8 +433,9 @@ const listen = (at: number) =>
   development: DEV,
   routes: {
     ...page,
+    ...app,
     // 묻는 쪽이 준 값(n)에 열쇠로 답을 달아, 이 서버가 열쇠를 가진 진짜 Agent World 임을 보인다.
-    "/api/identity": { GET: guarded((req) => json({ ...identity, proof: proofOf(KEY, new URL(req.url).searchParams.get("n") ?? "", identity.socket) })) },
+    "/api/identity": { GET: guarded((req) => json({ ...identity, build: pageBuild, proof: proofOf(KEY, new URL(req.url).searchParams.get("n") ?? "", identity.socket) })) },
     "/api/snapshot": {
       GET: guarded(async () => json(await world.snapshot())),
     },

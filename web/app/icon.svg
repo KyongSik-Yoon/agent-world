@@ -1,0 +1,20 @@
+<!-- 앱 아이콘의 원본. 가운데 80% 안에 그림이 들어 있어 maskable 로도 쓴다.
+     PNG 다시 만들기: for s in 180 192 512; do rsvg-convert -w $s -h $s web/app/icon.svg -o web/app/icon-$s.png; done -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6FBCEE" />
+      <stop offset="0.62" stop-color="#B9E0F6" />
+      <stop offset="1" stop-color="#E9F4EE" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#sky)" />
+  <ellipse cx="256" cy="452" rx="300" ry="118" fill="#7FC46B" />
+  <ellipse cx="256" cy="440" rx="300" ry="118" fill="#9AD67F" />
+  <ellipse cx="256" cy="368" rx="128" ry="20" fill="#5FA659" opacity="0.55" />
+  <g transform="translate(71.2 95.2) scale(8.8)">
+    <path d="M8 11H34V19H38V23H34V31H31.5V27H30V31H27.5V27H14.5V31H12V27H10.5V31H8V23H4V19H8Z" fill="#D77757" />
+    <rect x="11.75" y="14.6" width="2.8" height="4.6" fill="#09090B" />
+    <rect x="27.45" y="14.6" width="2.8" height="4.6" fill="#09090B" />
+  </g>
+</svg>

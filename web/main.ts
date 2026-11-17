@@ -1,6 +1,6 @@
 // 들머리: 서버의 스냅샷 흐름을 받아 장면과 HUD 에 나눠 주고, 둘 사이의 고르기·필터·단축키를 잇는다.
 import type { AgentStatus, AgentView, SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
-import { post, hasAccess, headers } from "./api.ts";
+import { post, hasAccess, headers, serverBuild } from "./api.ts";
 import { Builder } from "./build.ts";
 import { type Action, workspaceKey } from "./detail.ts";
 import { STATUS_VAR, h, store, stored } from "./dom.ts";
@@ -185,6 +185,8 @@ function setTheme(theme: Theme): void {
   document.body.dataset.theme = theme;
   scene.setTheme(theme);
   themeBtn.textContent = theme === "day" ? "🌙" : "☀️";
+  // 앱으로 설치했을 때 기기의 상태 표시줄이 하늘과 이어지게.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "day" ? "#7cc4f1" : "#080c1f");
   store("agent-world.theme", theme);
 }
 
@@ -249,12 +251,37 @@ function show(snapshot: WorldSnapshot): void {
   buildBtn.hidden = !snapshot.herdr || !snapshot.control;
 }
 
+/** 이 문서를 받았을 때의 서버 화면 판. */
+let loadedBuild: string | undefined;
+/** 연결이 한 번 끊겼다 — 다시 붙으면 서버가 새 판으로 바뀌었는지 본다. */
+let dropped = false;
+
+/**
+ * 서버가 새 화면으로 다시 떴으면 이 문서도 새로 읽는다. 앱으로 설치해 쓰면 새로 읽을 단추가 없어, 그대로 두면
+ * 앱을 완전히 닫았다 열 때까지 옛 화면이 남는다. 무언가 쓰거나 열어 둔 동안에는 기다린다.
+ */
+async function reloadIfUpdated(): Promise<void> {
+  const now = await serverBuild();
+  if (!now || !loadedBuild || now === loadedBuild) return;
+  const busy = (): boolean =>
+    terminal.isOpen || document.querySelector("dialog[open]") !== null || [...document.querySelectorAll("textarea")].some((el) => el.value.trim() !== "");
+  const tryReload = (): void => {
+    if (busy()) setTimeout(tryReload, 5000);
+    else location.reload();
+  };
+  tryReload();
+}
+
 function connect(): void {
   const events = new EventSource(withKey("/api/events"));
   /** 이 연결로 받은 최신 상태. 서버는 전체를 한 번 보낸 뒤로 달라진 것만 보낸다. */
   let current: WorldSnapshot | undefined;
   events.onmessage = (e) => {
     retryMs = 1000;
+    if (dropped) {
+      dropped = false;
+      void reloadIfUpdated();
+    }
     current = JSON.parse(e.data as string) as WorldSnapshot;
     show(current);
   };
@@ -267,6 +294,7 @@ function connect(): void {
     show(current);
   });
   events.onerror = () => {
+    dropped = true;
     hud.setConnection("down", t("서버와 끊김 — 다시 연결 중…"));
     // 연결이 그냥 끊긴 것이면 EventSource 가 스스로 다시 붙는다. 하지만 오류 응답을 받으면(서버가 꺼진 동안
     // 앞단 프록시가 502 를 돌려줄 때) 영영 포기하므로, 그때는 직접 새로 연다.
@@ -353,6 +381,7 @@ void hasAccess().then((ok) => {
     return;
   }
   void loadTermTheme();
+  void serverBuild().then((build) => (loadedBuild = build));
   connect();
 });
 

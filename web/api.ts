@@ -17,6 +17,16 @@ export async function hasAccess(): Promise<boolean | null> {
   }
 }
 
+/** 서버가 지금 내주는 화면의 판. 알 수 없으면(개발 중이거나 닿지 못하면) undefined. */
+export async function serverBuild(): Promise<string | undefined> {
+  try {
+    const res = await fetch("/api/identity", { headers: headers() });
+    return res.ok ? ((await res.json()) as { build?: string }).build : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
