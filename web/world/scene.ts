@@ -389,7 +389,10 @@ export class WorldScene {
   /** 처음 화면으로 돌아간다: 마을 전체가 보이는 자리·배율·각도. */
   overview(animate = true): void {
     this.home = null;
-    const distance = this.layout.islandRadius * 2.35 + 6;
+    // 세로로 긴 화면(휴대폰)은 가로 시야가 좁아 같은 거리에서는 섬의 양옆이 잘린다. 좁은 만큼 물러서되,
+    // 캐릭터가 점이 되지 않을 만큼만.
+    const narrow = Math.min(Math.max(1, 1.6 / this.camera.aspect), 1.9);
+    const distance = Math.min((this.layout.islandRadius * 2.35 + 6) * narrow, this.controls.maxDistance);
     const target = new THREE.Vector3(0, 0.5, 1.5);
     const position = target.clone().addScaledVector(new THREE.Vector3(0, 0.72, 0.7).normalize(), distance);
     if (animate) {
