@@ -175,7 +175,17 @@ export class Hud {
     }
     for (const id of [...this.rows.keys()]) if (!alive.has(id)) this.rows.delete(id);
     if (children.length === 0) {
-      children.push(h("div", { class: "empty" }, this.snapshot!.agents.length === 0 ? "지금 보이는 에이전트가 없습니다." : "조건에 맞는 에이전트가 없습니다."));
+      const snap = this.snapshot!;
+      // 처음 띄운 사람이 가장 먼저 보는 글이다 — 왜 비었고 무엇을 하면 되는지까지 적는다.
+      const why =
+        snap.agents.length > 0
+          ? "조건에 맞는 에이전트가 없습니다."
+          : !snap.herdr
+            ? "herdr 가 꺼져 있고, 최근 30분 안에 움직인 에이전트 세션도 없습니다. herdr 를 띄우면 여기에 나타납니다."
+            : snap.control
+              ? "아직 에이전트가 없습니다. 위의 ＋ 집 짓기(B)로 폴더를 열고 에이전트를 들이거나, herdr 에서 에이전트를 띄우면 여기에 나타납니다."
+              : "아직 에이전트가 없습니다. herdr 에서 에이전트를 띄우면 여기에 나타납니다.";
+      children.push(h("div", { class: "empty" }, why));
     }
     // 순서가 그대로면 DOM 을 건드리지 않는다 — 누르려던 행이 발밑에서 바뀌지 않게.
     const current = [...this.list.childNodes];

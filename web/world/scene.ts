@@ -51,7 +51,8 @@ export class WorldScene {
   private readonly pointer = new THREE.Vector2();
   private readonly clock = new THREE.Clock();
   private layout: Layout = buildLayout([]);
-  private layoutKey = "";
+  /** 지금 지어 둔 무대의 스페이스 구성. 아직 한 번도 짓지 않았으면 null — 스페이스가 하나도 없어도 섬은 지어야 한다. */
+  private layoutKey: string | null = null;
   /** 에이전트 없는 셸 pane 들 — 집 앞의 작은 단말기로 세운다. */
   private readonly shells = new Map<string, THREE.Group>();
   private shellKey = "";
@@ -218,7 +219,7 @@ export class WorldScene {
   sync(snapshot: WorldSnapshot): void {
     const key = snapshot.workspaces.map((w) => w.id).join("|");
     if (key !== this.layoutKey) {
-      const first = this.layoutKey === "";
+      const first = this.layoutKey === null;
       this.layoutKey = key;
       this.layout = buildLayout(snapshot.workspaces.map((w) => w.id));
       this.env.rebuild(this.layout, snapshot.workspaces);
