@@ -72,6 +72,16 @@ export class WorldScene {
     });
 
     const el = this.renderer.domElement;
+    // 이름표·말풍선·문패 위에서 굴린 휠(터치패드의 두 손가락 벌리기 포함)도 카메라로 보낸다.
+    // 그러지 않으면 그 위에서는 카메라가 꿈쩍도 않고, 벌리기 동작은 브라우저가 페이지를 확대해 버린다.
+    this.labels.domElement.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        el.dispatchEvent(new WheelEvent("wheel", e));
+      },
+      { passive: false },
+    );
     el.addEventListener("pointermove", (e) => this.onPointerMove(e));
     el.addEventListener("pointerdown", (e) => {
       this.downAt = { x: e.clientX, y: e.clientY };

@@ -263,6 +263,19 @@ document.getElementById("btn-home")!.addEventListener("click", () => {
   scene.overview();
 });
 
+// 화면 전체가 하나의 앱이라, 브라우저가 페이지를 통째로 확대하면 패널이 화면 밖으로 밀려난다.
+// 터치패드의 두 손가락 벌리기와 Ctrl+휠은 ctrlKey 가 켜진 wheel 로 오므로 여기서 막는다
+// (3D 화면 위에서는 카메라가 대신 확대된다. 글자 크기를 바꾸려면 Ctrl +/- 를 쓴다).
+window.addEventListener(
+  "wheel",
+  (e) => {
+    if (e.ctrlKey) e.preventDefault();
+  },
+  { passive: false },
+);
+// Safari 는 같은 동작을 gesture 이벤트로 알린다.
+for (const type of ["gesturestart", "gesturechange"]) window.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+
 window.addEventListener("keydown", (e) => {
   // 글을 치는 중이면(입력란, 터미널, 대화상자) 그 키는 월드의 단축키가 아니다.
   const target = e.target instanceof HTMLElement ? e.target : null;

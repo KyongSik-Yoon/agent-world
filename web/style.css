@@ -53,6 +53,11 @@ body {
   overflow: hidden;
 }
 
+/* 터치 화면에서 손가락 벌리기로 페이지가 통째로 확대되지 않게 한다(패널 안의 스크롤은 그대로). */
+html {
+  touch-action: pan-x pan-y;
+}
+
 body {
   background: var(--sky);
   color: var(--ink);
