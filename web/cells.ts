@@ -1,4 +1,5 @@
-// 터미널 화면에서 글꼴 대신 칸에 직접 그리는 글자들: 블록 문자(U+2580–259F)와 상자 테두리 문자(U+2500–257F).
+// 터미널 화면에서 글꼴 대신 칸에 직접 그리는 글자들: 블록 문자(U+2580–259F), 상자 테두리 문자(U+2500–257F),
+// 육분할·쐐기 블록(U+1FB00–1FB67).
 //
 // 휴대폰 글꼴의 이 글자들은 줄 높이(1.22em)를 다 채우지 못해 줄 사이가 끊기고, 글꼴에 없으면 다른 글꼴이 대신 그려
 // 굵기·모양·폭이 어긋난다 — Claude Code 의 캐릭터와 상자 테두리가 깨진다. 데스크톱 터미널도 이 글자들은 직접 그린다.
@@ -175,6 +176,103 @@ function lineRule(sel: string, arms: string): string {
   return `.term .${sel}{background:${layers.join(",")}}`;
 }
 
+// ── 레거시 컴퓨팅 블록(U+1FB00–) ─────────────────────────────────────────────────────────────
+
+/**
+ * 칸을 0–1 로 본 다각형. 육분할(🬀–🬻)은 칸을 2×3 으로 나눈 조각들, 쐐기(🬼–🭧)는 칸 가장자리의 두 점을 잇는 사선으로
+ * 자른 한쪽이다. 상태줄의 캐릭터 그림(다리 🬁, 둥근 몸통 🭇🭆🭑🬼)이 쓰는데, 휴대폰 글꼴에는 거의 없어 □ 로 나온다.
+ */
+const MOSAIC: Array<[string, number[]]> = (() => {
+  const out: Array<[string, number[]]> = [];
+  // 육분할: 조각 번호 1–6 이 위에서 아래로 왼쪽·오른쪽 차례이고, 글자는 그 비트 조합의 차례다. 왼쪽 세로 반(▌)·오른쪽 세로
+  // 반(▐)·빈칸·꽉 찬 칸은 이미 있는 글자를 쓰므로 건너뛴다.
+  let code = 0x1fb00;
+  for (let bits = 1; bits < 63; bits += 1) {
+    if (bits === 0b010101 || bits === 0b101010) continue;
+    out.push([String.fromCodePoint(code), sextant(bits)]);
+    code += 1;
+  }
+  // 쐐기: 사선이 지나는 두 점(가장자리의 왼쪽·가운데·오른쪽 × 위·위 1/3·아래 1/3·아래)과 칠하는 모서리.
+  const X = { L: 0, C: 0.5, R: 1 } as const;
+  const Y = { U: 0, u: 1 / 3, l: 2 / 3, D: 1 } as const;
+  type P = `${keyof typeof Y}${keyof typeof X}`;
+  const at = (p: P): [number, number] => [X[p[1] as keyof typeof X], Y[p[0] as keyof typeof Y]];
+  const WEDGES: Array<[corner: P, from: P, to: P]> = [
+    ["DL", "lL", "DC"], ["DL", "lL", "DR"], ["DL", "uL", "DC"], ["DL", "uL", "DR"], ["DL", "UL", "DC"],
+    ["DR", "uL", "UC"], ["DR", "uL", "UR"], ["DR", "lL", "UC"], ["DR", "lL", "UR"], ["DR", "DL", "UC"],
+    ["DR", "lL", "uR"], ["DR", "DC", "lR"], ["DR", "DL", "lR"], ["DR", "DC", "uR"], ["DR", "DL", "uR"], ["DR", "DC", "UR"],
+    ["DL", "UC", "uR"], ["DL", "UL", "uR"], ["DL", "UC", "lR"], ["DL", "UL", "lR"], ["DL", "UC", "DR"], ["DL", "uL", "lR"],
+    ["UR", "lL", "DC"], ["UR", "lL", "DR"], ["UR", "uL", "DC"], ["UR", "uL", "DR"], ["UR", "UL", "DC"],
+    ["UL", "uL", "UC"], ["UL", "uL", "UR"], ["UL", "lL", "UC"], ["UL", "lL", "UR"], ["UL", "DL", "UC"],
+    ["UL", "lL", "uR"], ["UL", "DC", "lR"], ["UL", "DL", "lR"], ["UL", "DC", "uR"], ["UL", "DL", "uR"], ["UL", "DC", "UR"],
+    ["UR", "UC", "uR"], ["UR", "UL", "uR"], ["UR", "UC", "lR"], ["UR", "UL", "lR"], ["UR", "UC", "DR"], ["UR", "uL", "lR"],
+  ];
+  WEDGES.forEach(([corner, from, to], i) => out.push([String.fromCodePoint(0x1fb3c + i), cut(at(from), at(to), at(corner))]));
+  return out;
+})();
+
+/** 육분할 조각들을 한 다각형으로. 떨어진 조각은 폭 없는 다리로 잇는다(오려 낼 때 다리는 넓이가 없어 보이지 않는다). */
+function sextant(bits: number): number[] {
+  const rows = [0, 1 / 3, 2 / 3, 1];
+  // 줄마다 칠한 가로 구간을 이어 붙인 덩어리를, 위 줄과 같은 구간이면 세로로 합친다.
+  const rects: Array<[number, number, number, number]> = [];
+  for (let r = 0; r < 3; r += 1) {
+    const left = (bits >> (r * 2)) & 1;
+    const right = (bits >> (r * 2 + 1)) & 1;
+    const span: [number, number] | undefined = left && right ? [0, 1] : left ? [0, 0.5] : right ? [0.5, 1] : undefined;
+    if (!span) continue;
+    const last = rects[rects.length - 1];
+    if (last && last[0] === span[0] && last[2] === span[1] && last[3] === rows[r]) last[3] = rows[r + 1]!;
+    else rects.push([span[0], rows[r]!, span[1], rows[r + 1]!]);
+  }
+  // 첫 조각을 돌고 그 첫 점으로 돌아온 뒤, 다음 조각의 첫 점으로 건너가 돌고 그 첫 점으로 돌아온다. 다음 조각은 다시 첫
+  // 조각의 첫 점에서 건너간다 — 마지막 조각에서 닫히는 변이 건너간 길을 되짚으므로 다리마다 넓이가 0 이다.
+  const points: number[] = [];
+  for (const [l, t, r, b] of rects) {
+    if (points.length) points.push(points[0]!, points[1]!);
+    points.push(l, t, r, t, r, b, l, b);
+    if (rects.length > 1) points.push(l, t);
+  }
+  return points;
+}
+
+/** 칸(0–1)을 두 점을 지나는 직선으로 자른 조각 가운데 keep 쪽. */
+function cut(a: [number, number], b: [number, number], keep: [number, number]): number[] {
+  const side = (p: [number, number]) => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+  const sign = Math.sign(side(keep));
+  const square: Array<[number, number]> = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  const out: number[] = [];
+  square.forEach((p, i) => {
+    const q = square[(i + 1) % 4]!;
+    const sp = side(p) * sign;
+    const sq = side(q) * sign;
+    if (sp >= 0) out.push(p[0], p[1]);
+    if ((sp > 0 && sq < 0) || (sp < 0 && sq > 0)) {
+      const t = sp / (sp - sq);
+      out.push(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t);
+    }
+  });
+  return out;
+}
+
+/** 다각형 하나를 칠하는 규칙. 네모 하나면 배경 한 장(오리기보다 가볍다), 아니면 오려 낸다. */
+function mosaicRule(points: number[]): string {
+  const pct = (v: number) => `${+(v * 100).toFixed(3)}%`;
+  if (points.length === 8) {
+    const xs = [points[0]!, points[2]!, points[4]!, points[6]!];
+    const ys = [points[1]!, points[3]!, points[5]!, points[7]!];
+    const [l, r, t, b] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const isRect = xs.every((x) => x === l || x === r) && ys.every((y) => y === t || y === b);
+    if (isRect) {
+      const at = (start: number, size: number) => (size >= 1 ? 0 : start / (1 - size));
+      return `background:linear-gradient(currentColor,currentColor) ${pct(at(l, r - l))} ${pct(at(t, b - t))}/${pct(r - l)} ${pct(b - t)} no-repeat`;
+    }
+  }
+  const list: string[] = [];
+  for (let i = 0; i < points.length; i += 2) list.push(`${pct(points[i]!)} ${pct(points[i + 1]!)}`);
+  return `background:currentColor;clip-path:polygon(${list.join(",")})`;
+}
+
 // ── 고르기 ──────────────────────────────────────────────────────────────────────────────────
 
 /** 글자 → 붙일 클래스. 규칙은 sheet 에 한 번 깐다. */
@@ -194,6 +292,12 @@ for (let code = 0x2500; code <= 0x257f; code += 1) {
   if (!rule) continue;
   classes.set(String.fromCharCode(code), `blk ${sel}`);
   sheet.push(rule);
+}
+
+for (const [ch, points] of MOSAIC) {
+  const sel = `b${ch.codePointAt(0)!.toString(16)}`;
+  classes.set(ch, `blk ${sel}`);
+  sheet.push(`.term .${sel}{${mosaicRule(points)}}`);
 }
 
 /** 직접 그리는 글자면 붙일 클래스, 아니면 undefined(글꼴로 그린다). */
