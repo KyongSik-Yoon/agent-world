@@ -11,6 +11,10 @@ import { raiseHerdrWindow } from "./raise.ts";
 import { World } from "./world.ts";
 
 const PORT = Number(process.env.AGENT_WORLD_PORT || 4780);
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  console.error(`AGENT_WORLD_PORT 가 포트 번호가 아닙니다: ${process.env.AGENT_WORLD_PORT}`);
+  process.exit(1);
+}
 const TICK_MS = 1000;
 const HEARTBEAT_MS = 15_000;
 const IDLE_TICK_MS = 15_000;
@@ -167,7 +171,20 @@ function guarded(handler: (req: Request) => Response | Promise<Response>) {
   return async (req: Request) => ((await trusted(req)) ? handler(req) : json({ error: "forbidden" }, 403));
 }
 
-const server = Bun.serve({
+function serve() {
+  try {
+    return listen();
+  } catch (e) {
+    // 가장 흔한 실패는 이미 떠 있는 Agent World 다. 스택 대신 무엇을 하면 되는지 적는다.
+    if ((e as { code?: string }).code === "EADDRINUSE") {
+      console.error(`포트 ${PORT} 을 이미 쓰고 있습니다. Agent World 가 떠 있다면 http://127.0.0.1:${PORT} 를 열고, 따로 하나 더 띄우려면 AGENT_WORLD_PORT 로 다른 포트를 주세요.`);
+    } else console.error(`서버를 띄우지 못했습니다: ${(e as Error).message}`);
+    process.exit(1);
+  }
+}
+
+const listen = () =>
+  Bun.serve({
   hostname: "127.0.0.1",
   port: PORT,
   idleTimeout: 0,
@@ -237,6 +254,8 @@ const server = Bun.serve({
   },
   fetch: () => new Response("not found", { status: 404 }),
 });
+
+const server = serve();
 
 console.log(`Agent World → http://127.0.0.1:${server.port}${READONLY ? " (보기 전용)" : ""}`);
 for (const host of TAILNET_HOSTS) console.log(`  tailnet 에서도 받음(이 PC 의 계정만) → https://${host}`);
