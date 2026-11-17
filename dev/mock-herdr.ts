@@ -2,6 +2,7 @@
 //
 //   bun dev/mock-herdr.ts <소켓 경로> <시나리오.json>
 //   HERDR_SOCKET_PATH=<소켓 경로> AGENT_WORLD_PORT=4781 bun server/index.ts
+//   MOCK_DELAY="agent.prompt=12000" 을 주면 그 메서드의 답을 늦춘다(시간 초과 시험).
 //
 // 시나리오 파일이 바뀌면 다시 읽으므로, 파일의 agent_status 를 고치면 화면의 캐릭터가 따라 움직인다.
 // 조작 요청(지시·키 입력·만들기·닫기)은 메모리 안의 상태만 바꾸고, 받은 요청을 표준 출력에 적는다.
@@ -97,7 +98,12 @@ function removePanes(s: State, match: (p: Pane) => boolean): void {
   s.agents = s.agents.filter((p) => !match(p));
 }
 
+/** 느린 herdr 흉내: `MOCK_DELAY="agent.prompt=12000,pane.read=6000"` 처럼 메서드별로 답을 늦춘다(ms). */
+const delays = new Map((process.env.MOCK_DELAY ?? "").split(",").filter(Boolean).map((pair) => pair.split("=") as [string, string]));
+
 async function handle(method: string, p: Record<string, unknown>): Promise<unknown> {
+  const delay = Number(delays.get(method) ?? 0);
+  if (delay > 0) await Bun.sleep(delay);
   const s = await load();
   if (method !== "session.snapshot" && method !== "pane.read") console.log(method, JSON.stringify(p));
   switch (method) {
@@ -185,6 +191,8 @@ async function handle(method: string, p: Record<string, unknown>): Promise<unkno
 
 createServer((socket) => {
   let buffer = "";
+  // 기다리다 끊은 상대에게 쓰다가 흉내 소켓이 통째로 죽지 않게 한다.
+  socket.on("error", () => {});
   socket.on("data", async (chunk) => {
     buffer += chunk.toString("utf8");
     if (!buffer.includes("\n")) return;
