@@ -36,6 +36,8 @@ const ACTIVE_MS = 2500;
  */
 const AMBIENT_AFTER_MS = 20_000;
 const AMBIENT_FRAME_MS = 80;
+/** 걷는 캐릭터가 없을 때 그림자 지도를 다시 그리는 간격. */
+const SHADOW_MS = 20;
 
 export class WorldScene {
   private readonly renderer: THREE.WebGLRenderer;
@@ -70,7 +72,7 @@ export class WorldScene {
   private goodStreak = 0;
   private lastFrameAt = 0;
   private lastInputAt = performance.now();
-  private frameNo = 0;
+  private shadowAt = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   /** 이름표 층을 다시 놓아야 하는 프레임 수(스냅샷·크기·고르기가 바뀐 직후). */
   private labelsDirty = 3;
@@ -87,9 +89,10 @@ export class WorldScene {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
-    // 부드러운 그림자(PCFSoft)는 화소마다 표본을 두 배 넘게 뜬다. 큰 창에서 차이가 커서 한 단계 가벼운 것을 쓴다.
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    // 그림자 지도는 두 프레임에 한 번만 다시 그린다(frame 에서 직접 요청한다).
+    // 그림자 가장자리는 부드럽게 거른다(PCFSoft). 그냥 PCF 는 지도 한 칸이 화면 여러 화소인 가까운 거리에서 가장자리가
+    // 톱니로 보이고, 캐릭터가 움직이면 그 톱니가 자글거린다. 비용 차이는 재 봐도 잡히지 않았다.
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // 그림자 지도는 필요한 프레임에만 다시 그린다(frame 에서 직접 요청한다).
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -429,12 +432,11 @@ export class WorldScene {
    * 치지 않는다(그러면 캐릭터를 고른 내내 주사율대로 그린다). 다가가는 동안은 고른 입력에서 ACTIVE_MS 가 덮고,
    * 그 뒤로는 화면이 크게 움직일 때만 — 제자리로 돌아가는 중이거나, 고른 캐릭터가 먼 길을 가는 중일 때만 — 조작 중이다.
    */
-  private pace(now: number): { gap: number; ambient: boolean } {
+  private pace(now: number): number {
     const quiet = now - this.lastInputAt;
     const sweeping = this.flight?.position !== undefined || (this.flight !== null && this.following);
-    if (sweeping || quiet < ACTIVE_MS) return { gap: 0, ambient: false };
-    const ambient = quiet > AMBIENT_AFTER_MS || !document.hasFocus();
-    return { gap: ambient ? AMBIENT_FRAME_MS : IDLE_FRAME_MS, ambient };
+    if (sweeping || quiet < ACTIVE_MS) return 0;
+    return quiet > AMBIENT_AFTER_MS || !document.hasFocus() ? AMBIENT_FRAME_MS : IDLE_FRAME_MS;
   }
 
   /**
@@ -446,7 +448,7 @@ export class WorldScene {
   private readonly tick = (): void => {
     this.frame();
     const now = performance.now();
-    const wait = this.lastFrameAt + this.pace(now).gap - now;
+    const wait = this.lastFrameAt + this.pace(now) - now;
     if (wait < 6) requestAnimationFrame(this.tick);
     else {
       this.timer = setTimeout(() => {
@@ -458,9 +460,7 @@ export class WorldScene {
 
   private frame(): void {
     const now = performance.now();
-    const { ambient } = this.pace(now);
     this.lastFrameAt = now;
-    this.frameNo += 1;
 
     const dt = Math.min(this.clock.getDelta(), 0.1);
     const t = this.clock.elapsedTime;
@@ -522,8 +522,12 @@ export class WorldScene {
       this.camera.position.x += dx;
       this.camera.position.z += dz;
     }
-    // 그림자 지도는 초당 여남은 번이면 충분하다(조작 중 2프레임에 한 번, 곁눈질 화면에서는 매 프레임이 이미 느리다).
-    if (ambient || this.frameNo % 2 === 0) this.renderer.shadowMap.needsUpdate = true;
+    // 그림자 지도는 걷는 캐릭터가 있으면 매 프레임 다시 그린다 — 한 프레임만 늦어도 그림자가 발밑에서 앞뒤로 떨린다.
+    // 아무도 걷지 않으면 제자리 몸짓과 수정뿐이라 SHADOW_MS 마다면 충분하다(빠른 화면에서는 두세 프레임에 한 번).
+    if (this.walking || now - this.shadowAt >= SHADOW_MS) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowAt = now;
+    }
     const startedAt = performance.now();
     this.renderer.render(this.scene, this.camera);
     // 어쩌다 한 번 튀는 프레임(셰이더 컴파일, 탭 전환)에 끌려가지 않게 표본을 눌러 담는다.
