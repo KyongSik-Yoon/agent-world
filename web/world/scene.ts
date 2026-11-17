@@ -295,18 +295,18 @@ export class WorldScene {
     return this.camera.position.distanceTo(this.controls.target);
   }
 
-  /** 마을 전체가 보이는 자리로 돌아간다. */
+  /** 처음 화면으로 돌아간다: 마을 전체가 보이는 자리·배율·각도. */
   overview(animate = true): void {
     this.home = null;
     const distance = this.layout.islandRadius * 2.35 + 6;
     const target = new THREE.Vector3(0, 0.5, 1.5);
+    const position = target.clone().addScaledVector(new THREE.Vector3(0, 0.72, 0.7).normalize(), distance);
     if (animate) {
-      this.flight = { target, distance };
+      this.flight = { target, distance, position };
       return;
     }
     this.controls.target.copy(target);
-    const dir = new THREE.Vector3(0, 0.72, 0.7).normalize();
-    this.camera.position.copy(target).addScaledVector(dir, distance);
+    this.camera.position.copy(position);
     this.controls.update();
   }
 
