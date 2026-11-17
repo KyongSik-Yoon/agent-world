@@ -126,7 +126,7 @@ function act(action: Action): void {
 }
 
 async function openInHerdr(a: AgentView): Promise<void> {
-  if (!a.paneId) return;
+  if (!a.paneId || !hud.latest?.control) return;
   try {
     const res = await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paneId: a.paneId }) });
     const data = (await res.json()) as { ok?: boolean; raised?: boolean; error?: string };

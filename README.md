@@ -52,7 +52,7 @@ bun start            # http://127.0.0.1:4780
 | 환경 변수 | 뜻 |
 | --- | --- |
 | `AGENT_WORLD_PORT` | 포트(기본 4780). 루프백에만 묶인다. |
-| `AGENT_WORLD_READONLY=1` | 보기 전용. 지시·키 입력·만들기·닫기 요청을 모두 거절한다. |
+| `AGENT_WORLD_READONLY=1` | 보기 전용. 지시·키 입력·만들기·닫기와 `herdr 에서 열기`(herdr 화면 옮기기) 요청을 모두 거절한다. |
 | `AGENT_WORLD_TRUST_HOSTS` | `tailscale serve` 로 내보낼 때의 주소(`host.tailnet.ts.net:4780`, 쉼표로 여럿). 이 PC 를 tailnet 에 올린 계정의 요청만 받는다. |
 | `AGENT_WORLD_OUTSIDE=1` | herdr 에 붙어 있는 동안에도 herdr 밖 세션(다른 터미널, 데스크톱 앱)을 함께 보여 준다. |
 | `AGENT_WORLD_RAISE=0` | `herdr 에서 열기`가 터미널 창을 앞으로 가져오지 않게 한다. |

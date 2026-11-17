@@ -233,6 +233,8 @@ const listen = () =>
     },
     "/api/focus": {
       POST: guarded(async (req) => {
+        // herdr 의 화면을 옮기고(그 pane 의 완료 표시도 풀린다) 터미널 창을 앞으로 가져오므로, 보는 것이 아니라 바꾸는 요청이다.
+        if (READONLY) return json({ error: "보기 전용으로 띄운 서버입니다(AGENT_WORLD_READONLY=1).", code: "readonly" }, 403);
         let paneId = "";
         try {
           paneId = String(((await req.json()) as { paneId?: unknown }).paneId ?? "");

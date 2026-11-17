@@ -520,8 +520,8 @@ export class DetailPanel {
     main.append(
       this.button("herdr 에서 열기 ↵", () => this.callbacks.act({ type: "open-herdr", agent: a }), {
         cls: a.status === "done" && control ? "btn" : "btn primary",
-        disabled: !a.paneId,
-        title: a.paneId ? "herdr 화면을 이 pane 으로 옮깁니다 (Enter)" : "herdr 밖에서 도는 세션이라 옮겨 갈 pane 이 없습니다.",
+        disabled: !a.paneId || !control,
+        title: !a.paneId ? "herdr 밖에서 도는 세션이라 옮겨 갈 pane 이 없습니다." : control ? "herdr 화면을 이 pane 으로 옮깁니다 (Enter)" : "보기 전용으로 띄운 서버라 herdr 화면을 옮기지 않습니다.",
       }),
     );
     const more = h("div", { class: "actions minor" });
