@@ -30,6 +30,12 @@ const MIN_SCALE = 0.6;
 const IDLE_FRAME_MS = 24;
 /** 마지막 조작 뒤 이만큼은 화면 주사율 그대로 그린다. */
 const ACTIVE_MS = 2500;
+/**
+ * 한동안 손대지 않았거나 다른 창을 쓰는 중이면 "곁눈질 화면"이다 — 초당 12장쯤으로 더 줄인다.
+ * 걸어가는 캐릭터가 있는 동안은 예외로, 움직임이 끊겨 보이지 않게 30장을 유지한다.
+ */
+const AMBIENT_AFTER_MS = 20_000;
+const AMBIENT_FRAME_MS = 80;
 
 export class WorldScene {
   private readonly renderer: THREE.WebGLRenderer;
@@ -63,8 +69,10 @@ export class WorldScene {
   private tunedAt = 0;
   private goodStreak = 0;
   private lastFrameAt = 0;
-  private lastInputAt = 0;
+  private lastInputAt = performance.now();
   private frameNo = 0;
+  /** 직전 프레임에 걸어가는 캐릭터가 있었는지. */
+  private walking = false;
 
   constructor(
     private readonly container: HTMLElement,
@@ -402,8 +410,10 @@ export class WorldScene {
   private frame(): void {
     // 가만히 둔 화면은 프레임을 걸러 초당 30장쯤만 그린다. 조작 중이거나 카메라가 날아가는 중이면 거르지 않는다.
     const now = performance.now();
-    const active = this.flight !== null || now - this.lastInputAt < ACTIVE_MS;
-    if (!active && now - this.lastFrameAt < IDLE_FRAME_MS) return;
+    const quiet = now - this.lastInputAt;
+    const active = this.flight !== null || quiet < ACTIVE_MS;
+    const ambient = !active && !this.walking && (quiet > AMBIENT_AFTER_MS || !document.hasFocus());
+    if (!active && now - this.lastFrameAt < (ambient ? AMBIENT_FRAME_MS : IDLE_FRAME_MS)) return;
     this.lastFrameAt = now;
     this.frameNo += 1;
 
@@ -411,7 +421,12 @@ export class WorldScene {
     const t = this.clock.elapsedTime;
 
     const actors = [...this.actors.values()];
-    for (const actor of actors) actor.update(t, dt, this.layout, this.camera);
+    let walking = false;
+    for (const actor of actors) {
+      actor.update(t, dt, this.layout, this.camera);
+      walking ||= actor.transit;
+    }
+    this.walking = walking;
     // 걸어가는 동안에는 서로 겹치지 않게 살짝 비켜 간다. 자리에 닿은 배우는 밀지도 밀리지도 않는다.
     for (let i = 0; i < actors.length; i += 1) {
       for (let j = i + 1; j < actors.length; j += 1) {
@@ -461,7 +476,8 @@ export class WorldScene {
       this.camera.position.x += dx;
       this.camera.position.z += dz;
     }
-    if (this.frameNo % 2 === 0) this.renderer.shadowMap.needsUpdate = true;
+    // 그림자 지도는 초당 여남은 번이면 충분하다(조작 중 2프레임에 한 번, 곁눈질 화면에서는 매 프레임이 이미 느리다).
+    if (ambient || this.frameNo % 2 === 0) this.renderer.shadowMap.needsUpdate = true;
     const startedAt = performance.now();
     this.renderer.render(this.scene, this.camera);
     // 어쩌다 한 번 튀는 프레임(셰이더 컴파일, 탭 전환)에 끌려가지 않게 표본을 눌러 담는다.
