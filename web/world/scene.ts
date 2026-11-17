@@ -36,6 +36,11 @@ const ACTIVE_MS = 2500;
  */
 const AMBIENT_AFTER_MS = 20_000;
 const AMBIENT_FRAME_MS = 80;
+/** 고른 캐릭터가 가려졌을 때 돌아 볼 각도들(도). 덜 도는 쪽부터 본다. */
+const VIEW_TURNS = [0, 25, -25, 50, -50, 80, -80, 115, -115, 150, -150, 180];
+/** 캐릭터가 보이는지 확인하는 높이들 — 발치, 몸통, 머리. */
+const VIEW_HEIGHTS = [0.35, 0.9, 1.4];
+const UP = new THREE.Vector3(0, 1, 0);
 /** 걷는 캐릭터가 없을 때 그림자 지도를 다시 그리는 간격. */
 const SHADOW_MS = 20;
 
@@ -48,6 +53,8 @@ export class WorldScene {
   private readonly env: Environment;
   private readonly actors = new Map<string, Actor>();
   private readonly raycaster = new THREE.Raycaster();
+  /** 고른 캐릭터까지 시야가 트였는지 보는 광선. */
+  private readonly sight = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private readonly clock = new THREE.Clock();
   private layout: Layout = buildLayout([]);
@@ -360,7 +367,9 @@ export class WorldScene {
     for (const [actorId, actor] of this.actors) actor.selected = actorId === id;
     const actor = id ? this.actors.get(id) : undefined;
     if (actor && fly) {
-      this.flight = { target: actor.group.position.clone().setY(0.9), distance: Math.min(this.distance(), 17) };
+      const target = actor.group.position.clone().setY(0.9);
+      const distance = Math.min(this.distance(), 17);
+      this.flight = { target, distance, position: this.clearView(actor, target, distance) };
     } else if (id && fly) {
       const shell = this.shells.get(id);
       if (shell) this.flight = { target: shell.position.clone().setY(0.8), distance: Math.min(this.distance(), 17) };
@@ -368,9 +377,52 @@ export class WorldScene {
     }
   }
 
+  /**
+   * 고른 캐릭터가 가려지지 않는 카메라 자리. 지금 보는 방향 그대로 다가가도 보이면 undefined.
+   *
+   * 다가가는 방향에 집이나 나무가 서 있으면 고른 캐릭터가 그 뒤에 숨는다(특히 문 앞에서 일하는 캐릭터가 지붕 뒤로).
+   * 지금 방향에서 좌우로 조금씩 돌려 가며 캐릭터까지 시야가 트였는지 광선으로 확인하고, 가장 덜 돌아도 되는 자리를 고른다.
+   * 고를 때 한 번 하는 일이라 광선 수십 개의 비용은 문제가 되지 않는다.
+   */
+  private clearView(actor: Actor, target: THREE.Vector3, distance: number): THREE.Vector3 | undefined {
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    if (offset.lengthSq() < 1e-6) return undefined;
+    offset.normalize();
+    const blockers: THREE.Object3D[] = [];
+    this.env.group.traverse((o) => {
+      if (o instanceof THREE.Mesh) blockers.push(o);
+    });
+    const feet = actor.group.position;
+    const marks = VIEW_HEIGHTS.map((y) => new THREE.Vector3(feet.x, y, feet.z));
+    const eye = new THREE.Vector3();
+    const dir = new THREE.Vector3();
+    let best: THREE.Vector3 | undefined;
+    let least = Number.POSITIVE_INFINITY;
+    for (const degrees of VIEW_TURNS) {
+      eye.copy(offset).applyAxisAngle(UP, (degrees * Math.PI) / 180).multiplyScalar(distance).add(target);
+      let hidden = 0;
+      for (const mark of marks) {
+        dir.copy(mark).sub(eye);
+        const reach = dir.length();
+        this.sight.set(eye, dir.divideScalar(reach));
+        // 캐릭터 바로 곁의 소품(작업대, 텃밭)은 가리는 것으로 치지 않는다.
+        this.sight.far = reach - 0.9;
+        if (this.sight.intersectObjects(blockers, false).length > 0) hidden += 1;
+      }
+      if (hidden < least) {
+        least = hidden;
+        best = degrees === 0 ? undefined : eye.clone();
+        if (hidden === 0) break;
+      }
+    }
+    return best;
+  }
+
   /** 로스터 필터: 통과하지 못한 배우를 흐리게 한다. null 이면 모두 또렷하게. */
   setFilter(pass: ((view: AgentView) => boolean) | null): void {
     for (const actor of this.actors.values()) actor.muted = pass ? !pass(actor.view) : false;
+    // 걸러진 이름표는 자리 차례에서 밀린다 — 아무도 걷지 않는 화면에서도 바로 다시 놓는다.
+    this.labelsDirty = 3;
   }
 
   setExternalHover(id: string | null): void {
@@ -381,6 +433,8 @@ export class WorldScene {
     if (id === this.hoveredId) return;
     this.hoveredId = id;
     for (const [actorId, actor] of this.actors) actor.hovered = actorId === id;
+    // 올려놓은 이름표는 접혀 있었어도 다 펴져야 한다 — 카메라도 캐릭터도 가만히 있는 화면에서도.
+    this.labelsDirty = 3;
     this.renderer.domElement.style.cursor = id ? "pointer" : "";
     if (notify) this.callbacks.onHover(id);
   }
@@ -521,7 +575,10 @@ export class WorldScene {
       const k = 1 - Math.exp(-dt * 4.2);
       this.controls.target.lerp(this.flight.target, k);
       this.camera.position.lerp(this.flight.position, k);
-      if (this.camera.position.distanceTo(this.flight.position) < 0.03) this.flight = null;
+      if (this.camera.position.distanceTo(this.flight.position) < 0.03) {
+        // 고른 캐릭터에게 돌아 들어간 것이면, 닿은 뒤로는 그 캐릭터를 따라간다.
+        this.flight = selected ? { target: this.flight.target, distance: this.flight.distance } : null;
+      }
     } else if (this.flight) {
       const k = 1 - Math.exp(-dt * 4.2);
       const offset = this.camera.position.clone().sub(this.controls.target);
