@@ -379,6 +379,34 @@ export function displayCols(text: string, trimRightGap = false): number {
   return cols;
 }
 
+/** 상자 줄: 세로선·모서리로 시작하고 상자 글자로 끝나는 줄(Claude Code 가 그리는 표, 상자에 든 대화상자). */
+const BOX_ROW = /^\s*[\u2502\u2503\u2551\u256D\u2570\u250C\u2514\u251C\u2554\u255A\u2560][\s\S]*[\u2500-\u257F]\s*$/;
+/** 상자 글자와 공백 말고 다른 글자가 있는 줄 — 가로줄만 이어진 묶음은 표가 아니다. */
+const HAS_TEXT = /[^\s\u2500-\u257F]/;
+
+/**
+ * 표처럼 칸이 맞아야 읽히는 상자 구간들 `[start, end)`. 상자 줄이 둘 넘게 이어지고 그중에 글이 든 줄이 있으면 하나로 본다.
+ * 줄을 접어 보이는 화면에서 이런 줄을 접으면 세로선이 흩어져 표가 깨진다 — 묶음째 접지 않고 폭에 맞춰 줄인다.
+ */
+export function gridRanges(lines: readonly string[], limit: number): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  let i = 0;
+  while (i < limit) {
+    if (!BOX_ROW.test(lines[i]!)) {
+      i += 1;
+      continue;
+    }
+    const start = i;
+    let text = false;
+    while (i < limit && BOX_ROW.test(lines[i]!)) {
+      if (HAS_TEXT.test(lines[i]!)) text = true;
+      i += 1;
+    }
+    if (text && i - start >= 2) ranges.push([start, i]);
+  }
+  return ranges;
+}
+
 /** 왼쪽에 블록·배경 로고를 두고 오른쪽에 소개 글을 나란히 배치한 시작 배너 구간들 `[start, end)` 을 찾는다. */
 export function bannerRanges(lines: ReadonlyArray<{ text: string; bgLogo?: boolean }>, limit: number): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
@@ -646,18 +674,26 @@ export class TermScreen {
       const banners = this.fitFooter ? bannerRanges(rows, footerAt >= 0 ? footerAt : rows.length) : [];
 
       const fitCols = new Array<number>(rows.length).fill(0);
-      const applyGroup = (from: number, to: number, trimGap: boolean) => {
+      // 상태줄·배너는 넘치는 끝을 잘라도 되지만(fit), 표는 잘리면 값을 잃으므로 넘치면 가로로 민다(grid).
+      const grid = new Array<boolean>(rows.length).fill(false);
+      const applyGroup = (from: number, to: number, trimGap: boolean, isGrid = false) => {
         let max = 0;
         for (let i = from; i < to; i += 1) max = Math.max(max, displayCols(rows[i]!.text, trimGap));
-        if (max > 0) for (let i = from; i < to; i += 1) fitCols[i] = max;
+        if (max > 0) for (let i = from; i < to; i += 1) {
+          fitCols[i] = max;
+          grid[i] = isGrid;
+        }
       };
+      const body = footerAt >= 0 ? footerAt : rows.length;
+      for (const [from, to] of gridRanges(rows.map((r) => r.text), body)) applyGroup(from, to, false, true);
       if (footerAt >= 0 && footerAt < rows.length) applyGroup(footerAt, rows.length, true);
       for (const [from, to] of banners) applyGroup(from, to, false);
 
       rows.forEach((row, i) => {
         const cols = fitCols[i]!;
         const fit = cols > 0;
-        row.node.classList.toggle("fit", fit);
+        row.node.classList.toggle("fit", fit && !grid[i]);
+        row.node.classList.toggle("grid", fit && grid[i]!);
         if (fit) {
           const next = String(cols);
           if (row.node.style.getPropertyValue("--fit-cols") !== next) row.node.style.setProperty("--fit-cols", next);
