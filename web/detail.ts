@@ -548,15 +548,11 @@ export class DetailPanel {
     const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : t("{name} (herdr 밖)", { name: a.workspaceLabel });
     this.setHead(brandTile(a.vendor, 46, a.status === "working"), a.title, `${brand.name}${a.name ? ` “${a.name}”` : ""} · ${where}`);
 
-    const badge = h("span", { class: "badge" }, a.seen ? t("확인함") : STATUS_LABEL[a.status]);
+    const source = a.statusSource === "herdr" ? t("herdr 가 알려준 상태") : a.statusSource === "card" ? t("질문 카드가 답을 기다리는 중") : a.statusSource === "prompt" ? t("보낸 첫 지시를 시작하는 중") : t("로그 시각으로 추정한 상태");
+    const badge = h("span", { class: "badge", title: source }, a.seen ? t("확인함") : STATUS_LABEL[a.status]);
     badge.style.setProperty("--c", STATUS_VAR[a.status]);
-    const statusLine = h(
-      "div",
-      { class: "status-line" },
-      badge,
-      h("span", { class: "age" }, statusAge(a)),
-      h("span", { class: "src" }, a.statusSource === "herdr" ? t("herdr 가 알려준 상태") : a.statusSource === "card" ? t("질문 카드가 답을 기다리는 중") : a.statusSource === "prompt" ? t("보낸 첫 지시를 시작하는 중") : t("로그 시각으로 추정한 상태")),
-    );
+    // 상태의 출처는 herdr 가 알려 준 평소의 경우에는 적지 않는다 — 다른 데서 짐작한 때에만 눈여겨볼 값이다.
+    const statusLine = h("div", { class: "status-line" }, badge, h("span", { class: "age" }, statusAge(a)), a.statusSource === "herdr" ? null : h("span", { class: "src" }, source));
     if (a.seen && a.paneId) {
       const undo = this.button(t("되돌리기"), () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: true }), { cls: "link" });
       statusLine.append(undo);
@@ -605,16 +601,20 @@ export class DetailPanel {
     return box;
   }
 
-  /** 이 에이전트에 대해 아는 것. 모르는 값은 줄을 만들지 않고, 로그가 없어 비는 까닭은 같은 카드 끝에 적는다. */
+  /** 이 에이전트에 대해 아는 것을 세 덩어리로 모은다: 모델과 effort, 컨텍스트 게이지, 그 밖의 작은 꼬리표들.
+   *  이름–값 표로 한 줄씩 세우면 휴대폰에서 창 높이의 절반을 먹어 마지막 지시·응답이 화면 밖으로 밀려난다.
+   *  모르는 값은 자리를 만들지 않고, 로그가 없어 비는 까닭은 같은 카드 끝에 적는다. */
   private facts(a: AgentView): HTMLElement | null {
-    const rows: Fact[] = [];
-    if (a.model) rows.push({ label: t("모델"), value: a.model });
+    const card = h("div", { class: "spec" });
+    const top: Child[] = [];
+    if (a.model) top.push(h("b", { class: "model" }, a.model));
     if (a.effort) {
       const level = effortLevel(a.effort);
       const pips = h("span", { class: "pips" });
       for (let i = 1; i <= 5; i += 1) pips.append(h("i", i <= level ? { class: "on" } : {}));
-      rows.push({ label: t("Effort"), value: h("span", { class: "with-gauge" }, level > 0 ? pips : null, a.effort) });
+      top.push(h("span", { class: "effort", title: t("Effort") }, level > 0 ? pips : null, a.effort));
     }
+    if (top.length > 0) card.append(h("div", { class: "spec-top" }, ...top));
     if (a.contextTokens) {
       const used = a.contextWindow ? Math.round((a.contextTokens / a.contextWindow) * 100) : 0;
       const text = a.contextWindow ? `${tokens(a.contextTokens)} / ${tokens(a.contextWindow)} · ${used}%` : t("{n} 토큰", { n: tokens(a.contextTokens) });
@@ -624,58 +624,76 @@ export class DetailPanel {
         bar.style.width = `${Math.min(100, (a.contextTokens / a.contextWindow) * 100).toFixed(1)}%`;
         meter = h("span", { class: "meter" }, bar);
       }
-      rows.push({ label: t("컨텍스트"), value: h("span", { class: "with-gauge" }, text, meter) });
-    }
-    if (a.permissionMode) rows.push({ label: t("권한 모드"), value: a.permissionMode });
-    if (a.subagents > 0) rows.push({ label: t("서브에이전트"), value: t("{n}개 실행 중", { n: a.subagents }) });
-    if (a.harnessVersion) rows.push({ label: t("하네스"), value: `${brandFor(a.vendor).name} ${a.harnessVersion}` });
-    if (a.branch) rows.push({ label: t("브랜치"), value: a.branch, mono: true });
-    if (a.cwd) rows.push({ label: t("작업 폴더"), value: shortPath(a.cwd), mono: true });
-    if (a.paneId) {
-      // 탭 이름이 이미 pane 이름으로 끝나면(auto-title 이 둘을 같이 짓는다) 한 번만 보인다.
-      const pane = a.paneLabel && !a.tabLabel?.endsWith(a.paneLabel) ? a.paneLabel : undefined;
-      rows.push({ label: t("Pane"), value: [a.paneId, a.tabLabel, pane].filter(Boolean).join(" · "), mono: true });
+      card.append(h("div", { class: "spec-ctx" }, h("span", { class: "k" }, t("컨텍스트")), meter, h("span", { class: "v" }, text)));
     }
 
-    let note: string | undefined;
+    const tags: Array<{ k: string; v: string; mono?: boolean }> = [];
+    if (a.permissionMode) tags.push({ k: t("권한"), v: a.permissionMode });
+    if (a.subagents > 0) tags.push({ k: t("서브에이전트"), v: t("{n}개 실행 중", { n: a.subagents }) });
+    if (a.branch) tags.push({ k: t("브랜치"), v: a.branch, mono: true });
+    if (a.cwd) tags.push({ k: t("폴더"), v: shortPath(a.cwd), mono: true });
+    if (a.harnessVersion) tags.push({ k: brandFor(a.vendor).name, v: a.harnessVersion, mono: true });
+    if (a.paneId) {
+      // 탭·pane 이름이 머리의 제목과 같으면(auto-title 이 셋을 같이 짓는다) 다시 적지 않는다.
+      const same = (label?: string): boolean => !label || label === a.title || label.endsWith(` · ${a.title}`);
+      const tab = same(a.tabLabel) ? undefined : a.tabLabel;
+      const pane = same(a.paneLabel) || a.tabLabel?.endsWith(a.paneLabel!) ? undefined : a.paneLabel;
+      tags.push({ k: t("Pane"), v: [a.paneId, tab, pane].filter(Boolean).join(" · "), mono: true });
+    }
+    if (tags.length > 0) {
+      const list = h("div", { class: "spec-tags" });
+      for (const tag of tags) list.append(h("span", { class: "spec-tag" }, h("span", { class: "k" }, tag.k), h("span", tag.mono ? { class: "v mono" } : { class: "v" }, tag.v)));
+      card.append(list);
+    }
+
     if (!a.hasLog) {
-      note = a.sessionId
+      const note = a.sessionId
         ? t("이 세션의 로그 파일을 아직 찾지 못했습니다. 모델과 활동은 로그가 생기면 채워집니다.")
         : a.readable
           ? t("herdr 가 아직 이 에이전트의 세션 id 를 알려 주지 않았습니다. 알려 주면 모델과 활동이 채워집니다.")
           : t("이 하네스의 로그는 아직 읽지 못합니다. herdr 가 알려 준 제목과 상태만 보여 줍니다.");
+      card.append(h("div", { class: "fact-note" }, icon("info"), h("span", {}, note)));
     }
-    return factCard(rows, note);
+    return card.childElementCount > 0 ? card : null;
   }
 
+  /** 글 없이 아이콘만 든 단추. 무엇을 하는지는 말풍선과 읽어 주는 이름으로 남긴다. */
+  private tool(name: IconName, label: string, onClick: () => void, danger = false): HTMLButtonElement {
+    const btn = h("button", { class: danger ? "btn icon danger" : "btn icon", type: "button", title: label, "aria-label": label }, icon(name));
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
+
+  /** 할 일은 한 줄에: 앞의 큰 단추 하나와 뒤의 아이콘 단추들. 완료면 큰 단추는 "확인 완료"이고 herdr 로 옮겨 가기는
+   *  아이콘으로 물러난다 — 큰 단추가 둘이면 휴대폰 폭에서 아이콘 묶음이 다음 줄로 밀려 줄이 하나 더 생긴다. */
   private actions(a: AgentView): HTMLElement {
     const control = this.snapshot?.control === true;
-    const main = h("div", { class: "actions" });
+    const row = h("div", { class: "actions" });
+    const tools = h("div", { class: "tools" });
+    const openTitle = !a.paneId ? t("herdr 밖에서 도는 세션이라 옮겨 갈 pane 이 없습니다.") : control ? t("herdr 화면을 이 pane 으로 옮깁니다 (Enter)") : t("보기 전용으로 띄운 서버라 herdr 화면을 옮기지 않습니다.");
+    const openHerdr = (): void => this.callbacks.act({ type: "open-herdr", agent: a });
     if (a.status === "done" && a.paneId && control) {
-      main.append(this.button(t("확인 완료"), () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: false }), { cls: "btn primary", icon: "check", title: t("읽었다고 표시하고 집으로 돌려보냅니다 (D)") }));
+      row.append(this.button(t("확인 완료"), () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: false }), { cls: "btn primary", icon: "check", title: t("읽었다고 표시하고 집으로 돌려보냅니다 (D)") }));
+      const open = this.tool("open", t("herdr 에서 열기"), openHerdr);
+      open.title = `${t("herdr 에서 열기")} — ${openTitle}`;
+      tools.append(open);
+    } else {
+      row.append(this.button(t("herdr 에서 열기"), openHerdr, { cls: "btn primary", icon: "open", disabled: !a.paneId || !control, title: openTitle }));
     }
-    main.append(
-      this.button(t("herdr 에서 열기"), () => this.callbacks.act({ type: "open-herdr", agent: a }), {
-        cls: a.status === "done" && control ? "btn" : "btn primary",
-        icon: "open",
-        disabled: !a.paneId || !control,
-        title: !a.paneId ? t("herdr 밖에서 도는 세션이라 옮겨 갈 pane 이 없습니다.") : control ? t("herdr 화면을 이 pane 으로 옮깁니다 (Enter)") : t("보기 전용으로 띄운 서버라 herdr 화면을 옮기지 않습니다."),
-      }),
-    );
-    const more = h("div", { class: "actions minor" });
     if (a.sessionId) {
       const id = a.sessionId;
-      more.append(this.button(t("세션 ID 복사"), () => this.copy(id, id), { icon: "copy" }));
+      tools.append(this.tool("copy", t("세션 ID 복사"), () => this.copy(id, id)));
     }
     if (a.paneId && control) {
       const paneId = a.paneId;
-      more.append(
-        this.button(t("이름"), () => this.callbacks.act({ type: "rename", kind: "pane", id: paneId, current: a.paneLabel ?? "", what: t("pane 이름") }), { icon: "pencil", title: t("이 pane 의 이름을 바꿉니다") }),
-        this.button(t("집 보기"), () => this.callbacks.act({ type: "select", id: workspaceKey(a.workspaceId) }), { icon: "house" }),
-        this.button(t("닫기"), () => this.callbacks.act({ type: "close", kind: "pane", id: paneId }), { cls: "btn danger", icon: "close", title: t("이 pane 을 닫습니다 — 에이전트도 함께 꺼집니다") }),
+      tools.append(
+        this.tool("pencil", t("이 pane 의 이름을 바꿉니다"), () => this.callbacks.act({ type: "rename", kind: "pane", id: paneId, current: a.paneLabel ?? "", what: t("pane 이름") })),
+        this.tool("house", t("집 보기"), () => this.callbacks.act({ type: "select", id: workspaceKey(a.workspaceId) })),
+        this.tool("trash", t("이 pane 을 닫습니다 — 에이전트도 함께 꺼집니다"), () => this.callbacks.act({ type: "close", kind: "pane", id: paneId }), true),
       );
     }
-    return h("div", { class: "action-group" }, main, more.childElementCount > 0 ? more : null);
+    if (tools.childElementCount > 0) row.append(tools);
+    return h("div", { class: "action-group" }, row);
   }
 
   /** what: 토스트에 띄울 말 — 짧은 값은 그대로, 긴 글은 섹션 이름. */
