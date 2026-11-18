@@ -32,6 +32,11 @@ const IDLE_FRAME_MS = 24;
 /** 마지막 조작 뒤 이만큼은 화면 주사율 그대로 그린다. */
 const ACTIVE_MS = 2500;
 /**
+ * 장면 밖에서 온 일(목록의 줄에 올려놓기, 걸러 보기)에 캐릭터가 반응하는 동안 — 커지고 밝아지는 전환이 끝날 때까지 —
+ * 주사율 그대로 그리는 시간. 가장 느린 전환(밝기, 시정수 약 170ms)이 눈에 띄지 않을 만큼 가라앉는 데 맞췄다.
+ */
+const EASE_MS = 800;
+/**
  * 한동안 손대지 않았거나 다른 창을 쓰는 중이면 "곁눈질 화면"이다 — 초당 12장쯤으로 더 줄인다.
  * 일하는 캐릭터는 늘 일터 사이를 오가므로, 걷는 동안을 예외로 두면 이 단계에 들어갈 틈이 없다.
  */
@@ -80,7 +85,12 @@ export class WorldScene {
   private tunedAt = 0;
   private goodStreak = 0;
   private lastFrameAt = 0;
+  /** 장면을 직접 건드린(끌기·휠·단축키·고르기) 마지막 때. 이 뒤 ACTIVE_MS 는 주사율 그대로 그린다. */
   private lastInputAt = performance.now();
+  /** 화면 어디든 손이 닿은 마지막 때 — 곁눈질 화면으로 내려갈지만 정한다. */
+  private lastSeenAt = performance.now();
+  /** 이때까지는 장면 안에서 전환이 진행 중이라 주사율 그대로 그린다. */
+  private easeUntil = 0;
   private shadowAt = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   /** 다른 화면(터미널 크게 보기)에 덮여 보이지 않는다 — 그리지 않는다. */
@@ -161,14 +171,15 @@ export class WorldScene {
     el.addEventListener("pointerleave", () => this.setHover(null));
 
     // 조작하는 동안에는 화면 주사율 그대로, 가만히 두면 느긋하게 그린다.
-    const touched = (): void => {
-      this.lastInputAt = performance.now();
-      // 느긋하게 쉬는 중이었으면 다음 차례를 기다리지 않고 바로 그린다.
-      if (this.timer !== undefined) {
-        clearTimeout(this.timer);
-        this.timer = undefined;
-        requestAnimationFrame(this.tick);
-      }
+    const touched = (e: Event): void => {
+      const now = performance.now();
+      this.lastSeenAt = now;
+      // 목록·위쪽 막대·입력란에서 온 입력은 장면을 움직이지 않는다. 그것까지 조작으로 치면 목록 위에서 포인터만
+      // 움직여도, 지시를 타이핑만 해도 장면을 주사율 그대로 그린다(4K 60Hz 실측: 코어의 71~95%, 가만히 둘 때 33%).
+      // 곁눈질 화면으로 내려가지만 않게 하고, 장면이 반응할 일이 생기면(올려놓기·고르기) 그쪽에서 따로 깨운다.
+      if (!this.aimedAtScene(e)) return;
+      this.lastInputAt = now;
+      this.wake();
     };
     for (const type of ["pointermove", "pointerdown", "wheel", "keydown", "touchstart"]) window.addEventListener(type, touched, { passive: true });
 
@@ -190,6 +201,7 @@ export class WorldScene {
     }
     // 옮겨 가는 동안은 화면 전체가 움직인다 — 주사율 그대로 그린다.
     this.lastInputAt = performance.now();
+    this.wake();
   }
 
   /** 패널에 덮이지 않은 자리의 가로세로 비. 처음 화면의 거리를 여기에 맞춘다. */
@@ -392,7 +404,10 @@ export class WorldScene {
     this.labelsDirty = 3;
     // 고르는 것은 어떻게 골랐든(목록에서 키보드로, 알림을 눌러서) 조작이다 — 다가가는 동안은 주사율 그대로 그린다.
     // 포인터나 키 입력만 조작으로 치면 그 밖의 길로 고른 때는 카메라가 초당 30장으로 끊겨 움직인다.
-    if (fly) this.lastInputAt = performance.now();
+    if (fly) {
+      this.lastInputAt = performance.now();
+      this.wake();
+    } else if (id !== before) this.ease();
     if (id && !before && fly) {
       // 돌아오는 중에 다시 골랐으면, 가던 곳이 돌아갈 자리다.
       const returning = this.flight?.position ? this.flight : null;
@@ -462,9 +477,16 @@ export class WorldScene {
 
   /** 로스터 필터: 통과하지 못한 배우를 흐리게 한다. null 이면 모두 또렷하게. */
   setFilter(pass: ((view: AgentView) => boolean) | null): void {
-    for (const actor of this.actors.values()) actor.muted = pass ? !pass(actor.view) : false;
+    let changed = false;
+    for (const actor of this.actors.values()) {
+      const muted = pass ? !pass(actor.view) : false;
+      changed ||= muted !== actor.muted;
+      actor.muted = muted;
+    }
     // 걸러진 이름표는 자리 차례에서 밀린다 — 아무도 걷지 않는 화면에서도 바로 다시 놓는다.
     this.labelsDirty = 3;
+    // 검색어를 치는 동안 걸러지는 캐릭터가 그대로면 장면에는 바뀌는 것이 없다.
+    if (changed) this.ease();
   }
 
   setExternalHover(id: string | null): void {
@@ -478,7 +500,34 @@ export class WorldScene {
     // 올려놓은 이름표는 접혀 있었어도 다 펴져야 한다 — 카메라도 캐릭터도 가만히 있는 화면에서도.
     this.labelsDirty = 3;
     this.renderer.domElement.style.cursor = id ? "pointer" : "";
+    this.ease();
     if (notify) this.callbacks.onHover(id);
+  }
+
+  /**
+   * 이 입력이 장면을 움직이는가: 장면 위의 포인터·휠, 글을 치는 중이 아닐 때의 키(단축키·Space 로 밀기), 그리고 누르기.
+   * 누르기는 어디서 눌렀든 친다 — 단추 하나가 장면을 움직이는 일(한눈에 보기, 낮밤 바꾸기, 패널 여닫기)이 많고,
+   * 주사율을 붙들던 것은 누르기가 아니라 포인터가 지나가는 것과 휠, 타이핑이었다.
+   */
+  private aimedAtScene(e: Event): boolean {
+    if (e.type === "pointerdown" || e.type === "touchstart") return true;
+    const target = e.target instanceof Element ? e.target : null;
+    if (e.type === "keydown") return target?.closest("input, textarea, select, [contenteditable], dialog") == null;
+    return target !== null && this.container.contains(target);
+  }
+
+  /** 느긋하게 쉬는 중이었으면 다음 차례를 기다리지 않고 바로 그린다. */
+  private wake(): void {
+    if (this.timer === undefined) return;
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    requestAnimationFrame(this.tick);
+  }
+
+  /** 캐릭터의 크기·밝기가 바뀌어 가는 동안은 주사율 그대로 그린다 — 장면 밖에서 시킨 일이어도 전환은 매끄러워야 한다. */
+  private ease(): void {
+    this.easeUntil = performance.now() + EASE_MS;
+    this.wake();
   }
 
   private distance(): number {
@@ -548,9 +597,9 @@ export class WorldScene {
    * 그 뒤로는 화면이 크게 움직일 때만 — 제자리로 돌아가는 중이거나, 고른 캐릭터가 먼 길을 가는 중일 때만 — 조작 중이다.
    */
   private pace(now: number): number {
-    const quiet = now - this.lastInputAt;
     const sweeping = this.flight?.position !== undefined || (this.flight !== null && this.following);
-    if (sweeping || quiet < ACTIVE_MS) return 0;
+    if (sweeping || now - this.lastInputAt < ACTIVE_MS || now < this.easeUntil) return 0;
+    const quiet = now - Math.max(this.lastInputAt, this.lastSeenAt);
     return quiet > AMBIENT_AFTER_MS || !document.hasFocus() ? AMBIENT_FRAME_MS : IDLE_FRAME_MS;
   }
 
