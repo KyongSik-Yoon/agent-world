@@ -388,7 +388,8 @@ export class DetailPanel {
         },
         (e: Error) => {
           drop();
-          if (this.docked === target) this.setNote(e.message, "err");
+          // 올리는 사이에 화면을 다시 그리면 docked 가 새 객체가 된다 — 값으로 견준다.
+          if (this.docked?.paneId === target.paneId && this.docked.agent === target.agent) this.setNote(e.message, "err");
         },
       );
     }
@@ -413,18 +414,22 @@ export class DetailPanel {
     }
     this.busy = true;
     this.sendBtn.disabled = true;
+    // 보내는 동안 새 스냅샷이 오면 화면을 다시 그리면서 docked 가 새 객체로 바뀐다. 같은 대상인지는 값으로 견준다 —
+    // 객체로 견주면 그때마다 "다른 대상"이 되어, 보낸 글이 입력창에 남는다.
+    const still = (): boolean => this.docked?.paneId === target.paneId && this.docked.agent === target.agent;
     try {
       if (target.agent) {
         await post("/api/prompt", { paneId: target.paneId, text, ...(shots.length ? { images: shots.map((s) => s.id) } : {}) });
         this.sent = { text, at: Date.now(), confirmed: false, before: this.snapshot?.agents.find((a) => a.paneId === target.paneId)?.lastPrompt };
         this.setNote(t("보냈습니다. 에이전트가 받으면 여기에 표시됩니다…"), "wait");
-        if (this.docked === target) this.clearShots();
+        if (still()) this.clearShots();
       } else {
         await sendInput(target.paneId, { text, keys: ["enter"] });
         this.setNote("", "");
         this.open.screen = true;
       }
-      if (this.docked === target) this.setInput("");
+      // 보내는 사이에 이어서 친 글이 있으면 그것은 남긴다.
+      if (still()) this.setInput(this.input.value.startsWith(text) ? this.input.value.slice(text.length) : this.input.value);
     } catch (e) {
       if (e instanceof ApiError && e.code === "agent_blocked") {
         this.setNote(t("에이전트가 질문에 대한 답을 기다리는 중입니다. 화면의 선택지를 위 키로 먼저 눌러 주세요."), "err");
