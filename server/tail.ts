@@ -14,8 +14,8 @@ export interface LogReader<S> {
   init(): S;
   /** 이 줄을 JSON 으로 풀 가치가 있는지 — 큰 행을 파싱 전에 걸러낸다. */
   want?(line: string): boolean;
-  /** 한 행을 요약에 반영한다. */
-  feed(state: S, row: unknown): void;
+  /** 한 행을 요약에 반영한다. pos 는 그 행이 파일에서 시작하는 바이트 위치다(원문을 다시 읽을 때 쓴다). */
+  feed(state: S, row: unknown, pos: number): void;
   /** 처음 읽을 때, 이 요약이면 꼬리 창을 더 키우지 않아도 되는지. */
   ready(state: S): boolean;
 }
@@ -38,6 +38,34 @@ async function readRange(path: string, start: number, end: number): Promise<Buff
   }
 }
 
+const LINE_CHUNK = 64 * 1024;
+/** 원문을 다시 읽을 때 한 줄의 상한. 이보다 긴 줄은 읽지 않는다(활동 하나를 보려고 서버가 큰 덩어리를 들지 않게). */
+const MAX_LINE = 8 * 1024 * 1024;
+
+/** pos 에서 시작하는 한 줄(줄바꿈 앞까지). 줄이 끝나지 않았거나 너무 길면 undefined. */
+export async function readLineAt(path: string, pos: number): Promise<string | undefined> {
+  const handle = await open(path, "r");
+  try {
+    const parts: Buffer[] = [];
+    let got = 0;
+    while (got < MAX_LINE) {
+      const buf = Buffer.allocUnsafe(LINE_CHUNK);
+      const { bytesRead } = await handle.read(buf, 0, LINE_CHUNK, pos + got);
+      if (bytesRead === 0) return undefined;
+      const nl = buf.subarray(0, bytesRead).indexOf(NEWLINE);
+      if (nl !== -1) {
+        parts.push(buf.subarray(0, nl));
+        return Buffer.concat(parts).toString("utf8");
+      }
+      parts.push(buf.subarray(0, bytesRead));
+      got += bytesRead;
+    }
+    return undefined;
+  } finally {
+    await handle.close();
+  }
+}
+
 export class TailedLog<S> {
   state: S;
   size = 0;
@@ -53,7 +81,8 @@ export class TailedLog<S> {
     this.state = reader.init();
   }
 
-  private feedBytes(state: S, bytes: Buffer): void {
+  /** base: bytes 의 첫 바이트가 파일에서 놓인 위치. */
+  private feedBytes(state: S, bytes: Buffer, base: number): void {
     let from = 0;
     while (from < bytes.length) {
       let nl = bytes.indexOf(NEWLINE, from);
@@ -62,7 +91,7 @@ export class TailedLog<S> {
         const line = bytes.toString("utf8", from, nl);
         if (!this.reader.want || this.reader.want(line)) {
           try {
-            this.reader.feed(state, JSON.parse(line));
+            this.reader.feed(state, JSON.parse(line), base + from);
           } catch {
             // 쓰는 중이라 잘린 행이거나 JSON 이 아닌 줄 — 건너뛴다.
           }
@@ -88,14 +117,16 @@ export class TailedLog<S> {
       for (;;) {
         const start = Math.max(0, info.size - window);
         let bytes = await readRange(this.path, start, info.size);
+        let base = start;
         if (start > 0) {
           const firstNl = bytes.indexOf(NEWLINE);
           bytes = firstNl === -1 ? bytes.subarray(bytes.length) : bytes.subarray(firstNl + 1);
+          base = firstNl === -1 ? info.size : start + firstNl + 1;
         }
         const lastNl = bytes.lastIndexOf(NEWLINE);
         const complete = lastNl === -1 ? bytes.subarray(0, 0) : bytes.subarray(0, lastNl + 1);
         const state = this.reader.init();
-        this.feedBytes(state, complete);
+        this.feedBytes(state, complete, base);
         if (this.reader.ready(state) || start === 0 || window >= MAX_WINDOW) {
           this.state = state;
           this.offset = info.size - (bytes.length - complete.length);
@@ -108,7 +139,7 @@ export class TailedLog<S> {
       const bytes = await readRange(this.path, this.offset, info.size);
       const lastNl = bytes.lastIndexOf(NEWLINE);
       if (lastNl !== -1) {
-        this.feedBytes(this.state, bytes.subarray(0, lastNl + 1));
+        this.feedBytes(this.state, bytes.subarray(0, lastNl + 1), this.offset);
         this.offset += lastNl + 1;
       }
     }

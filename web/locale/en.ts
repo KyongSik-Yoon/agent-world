@@ -21,6 +21,12 @@ export const en: Record<string, string> = {
   "다 했어요": "All done",
   "확인이 필요해요": "Needs your input",
   "질문이 있어요": "I have a question",
+  "원문을 불러오는 중…": "Loading the full text…",
+  "원문을 불러오지 못했습니다.": "Couldn't load the full text.",
+  "서버에 닿지 못해 원문을 불러오지 못했습니다.": "Couldn't reach the server to load the full text.",
+  "…(약 {n}토큰 생략)…": "…(about {n} tokens omitted)…",
+  "활동 원문": "Activity text",
+  "이 원문을 클립보드에 복사합니다": "Copy this text to the clipboard",
 
   // ── 시간 ──
   "방금": "just now",

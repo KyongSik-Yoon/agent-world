@@ -8,6 +8,7 @@ import { join } from "node:path";
 
 import type { LogReader } from "../tail.ts";
 import {
+  beginRow,
   emptySummary,
   isRecord,
   num,
@@ -90,7 +91,7 @@ function feedAssistant(s: LogSummary, row: Record<string, unknown>, at: string):
     } else if (part.type === "tool_use") {
       calledTool = true;
       const name = str(part.name) ?? "tool";
-      pushActivity(s, "tool", name, summarizeToolInput(part.input), at);
+      pushActivity(s, "tool", name, summarizeToolInput(part.input), at, part.input);
       const id = str(part.id);
       if (id) s.open.set(id, pendingRequest(name, part.input, at));
     }
@@ -161,7 +162,8 @@ export const claudeReader: LogReader<LogSummary> = {
     if (!line.startsWith(BOOKKEEPING)) return true;
     return WANTED_BOOKKEEPING.some((p) => line.startsWith(p));
   },
-  feed(s, row) {
+  feed(s, row, pos) {
+    beginRow(s, pos);
     if (!isRecord(row)) return;
     const at = str(row.timestamp) ?? "";
     switch (row.type) {

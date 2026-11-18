@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { LogReader } from "../tail.ts";
-import { emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
+import { beginRow, emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
 import type { Harness, LogFile } from "./types.ts";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -65,7 +65,8 @@ function userRequest(content: string): string {
 
 export const agyReader: LogReader<LogSummary> = {
   init: emptySummary,
-  feed(s, row) {
+  feed(s, row, pos) {
+    beginRow(s, pos);
     if (!isRecord(row)) return;
     const at = str(row.created_at) ?? "";
     const content = str(row.content) ?? "";
@@ -98,7 +99,7 @@ export const agyReader: LogReader<LogSummary> = {
           const args = decodeArgs(call.args);
           const summary = str(args.toolSummary) ?? summarizeToolInput(args);
           const name = str(call.name) ?? "tool";
-          pushActivity(s, "tool", name, summary, at);
+          pushActivity(s, "tool", name, summary, at, args);
           s.open.set(String(i), pendingRequest(name, args, at));
         });
         s.turnOpen = calls.length > 0;

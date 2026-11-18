@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { LogReader } from "../tail.ts";
-import { emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
+import { beginRow, emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
 import type { Harness, LogFile } from "./types.ts";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -107,7 +107,7 @@ function feedItem(s: LogSummary, p: Record<string, unknown>, at: string): void {
       s.sawAssistant = true;
       const input = toolInput(p.arguments ?? p.input ?? p.action);
       const name = str(p.name) ?? "shell";
-      pushActivity(s, "tool", name, summarizeToolInput(input), at);
+      pushActivity(s, "tool", name, summarizeToolInput(input), at, input);
       const id = str(p.call_id);
       if (id) s.open.set(id, pendingRequest(name, input, at));
       break;
@@ -126,7 +126,8 @@ export const codexReader: LogReader<LogSummary> = {
   init: emptySummary,
   // world_state 와 developer 메시지는 지침 전문을 통째로 싣고 다녀서 크다 — 파싱하지 않는다.
   want: (line) => line.length < 4096 || !line.slice(0, 160).includes('"type":"world_state"'),
-  feed(s, row) {
+  feed(s, row, pos) {
+    beginRow(s, pos);
     if (!isRecord(row) || !isRecord(row.payload)) return;
     const at = str(row.timestamp) ?? "";
     const p = row.payload;

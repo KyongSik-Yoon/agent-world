@@ -1133,7 +1133,7 @@ kbd {
   list-style: none;
 }
 
-.log li {
+.log > li {
   display: grid;
   grid-template-columns: 58px 15px 1fr;
   gap: 8px;
@@ -1141,46 +1141,134 @@ kbd {
   border-bottom: 1px dashed var(--line);
 }
 
-.log li:last-child {
+.log > li:last-child {
   border-bottom: 0;
 }
 
-.log time {
+.log > li > time {
   color: var(--ink-3);
   font: 11px/1.6 var(--mono);
 }
 
-.log .ico {
+.log > li > .ico {
   width: 15px;
   height: 15px;
   margin-top: 3px;
   color: var(--ink-3);
 }
 
-.log li.latest .ico {
+.log > li.latest > .ico {
   color: var(--ink-2);
 }
 
-.log li.err .ico {
+.log > li.err > .ico {
   color: var(--blocked);
 }
 
-.log span {
+.log > li > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.log li.err span {
+.log > li.err > span {
   color: var(--blocked);
 }
 
-.log li.latest span {
+.log > li.latest > span {
   font-weight: 700;
   white-space: normal;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+/* 누르면 원문이 펼쳐지는 줄. */
+.log > li.more {
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.log > li.more:hover,
+.log > li.more:focus-visible {
+  background: var(--soft);
+  outline: none;
+}
+
+.log > li.open {
+  border-bottom-color: transparent;
+  background: var(--soft);
+}
+
+.log > li.open > span {
+  color: var(--ink);
+}
+
+/* 펼친 원문: 시각·그림 칸까지 다 써서 좁은 화면에서도 글 폭을 아낀다. */
+.log > li.log-detail {
+  display: block;
+  margin: 2px 0 8px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.log > li.log-detail.wait,
+.log > li.log-detail.err {
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: var(--soft);
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.log > li.log-detail.err {
+  color: var(--blocked);
+}
+
+.log-detail .log-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 2px;
+}
+
+/* 섹션 머리의 복사 단추와 같은 모양. 누를 자리는 넓히고 바깥 여백을 그만큼 뺀다. */
+.log-detail .log-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -6px -6px -4px;
+  padding: 6px 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.log-detail .log-bar button .ico {
+  width: 13px;
+  height: 13px;
+}
+
+/* 펼친 글의 목록은 활동 로그 목록 안에 들어 있어 브라우저가 "안쪽 목록" 머리표(○·■)를 단다. 위의 응답 글과 같게 되돌린다. */
+.log-detail .prose ul { list-style-type: disc; }
+.log-detail .prose ul ul { list-style-type: circle; }
+.log-detail .prose ul ul ul { list-style-type: square; }
+
+/* 펼친 줄은 배경으로 묶이므로 바로 위 줄의 점선이 그 위를 지나가지 않게 한다. */
+.log > li:has(+ li.open) {
+  border-bottom-color: transparent;
+}
+
+.log-detail pre {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--soft);
+  font: 12px/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .screen {

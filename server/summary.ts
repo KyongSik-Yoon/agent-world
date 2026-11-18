@@ -2,11 +2,14 @@
 import { basename } from "node:path";
 
 import type { Activity, ActivityKind, PendingRequest } from "../shared/types.ts";
+import { type LogReader, readLineAt } from "./tail.ts";
 
 export const MAX_RECENT = 16;
 const MAX_ACTIVITY_CHARS = 220;
 const MAX_PROMPT_CHARS = 4000;
 const MAX_REPLY_CHARS = 8000;
+/** 활동 하나의 원문을 보여 줄 때의 상한. */
+const MAX_DETAIL_CHARS = 64 * 1024;
 
 export interface LogSummary {
   title?: string;
@@ -29,6 +32,10 @@ export interface LogSummary {
   open: Map<string, PendingRequest>;
   /** 로그의 마지막 사건이 컴팩션(대화 요약)이다 — 그 뒤로 지시도 응답도 없었다. */
   compacted?: boolean;
+  /** 지금 읽고 있는 행의 자리와, 그 행에서 지금까지 나온 활동 수. 활동의 ref 를 짓는다. */
+  row?: { pos: number; nth: number };
+  /** 원문을 다시 읽을 때만: 이 행의 nth 번째 활동의 원문을 여기에 받는다. */
+  capture?: { nth: number; text?: string; at?: string };
 }
 
 export function emptySummary(): LogSummary {
@@ -57,11 +64,35 @@ export function oneLine(text: string, max = MAX_ACTIVITY_CHARS): string {
   return clip(text.replace(/\s+/g, " ").trim(), max);
 }
 
-export function pushActivity(s: LogSummary, kind: ActivityKind, name: string, text: string, at: string): Activity {
+/**
+ * 활동이 로그에 적힌 자리("줄의 바이트 위치.그 줄의 몇 번째 활동"). 원문은 이 자리로 다시 읽는다.
+ * 활동 객체에 필드로 달지 않는다 — 스냅샷에 실려 매초 휴대폰으로 가는 patch 가 행마다 커진다(주민 하나에 약 290바이트).
+ */
+const refs = new WeakMap<Activity, string>();
+
+export function refOf(activity: Activity): string | undefined {
+  return refs.get(activity);
+}
+
+/** 리더가 행을 하나 읽기 시작할 때 부른다 — 그 행에서 나오는 활동들이 이 자리를 ref 로 단다. */
+export function beginRow(s: LogSummary, pos: number): void {
+  s.row = { pos, nth: 0 };
+}
+
+/** input: 도구 호출의 입력 그대로. 평소에는 쓰지 않고, 원문을 다시 읽을 때만 풀어 쓴다. */
+export function pushActivity(s: LogSummary, kind: ActivityKind, name: string, text: string, at: string, input?: unknown): Activity {
+  const row = s.row;
+  const nth = row ? row.nth++ : 0;
+  if (s.capture?.nth === nth) {
+    s.capture.text = kind === "tool" ? fullToolInput(input ?? text) : clip(text, MAX_DETAIL_CHARS);
+    s.capture.at = at;
+  }
   // 생각은 내용이 로그에 남지 않아 "지금 생각 중"이라는 현재 상태(말풍선)로만 쓸모가 있다. 다음 활동이 오면
   // 자리를 넘겨, 활동 로그의 칸을 내용 없는 "생각 중…"이 차지하지 않게 한다.
   if (s.recent[s.recent.length - 1]?.kind === "thinking") s.recent.pop();
   const activity: Activity = { kind, name, text: oneLine(text), at };
+  // 생각은 원문이 로그에 남지 않으니 펼칠 것이 없다.
+  if (row && kind !== "thinking") refs.set(activity, `${row.pos}.${nth}`);
   s.recent.push(activity);
   if (s.recent.length > MAX_RECENT) s.recent.splice(0, s.recent.length - MAX_RECENT);
   return activity;
@@ -95,6 +126,48 @@ export function summarizeToolInput(input: unknown): string {
     if (typeof v === "string" && v.trim()) return oneLine(v);
   }
   return "";
+}
+
+const DETAIL_ORDER = ["description", "command", "cmd", "CommandLine", ...FILE_KEYS];
+
+/** 도구 입력 전부를 읽을 글로 — 설명을 앞에 두고, 값마다 "키: 값"(여러 줄이면 다음 줄부터). */
+export function fullToolInput(input: unknown): string {
+  if (typeof input === "string") return clip(input, MAX_DETAIL_CHARS);
+  if (!isRecord(input)) return input === undefined || input === null ? "" : clip(JSON.stringify(input, null, 2), MAX_DETAIL_CHARS);
+  const entries = Object.entries(input).filter(([, v]) => v !== undefined && v !== null && v !== "");
+  // 무엇을 하려는지(설명) → 무엇을 돌리는지(명령) → 어디에(파일) → 나머지 순.
+  const rank = (key: string) => {
+    const at = DETAIL_ORDER.indexOf(key);
+    return at === -1 ? DETAIL_ORDER.length : at;
+  };
+  entries.sort(([a], [b]) => rank(a) - rank(b));
+  const blocks = entries.map(([key, v]) => {
+    const value = typeof v === "string" ? v : JSON.stringify(v, null, 2);
+    return value.includes("\n") ? `${key}:\n${value}` : `${key}: ${value}`;
+  });
+  return clip(blocks.join("\n\n"), MAX_DETAIL_CHARS);
+}
+
+/**
+ * ref 자리에 적힌 활동의 원문. 그 한 줄만 다시 읽어, 같은 리더로 풀어서 그 활동을 찾는다 — 서버는 원문을 들고 있지 않는다.
+ * 그 자리의 행이 이제 다른 것이면(파일이 다시 쓰였다) 시각이 어긋나므로 undefined.
+ */
+export async function activityText(path: string, reader: LogReader<LogSummary>, ref: string, at: string): Promise<string | undefined> {
+  const m = /^(\d+)\.(\d+)$/.exec(ref);
+  if (!m) return undefined;
+  const pos = Number(m[1]);
+  const line = await readLineAt(path, pos);
+  if (line === undefined) return undefined;
+  let row: unknown;
+  try {
+    row = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  const s = reader.init();
+  s.capture = { nth: Number(m[2]) };
+  reader.feed(s, row, pos);
+  return s.capture.text !== undefined && s.capture.at === at ? s.capture.text : undefined;
 }
 
 const MAX_PENDING_CHARS = 2000;

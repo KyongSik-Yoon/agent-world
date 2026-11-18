@@ -3,8 +3,8 @@
 //
 // 스냅샷이 올 때마다 위쪽(머리·본문)은 다시 그리지만, 아래쪽 도크(빠른 키·입력창)는 고른 대상이 바뀔 때만
 // 새로 만든다 — 치고 있던 글과 초점이 스냅샷에 쓸려 가지 않게.
-import type { AgentView, PaneView, PendingRequest, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
-import { ApiError, post, sendInput, uploadImage } from "./api.ts";
+import type { Activity, AgentView, PaneView, PendingRequest, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
+import { ApiError, headers, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
 import { type Child, type IconName, STATUS_VAR, h, icon, prose, store, stored } from "./dom.ts";
 import { STATUS_LABEL, activityParts, bubbleParts, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
@@ -48,6 +48,18 @@ const QUICK_KEYS: Array<{ label: string; title: string; icon?: IconName; caption
 ];
 
 const PREVIEW_LINES = 18;
+/** 원문을 펼쳐 볼 수 있는 활동 — 생각은 원문이 로그에 남지 않는다. */
+function expandable(a: Activity): boolean {
+  return a.kind === "text" || a.kind === "user" || a.kind === "tool";
+}
+
+/** 활동 로그의 한 줄을 가리키는 열쇠. 서버도 같은 둘(시각과 한 줄 요약)로 그 줄을 찾는다. */
+function logKey(a: Activity): string {
+  return `${a.at}\n${a.text}`;
+}
+
+/** Codex 가 긴 지시를 기록할 때 가운데를 비우고 남기는 표식. */
+const OMITTED = /<truncated omitted_approx_tokens="(\d+)"\s*\/>/g;
 /** 한 번에 붙일 수 있는 이미지 수(서버의 MAX_IMAGES 와 같다). */
 const MAX_SHOTS = 8;
 /** 끌어서 맞춘 상태 창의 폭을 적어 두는 자리. */
@@ -98,6 +110,10 @@ export class DetailPanel {
   private sent: { text: string; at: number; confirmed: boolean; before?: string } | null = null;
   private readonly open = { prompt: false, reply: false, screen: false };
   private readonly sectionOf: { prompt?: { stamp: string; el: HTMLElement }; reply?: { stamp: string; el: HTMLElement } } = {};
+  /** 활동 로그에서 펼친 줄(logKey). 원문은 펼칠 때 서버에서 받아 둔다 — 스냅샷에는 한 줄 요약만 온다. */
+  private logOpen: string | null = null;
+  /** logKey → 받아 온 원문(받는 중이면 빈 객체). 그려 둔 상자도 같이 둬서 스냅샷마다 다시 짓지 않는다. */
+  private readonly logText = new Map<string, { text?: string; error?: string; el?: HTMLElement }>();
   private busy = false;
 
   constructor(
@@ -309,6 +325,8 @@ export class DetailPanel {
     if (selectedId !== this.selectedId) {
       this.open.prompt = this.open.reply = this.open.screen = false;
       this.sent = null;
+      this.logOpen = null;
+      this.logText.clear();
     }
     this.snapshot = snapshot;
     this.selectedId = selectedId;
@@ -662,13 +680,74 @@ export class DetailPanel {
   private logSection(a: AgentView): HTMLElement {
     const list = h("ol", { class: "log" });
     [...a.recent].reverse().forEach((item, i) => {
-      const cls = [item.error ? "err" : "", i === 0 ? "latest" : ""].filter(Boolean).join(" ");
+      const ref = expandable(item) ? logKey(item) : undefined;
+      const open = ref !== undefined && ref === this.logOpen;
+      const cls = [item.error ? "err" : "", i === 0 ? "latest" : "", ref ? "more" : "", open ? "open" : ""].filter(Boolean).join(" ");
       const { icon: kind, text: line } = activityParts(item);
       const text = h("span", {}, item.error ? t("{line} — 실패", { line }) : line);
       text.title = line;
-      list.append(h("li", cls ? { class: cls } : {}, h("time", {}, clock(item.at)), kind ? icon(kind) : h("i", {}), text));
+      const row = h("li", cls ? { class: cls } : {}, h("time", {}, clock(item.at)), kind ? icon(kind) : h("i", {}), text);
+      if (ref) {
+        // 줄 전체가 펼치는 단추다. 글을 골라 두고 뗀 손은 펼치지 않는다.
+        row.tabIndex = 0;
+        row.setAttribute("role", "button");
+        row.setAttribute("aria-expanded", String(open));
+        row.addEventListener("click", () => {
+          if (!window.getSelection()?.isCollapsed) return;
+          this.toggleLog(a.id, item);
+        });
+        row.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          this.toggleLog(a.id, item);
+        });
+      }
+      list.append(row);
+      if (open) list.append(this.logDetail(item));
     });
     return h("section", {}, h("h3", {}, t("활동 로그")), list);
+  }
+
+  private toggleLog(agentId: string, item: Activity): void {
+    const ref = logKey(item);
+    this.logOpen = this.logOpen === ref ? null : ref;
+    const got = this.logText.get(ref);
+    if (this.logOpen && (!got || got.error)) void this.loadLog(agentId, item);
+    this.rerender();
+  }
+
+  private async loadLog(agentId: string, item: Activity): Promise<void> {
+    const ref = logKey(item);
+    this.logText.set(ref, {});
+    let got: { text?: string; error?: string };
+    try {
+      const query = new URLSearchParams({ agent: agentId, at: item.at, text: item.text });
+      const res = await fetch(`/api/activity?${query}`, { headers: headers() });
+      const body = (await res.json()) as { text?: string; error?: string };
+      got = res.ok && typeof body.text === "string" ? { text: body.text } : { error: body.error ?? t("원문을 불러오지 못했습니다.") };
+    } catch {
+      got = { error: t("서버에 닿지 못해 원문을 불러오지 못했습니다.") };
+    }
+    // 받는 사이에 다른 주민으로 옮겼으면 버린다(옮길 때 받아 둔 것을 비웠다).
+    if (this.selectedId !== agentId || !this.logText.has(ref)) return;
+    this.logText.set(ref, got);
+    // 사용자가 창 안의 글을 고르는 중이면 다시 그리기를 미루는 평소 경로로 그린다.
+    if (this.snapshot) this.render(this.snapshot, this.selectedId);
+  }
+
+  /** 펼친 줄 아래의 원문. 응답·지시는 글로, 도구 호출은 입력 그대로 고정폭으로. */
+  private logDetail(item: Activity): HTMLElement {
+    const got = this.logText.get(logKey(item));
+    if (!got || (got.text === undefined && !got.error)) return h("li", { class: "log-detail wait" }, t("원문을 불러오는 중…"));
+    if (got.text === undefined) return h("li", { class: "log-detail err" }, got.error ?? "");
+    if (got.el) return got.el;
+    const raw = got.text;
+    const text = raw.replace(OMITTED, (_, n: string) => t("…(약 {n}토큰 생략)…", { n }));
+    const body = item.kind === "tool" ? h("pre", {}, text || item.name) : h("div", { class: "prose" }, prose(text));
+    const what = t("활동 원문");
+    const bar = h("div", { class: "log-bar" }, this.button(t("복사"), () => this.copy(raw, what), { cls: "", icon: "copy", title: t("이 원문을 클립보드에 복사합니다") }));
+    got.el = h("li", { class: "log-detail" }, bar, body);
+    return got.el;
   }
 
   private screenSection(paneId: string): HTMLElement {

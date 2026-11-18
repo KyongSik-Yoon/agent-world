@@ -21,6 +21,7 @@ import { L, defaultLang, langOf, say } from "./text.ts";
 import { World } from "./world.ts";
 
 const NO_PANE = L("그 pane 은 지금 herdr 에 없습니다.", "That pane no longer exists in herdr.");
+const NO_ACTIVITY = L("그 활동은 이제 로그에서 찾을 수 없습니다.", "That activity can no longer be found in the log.");
 
 /** 포트를 직접 정해 줬는지. 정해 줬으면 그 포트만 쓰고, 아니면 이 herdr 세션의 자리부터 빈 포트를 찾는다. */
 const PORT_GIVEN = Boolean(process.env.AGENT_WORLD_PORT);
@@ -500,6 +501,18 @@ const listen = (at: number) =>
           return json({ text: await herdrScreen(paneId) });
         } catch (e) {
           return json({ error: (e as Error).message }, 502);
+        }
+      }),
+    },
+    // 활동 로그 한 줄의 원문 — 스냅샷에는 한 줄 요약만 싣고, 펼쳐 볼 때 그 줄만 로그에서 다시 읽는다.
+    "/api/activity": {
+      GET: guarded(async (req) => {
+        const params = new URL(req.url).searchParams;
+        try {
+          const text = await world.activityText(params.get("agent") ?? "", params.get("at") ?? "", params.get("text") ?? "");
+          return text === undefined ? json({ error: say(NO_ACTIVITY, langOf(req)) }, 404) : json({ text });
+        } catch (e) {
+          return json({ error: (e as Error).message }, 500);
         }
       }),
     },

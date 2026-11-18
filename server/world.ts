@@ -13,7 +13,7 @@ import { AskingPanes } from "./asking.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Text } from "./text.ts";
 import { NameStore, SeenStore } from "./seen.ts";
-import { currentPending, oneLine, type LogSummary } from "./summary.ts";
+import { activityText, currentPending, oneLine, refOf, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
 
 const HARNESSES: Harness[] = [claude, agy, codex];
@@ -70,6 +70,8 @@ interface Tracked {
 
 export class World {
   private readonly tracked = new Map<string, Tracked>();
+  /** 에이전트 id → 그 에이전트의 로그(tracked 의 키). 활동의 원문을 찾을 때 쓴다. */
+  private readonly logOf = new Map<string, string>();
   private readonly unresolved = new Map<string, number>();
   private readonly since = new Map<string, { status: AgentStatus; at: number }>();
   private external: Array<LogFile & { harness: Harness }> = [];
@@ -149,6 +151,7 @@ export class World {
   private async fromLog(view: AgentView, harness: Harness, sessionId: string, knownPath?: string, eager = false): Promise<LogSummary | undefined> {
     const entry = await this.track(harness, sessionId, knownPath, eager);
     if (!entry) return undefined;
+    this.logOf.set(view.id, `${harness.vendor}:${sessionId}`);
     const s = entry.tail.state;
     view.hasLog = true;
     view.model = s.model;
@@ -418,6 +421,7 @@ export class World {
     // 사라진 에이전트의 상태 기록과, 더는 읽지 않는 로그를 치운다.
     const alive = new Set(agents.map((a) => a.id));
     for (const id of this.since.keys()) if (!alive.has(id)) this.since.delete(id);
+    for (const id of this.logOf.keys()) if (!alive.has(id)) this.logOf.delete(id);
     for (const key of this.tracked.keys()) if (!this.used.has(key)) this.tracked.delete(key);
 
     this.builtAt = Date.now();
@@ -472,6 +476,19 @@ export class World {
   /** 카드를 띄워 답을 기다리는 중인지 — herdr 가 막아 주지 않으므로 지시를 보내기 전에 따로 묻는다. */
   async waitingOnCard(paneId: string): Promise<boolean> {
     return (await this.asking.check()).has(paneId);
+  }
+
+  /**
+   * 활동 로그 한 줄의 원문. 화면은 그 줄의 시각과 한 줄 요약으로 가리키고, 서버는 지금의 최근 활동에서 둘이 같은 것을
+   * 찾아 그 자리를 다시 읽는다 — 화면이 로그의 아무 자리나 읽게 하지 않는다. 이미 밀려났거나 로그를 놓았으면 undefined.
+   */
+  async activityText(agentId: string, at: string, text: string): Promise<string | undefined> {
+    const key = this.logOf.get(agentId);
+    const entry = key ? this.tracked.get(key) : undefined;
+    const activity = entry?.tail.state.recent.findLast((a) => a.at === at && a.text === text);
+    const ref = activity && refOf(activity);
+    if (!entry || !activity || !ref) return undefined;
+    return activityText(entry.path, entry.harness.reader, ref, at);
   }
 
   hasPane(paneId: string): Promise<boolean> {
