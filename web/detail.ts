@@ -53,9 +53,13 @@ function expandable(a: Activity): boolean {
   return a.kind === "text" || a.kind === "user" || a.kind === "tool";
 }
 
-/** 활동 로그의 한 줄을 가리키는 열쇠. 서버도 같은 둘(시각과 한 줄 요약)로 그 줄을 찾는다. */
-function logKey(a: Activity): string {
-  return `${a.at}\n${a.text}`;
+/**
+ * 활동 로그의 한 줄을 가리키는 열쇠. 서버도 같은 셋으로 그 줄을 찾는다 — 시각, 한 줄 요약, 그리고 둘이 같은 줄 가운데
+ * 최신부터 몇 번째인지(n). agy 는 한 단계의 도구 호출이 같은 시각을 달아, 같은 파일을 범위만 바꿔 읽으면 앞의 둘이 겹친다.
+ * 최신부터 세므로 오래된 줄이 목록에서 빠져도 번호가 밀리지 않는다.
+ */
+function logKey(a: Activity, n: number): string {
+  return `${a.at}\n${a.text}\n${n}`;
 }
 
 /** Codex 가 긴 지시를 기록할 때 가운데를 비우고 남기는 표식. */
@@ -691,8 +695,12 @@ export class DetailPanel {
 
   private logSection(a: AgentView): HTMLElement {
     const list = h("ol", { class: "log" });
+    const seen = new Map<string, number>();
     [...a.recent].reverse().forEach((item, i) => {
-      const ref = expandable(item) ? logKey(item) : undefined;
+      const same = `${item.at}\n${item.text}`;
+      const n = seen.get(same) ?? 0;
+      seen.set(same, n + 1);
+      const ref = expandable(item) ? logKey(item, n) : undefined;
       const open = ref !== undefined && ref === this.logOpen;
       const cls = [item.error ? "err" : "", i === 0 ? "latest" : "", ref ? "more" : "", open ? "open" : ""].filter(Boolean).join(" ");
       const { icon: kind, text: line } = activityParts(item);
@@ -706,12 +714,12 @@ export class DetailPanel {
         row.setAttribute("aria-expanded", String(open));
         row.addEventListener("click", () => {
           if (!window.getSelection()?.isCollapsed) return;
-          this.toggleLog(a.id, item);
+          this.toggleLog(a.id, item, n);
         });
         row.addEventListener("keydown", (e) => {
           if (e.key !== "Enter" && e.key !== " ") return;
           e.preventDefault();
-          this.toggleLog(a.id, item);
+          this.toggleLog(a.id, item, n);
         });
       }
       if (ref && ref === this.logRevealKey) {
@@ -719,7 +727,7 @@ export class DetailPanel {
         this.logRevealKey = null;
       }
       list.append(row);
-      if (open) list.append(this.logDetail(a.id, item));
+      if (open) list.append(this.logDetail(a.id, item, n));
     });
     return h("section", {}, h("h3", {}, t("활동 로그")), list);
   }
@@ -733,21 +741,21 @@ export class DetailPanel {
     return box.bottom > view.top && box.top < view.bottom ? el : undefined;
   }
 
-  private toggleLog(agentId: string, item: Activity): void {
-    const ref = logKey(item);
+  private toggleLog(agentId: string, item: Activity, n: number): void {
+    const ref = logKey(item, n);
     if (this.logOpen === ref) this.logRevealKey = ref;
     this.logOpen = this.logOpen === ref ? null : ref;
     const got = this.logText.get(ref);
-    if (this.logOpen && (!got || got.error)) void this.loadLog(agentId, item);
+    if (this.logOpen && (!got || got.error)) void this.loadLog(agentId, item, n);
     this.rerender();
   }
 
-  private async loadLog(agentId: string, item: Activity): Promise<void> {
-    const ref = logKey(item);
+  private async loadLog(agentId: string, item: Activity, n: number): Promise<void> {
+    const ref = logKey(item, n);
     this.logText.set(ref, {});
     let got: { text?: string; error?: string };
     try {
-      const query = new URLSearchParams({ agent: agentId, at: item.at, text: item.text });
+      const query = new URLSearchParams({ agent: agentId, at: item.at, text: item.text, n: String(n) });
       const res = await fetch(`/api/activity?${query}`, { headers: headers() });
       const body = (await res.json()) as { text?: string; error?: string };
       got = res.ok && typeof body.text === "string" ? { text: body.text } : { error: body.error ?? t("원문을 불러오지 못했습니다.") };
@@ -762,8 +770,8 @@ export class DetailPanel {
   }
 
   /** 펼친 줄 아래의 원문. 응답·지시는 글로, 도구 호출은 입력 그대로 고정폭으로. */
-  private logDetail(agentId: string, item: Activity): HTMLElement {
-    const got = this.logText.get(logKey(item));
+  private logDetail(agentId: string, item: Activity, n: number): HTMLElement {
+    const got = this.logText.get(logKey(item, n));
     if (!got || (got.text === undefined && !got.error)) return h("li", { class: "log-detail wait" }, t("원문을 불러오는 중…"));
     if (got.text === undefined) return h("li", { class: "log-detail err" }, got.error ?? "");
     if (got.el) return got.el;
@@ -776,7 +784,7 @@ export class DetailPanel {
       "div",
       { class: "log-bar" },
       this.button(t("복사"), () => this.copy(raw, what), { cls: "", icon: "copy", title: t("이 원문을 클립보드에 복사합니다") }),
-      this.button(t("접기"), () => this.toggleLog(agentId, item), { cls: "" }),
+      this.button(t("접기"), () => this.toggleLog(agentId, item, n), { cls: "" }),
     );
     got.el = h("li", { class: "log-detail" }, bar, body);
     return got.el;

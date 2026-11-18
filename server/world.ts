@@ -515,10 +515,11 @@ export class World {
    * 활동 로그 한 줄의 원문. 화면은 그 줄의 시각과 한 줄 요약으로 가리키고, 서버는 지금의 최근 활동에서 둘이 같은 것을
    * 찾아 그 자리를 다시 읽는다 — 화면이 로그의 아무 자리나 읽게 하지 않는다. 이미 밀려났거나 로그를 놓았으면 undefined.
    */
-  async activityText(agentId: string, at: string, text: string): Promise<string | undefined> {
+  /** n: 시각과 요약이 같은 활동 가운데 최신부터 몇 번째인지(화면의 logKey 와 같은 셈). */
+  async activityText(agentId: string, at: string, text: string, n = 0): Promise<string | undefined> {
     const key = this.logOf.get(agentId);
     const entry = key ? this.tracked.get(key) : undefined;
-    const activity = entry?.tail.state.recent.findLast((a) => a.at === at && a.text === text);
+    const activity = entry?.tail.state.recent.filter((a) => a.at === at && a.text === text).at(-1 - n);
     const ref = activity && refOf(activity);
     if (!entry || !activity || !ref) return undefined;
     return activityText(entry.path, entry.harness.reader, ref, at);

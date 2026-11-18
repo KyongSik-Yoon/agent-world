@@ -509,7 +509,8 @@ const listen = (at: number) =>
       GET: guarded(async (req) => {
         const params = new URL(req.url).searchParams;
         try {
-          const text = await world.activityText(params.get("agent") ?? "", params.get("at") ?? "", params.get("text") ?? "");
+          const n = Number(params.get("n") ?? 0);
+          const text = await world.activityText(params.get("agent") ?? "", params.get("at") ?? "", params.get("text") ?? "", Number.isInteger(n) && n >= 0 ? n : 0);
           return text === undefined ? json({ error: say(NO_ACTIVITY, langOf(req)) }, 404) : json({ text });
         } catch (e) {
           return json({ error: (e as Error).message }, 500);
