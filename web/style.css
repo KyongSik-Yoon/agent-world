@@ -794,6 +794,8 @@ kbd {
 .d-body {
   flex: 1;
   overflow-y: auto;
+  /* 보던 자리는 다시 그릴 때 스크립트가 붙든다(pinPoint). 브라우저마다 다른 자체 보정이 겹치지 않게 끈다. */
+  overflow-anchor: none;
   padding: 0 14px 14px;
   scrollbar-width: thin;
 }
@@ -831,6 +833,13 @@ kbd {
   background: var(--soft);
   font-weight: 500;
   overflow-wrap: anywhere;
+}
+
+/* 에이전트가 지금 하는 일은 한 줄로 자른다 — 높이가 글을 따라 바뀌면 갱신마다 그 아래가 들썩인다. */
+.now.line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 아는 것들: 한 장의 카드에 이름–값 줄로. 모르는 값은 줄을 만들지 않는다. */
@@ -1194,12 +1203,9 @@ kbd {
   color: var(--blocked);
 }
 
+/* 맨 윗줄도 다른 줄처럼 한 줄이다 — 여러 줄로 두면 새 줄이 붙을 때마다 높이가 바뀌어 아래 줄들이 위아래로 들썩인다. */
 .log > li.latest > span {
   font-weight: 700;
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
 }
 
 /* 누르면 원문이 펼쳐지는 줄. */

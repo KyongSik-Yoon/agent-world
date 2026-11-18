@@ -330,10 +330,9 @@ export class DetailPanel {
     // 스크롤 위치는 본문을 짓기 전에 읽는다 — 다시 쓰는 노드(응답 글·미리보기)가 새 본문으로 옮겨 가는 순간
     // 옛 본문이 짧아져, 그 뒤에 읽으면 이미 위로 밀린 값이 나온다.
     const top = selectedId === this.selectedId ? this.body.scrollTop : 0;
-    // 펼쳐 읽던 원문이 보이고 있으면 그 자리를 붙든다. 일하는 주민은 활동 로그의 맨 위에 새 줄이 붙으므로, 스크롤 값만
-    // 되돌리면 읽던 글이 줄 높이만큼씩 아래로 밀린다. 다시 지어도 원문 상자는 같은 노드다(logDetail 이 들고 있다).
-    const anchor = selectedId === this.selectedId ? this.visibleLogDetail() : undefined;
-    const anchorTop = anchor?.getBoundingClientRect().top;
+    // 보던 자리를 붙든다. 스크롤 값만 되돌리면 그 위의 덩어리(바뀐 응답 글, 맨 위에 새 줄이 붙은 활동 로그)의 높이가
+    // 바뀐 만큼 보던 글이 위아래로 밀린다. 펼친 원문은 옛 본문에서 빠져나가기 전에, 짓기 전에 잰다.
+    const pin = selectedId === this.selectedId ? this.pinPoint() : undefined;
     if (selectedId !== this.selectedId) {
       this.open.prompt = this.open.reply = this.open.screen = false;
       this.sent = null;
@@ -359,7 +358,10 @@ export class DetailPanel {
     }
     this.root.hidden = false;
     this.body.scrollTop = top;
-    if (anchor && anchorTop !== undefined && anchor.isConnected) this.body.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+    if (pin) {
+      const el = pin.node?.isConnected ? pin.node : [...this.body.querySelectorAll<HTMLElement>("[data-k]")].find((e) => e.dataset.k === pin.key);
+      if (el) this.body.scrollTop += el.getBoundingClientRect().top - pin.top;
+    }
     // 접기를 눌렀으면 접힌 그 줄이 보이는 자리로 돌아간다 — 긴 원문의 끝에서 접어도 길을 잃지 않게.
     if (this.logReveal?.isConnected) this.logReveal.scrollIntoView({ block: "nearest" });
     this.logReveal = null;
@@ -562,15 +564,23 @@ export class DetailPanel {
 
     const blocked = a.status === "blocked" && a.paneId !== undefined;
     const now = a.status === "working" ? bubbleParts(a) : null;
-    const parts: Child[] = [statusLine];
-    if (blocked) parts.push(this.askCard(a));
-    if (now) parts.push(h("div", { class: "now" }, ...(now.icon ? [icon(now.icon)] : []), now.text));
-    parts.push(this.facts(a), this.actions(a));
-    if (a.lastPrompt) parts.push(this.textSection(t("마지막 지시"), a.lastPrompt, "prompt"));
-    if (a.lastReply) parts.push(this.textSection(t("마지막 응답"), a.lastReply, "reply"));
-    if (a.paneId && !blocked) parts.push(this.screenSection(a.paneId));
-    if (a.recent.length > 0) parts.push(this.logSection(a));
-    this.setBody(...parts);
+    // 지금 하는 일은 한 줄로 자른다 — 글 길이를 따라 높이가 바뀌면 갱신마다 그 아래가 위아래로 들썩인다. 다 보려면
+    // 활동 로그의 맨 윗줄을 눌러 펼친다.
+    const nowEl = now ? h("div", { class: "now line", title: now.text }, ...(now.icon ? [icon(now.icon)] : []), now.text) : null;
+    // 열쇠(data-k)는 다시 지은 본문에서 보던 덩어리를 다시 찾는 데 쓴다(pinPoint).
+    const keyed: Array<[string, HTMLElement | null]> = [
+      ["status", statusLine],
+      ["ask", blocked ? this.askCard(a) : null],
+      ["now", nowEl],
+      ["facts", this.facts(a)],
+      ["actions", this.actions(a)],
+      ["prompt", a.lastPrompt ? this.textSection(t("마지막 지시"), a.lastPrompt, "prompt") : null],
+      ["reply", a.lastReply ? this.textSection(t("마지막 응답"), a.lastReply, "reply") : null],
+      ["screen", a.paneId && !blocked ? this.screenSection(a.paneId) : null],
+      ["log", a.recent.length > 0 ? this.logSection(a) : null],
+    ];
+    for (const [k, el] of keyed) if (el) el.dataset.k = k;
+    this.setBody(...keyed.map(([, el]) => el));
     return a.paneId && (blocked || this.open.screen) ? a.paneId : null;
   }
 
@@ -712,6 +722,7 @@ export class DetailPanel {
       const text = h("span", {}, item.error ? t("{line} — 실패", { line }) : line);
       text.title = line;
       const row = h("li", cls ? { class: cls } : {}, h("time", {}, clock(item.at)), kind ? icon(kind) : h("i", {}), text);
+      row.dataset.k = `log:${logKey(item)}`;
       if (ref) {
         // 줄 전체가 펼치는 단추다. 글을 골라 두고 뗀 손은 펼치지 않는다.
         row.tabIndex = 0;
@@ -735,6 +746,23 @@ export class DetailPanel {
       if (open) list.append(this.logDetail(a.id, item, n));
     });
     return h("section", {}, h("h3", {}, t("활동 로그")), list);
+  }
+
+  /**
+   * 다시 지은 뒤에도 화면의 같은 높이에 있어야 할 것 — 펼쳐 읽던 원문이 보이면 그 상자(다시 지어도 같은 노드다),
+   * 아니면 화면 위 끝 아래에서 처음 시작하는 덩어리. 걸친 덩어리는 고르지 않는다: 그 안의 글이 바뀌면 높이가 바뀌어도
+   * 머리는 그대로라 그 아래가 밀린다. 덩어리는 다시 지으면 새 노드가 되므로 data-k 열쇠로 다시 찾는다. 활동 로그
+   * 머리가 보이면 로그가 붙들려 새 줄이 맨 위에 보이며 붙고, 로그 안으로 내려가 있으면 읽던 줄이 붙들린다.
+   */
+  private pinPoint(): { node?: Element; key?: string; top: number } | undefined {
+    const detail = this.visibleLogDetail();
+    if (detail) return { node: detail, top: detail.getBoundingClientRect().top };
+    const view = this.body.getBoundingClientRect();
+    for (const el of this.body.querySelectorAll<HTMLElement>("[data-k]")) {
+      const top = el.getBoundingClientRect().top;
+      if (top >= view.top) return top < view.bottom ? { key: el.dataset.k, top } : undefined;
+    }
+    return undefined;
   }
 
   /** 화면 안에 들어와 있는 펼친 원문 상자. */
