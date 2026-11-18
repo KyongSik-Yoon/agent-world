@@ -85,6 +85,8 @@ const builder = new Builder({
 
 function select(id: string | null): void {
   // 이미 고른 캐릭터를 다시 고르면, 카메라가 놓아 준 뒤라면 다시 다가간다(장면이 판단한다).
+  // 좁은 화면에서는 목록이 마을이나 상태 창을 덮고 있으므로, 고르면 접는다. 지금 보던 것을 다시 골라도 접는다.
+  if (id) setRoster(false);
   if (id === selectedId) {
     if (id) scene.select(id);
     return;
@@ -98,8 +100,6 @@ function select(id: string | null): void {
   }
   selectedId = id;
   selectedAt = Date.now();
-  // 좁은 화면에서는 목록이 마을을 덮고 있으므로, 고르면 접는다.
-  if (id) setRoster(false);
   scene.select(id);
   hud.select(id);
 }
@@ -130,6 +130,9 @@ function act(action: Action): void {
       break;
     case "open-herdr":
       void openInHerdr(action.agent);
+      break;
+    case "roster":
+      setRoster(true);
       break;
     case "terminal":
       openTerminal(action.paneId);
@@ -463,6 +466,10 @@ swipeToClose(
   () => document.body.dataset.roster === "open" && matchMedia("(max-width: 760px)").matches,
   () => setRoster(false),
 );
+// 상태 창 위로 꺼낸 목록은 뒤의 어두운 막(상태 창의 ::after)을 누르면 닫힌다. 막을 누른 손가락은 상태 창 안의 단추에 닿지 않는다.
+document.getElementById("detail")!.addEventListener("click", (e) => {
+  if (document.body.dataset.roster === "open" && e.target === e.currentTarget) setRoster(false);
+});
 
 // 목록과 상태 창이 장면을 얼마나 덮는지 알려 준다 — 장면이 그 사이 빈 자리의 한가운데에 오게.
 // 좁은 화면(휴대폰)에서는 패널이 화면 전체를 쓰는 서랍이라 밀지 않는다.

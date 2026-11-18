@@ -785,6 +785,12 @@ kbd {
   flex: none;
 }
 
+/* 목록 꺼내기 — 휴대폰에서만 보인다(넓은 화면은 목록이 늘 옆에 있다). */
+.d-head .btn.roster-open {
+  display: none;
+  flex: none;
+}
+
 .d-body {
   flex: 1;
   overflow-y: auto;
@@ -1429,6 +1435,12 @@ kbd {
   }
   #help {
     display: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
   }
 }
 
@@ -2554,6 +2566,27 @@ dialog.dlg .warn {
     border-radius: 2px;
     background: var(--ink-3);
     opacity: 0.6;
+  }
+
+  /* 상태 창이 열려 있으면 목록은 그 위로 올라온다. 뒤의 상태 창은 어둡게 덮어, 누르면 목록이 닫힌다(main.ts). */
+  body:has(#detail:not([hidden])) #roster {
+    z-index: 31;
+    /* 유리 너머로 상태 창의 단추가 비쳐 번지지 않게. */
+    background: var(--panel-solid);
+  }
+
+  .d-head .btn.roster-open {
+    display: inline-grid;
+    place-items: center;
+  }
+
+  body[data-roster="open"] #detail::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    background: rgb(0 0 0 / 0.4);
+    animation: fade-in 0.24s ease-out;
   }
 
   /* 상태 창은 화면 전체를 쓴다. */
