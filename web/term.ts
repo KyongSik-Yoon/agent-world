@@ -431,6 +431,11 @@ const DRAW_REST_MAX_MS = 250;
 
 /** 크게 보기에서 글자가 커질 수 있는 한도(px). 80칸짜리 pane 을 넓은 창에 띄워도 구석에 작게 몰리지 않게 한다. */
 const MAX_FONT_PX = 17;
+/**
+ * 크게 보기에서 글자가 작아질 수 있는 한도(px). 칸을 다 넣으려고 이보다 줄이면 배율 1 화면에서 읽을 수 없다(304칸 pane 을
+ * 1440 폭에 넣으면 7.5px). 그보다 넓은 화면은 이 크기로 두고 가로로 민다. 창 폭이나 기기와 상관없이 같다.
+ */
+const MIN_FONT_PX = 10;
 
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
 export class TermScreen {
@@ -648,7 +653,8 @@ export class TermScreen {
       if (at === node) at = at.nextSibling;
       else this.el.insertBefore(node, at);
     }
-    if (tail ? this.pinned : this.back > 0 && stick) this.el.scrollTop = this.el.scrollHeight;
+    // 지금 화면(크게 보기)도 창보다 길면 입력줄이 있는 아래에 붙인다 — 사용자가 위로 올려 둔 동안에는 그대로 둔다.
+    if (tail || this.back === 0 ? this.pinned : stick) this.el.scrollTop = this.el.scrollHeight;
   }
 }
 
@@ -957,12 +963,13 @@ export class TermOverlay {
   private fit(): void {
     if (this.root.hidden) return;
     const width = this.body.clientWidth - 28;
-    // 좁은 화면에서는 칸을 다 넣으려다 글자가 깨알이 되느니, 읽을 만한 크기로 두고 가로로 민다.
-    const floor = window.innerWidth < 760 ? 10 : 7;
+    // 칸을 다 넣으려다 글자가 깨알이 되느니, 읽을 만한 크기로 두고 가로로 민다.
     // 칸 수가 적은 pane 은 글자를 조금 키우고(읽기 좋은 데까지만), 그래도 남는 폭은 양옆에 고르게 둔다(스타일시트).
-    const size = Math.max(floor, Math.min(MAX_FONT_PX, width / (this.cols * 0.6)));
+    const size = Math.max(MIN_FONT_PX, Math.min(MAX_FONT_PX, width / (this.cols * 0.6)));
     this.screen.el.style.fontSize = `${size.toFixed(2)}px`;
     this.screen.el.style.setProperty("--cols", String(this.cols));
+    // 글자 크기가 바뀌면 화면 높이도 바뀐다 — 아래에 붙어 있었으면 다시 붙인다.
+    this.screen.restoreScroll();
   }
 
   private isHeld(): boolean {
