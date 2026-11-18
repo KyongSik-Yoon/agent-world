@@ -378,8 +378,15 @@ async function reloadIfUpdated(): Promise<void> {
   tryReload();
 }
 
+/** 지금 열려 있는 상태 연결. 닫아 둔 동안에는 없다. */
+let stream: EventSource | undefined;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
 function connect(): void {
+  clearTimeout(retryTimer);
+  stream?.close();
   const events = new EventSource(withKey("/api/events"));
+  stream = events;
   /** 이 연결로 받은 최신 상태. 서버는 전체를 한 번 보낸 뒤로 달라진 것만 보낸다. */
   let current: WorldSnapshot | undefined;
   events.onmessage = (e) => {
@@ -404,12 +411,34 @@ function connect(): void {
     hud.setConnection("down", t("서버와 끊김 — 다시 연결 중…"));
     // 연결이 그냥 끊긴 것이면 EventSource 가 스스로 다시 붙는다. 하지만 오류 응답을 받으면(서버가 꺼진 동안
     // 앞단 프록시가 502 를 돌려줄 때) 영영 포기하므로, 그때는 직접 새로 연다.
-    if (events.readyState !== EventSource.CLOSED) return;
+    if (events.readyState !== EventSource.CLOSED || stream !== events) return;
     events.close();
-    setTimeout(connect, retryMs);
+    retryTimer = setTimeout(connect, retryMs);
     retryMs = Math.min(retryMs * 1.6, 8000);
   };
 }
+
+/** 화면이 가려져 연결을 닫아 두었다. */
+let parked = false;
+
+// 닫아 둔 동안의 알림(푸시)을 켠 기기는 화면이 가려지면 연결을 닫는다. 열어 두면 주머니 속 휴대폰이 15초마다
+// 깨어나고, 서버는 보는 사람이 있는 줄 알고 1초마다 상태를 만든다. 푸시가 없는 탭은 이 연결로 알림을 띄우므로 둔다.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    if (!pushed || !stream) return;
+    clearTimeout(retryTimer);
+    stream.close();
+    stream = undefined;
+    parked = true;
+    return;
+  }
+  if (!parked) return;
+  parked = false;
+  // 가려진 동안 바뀐 것은 푸시가 이미 알렸다 — 돌아와서 한꺼번에 다시 알리지 않는다. 서버가 그사이 새 판이 됐는지도 본다.
+  primed = false;
+  dropped = true;
+  connect();
+});
 
 const buildBtn = document.getElementById("btn-build")!;
 
