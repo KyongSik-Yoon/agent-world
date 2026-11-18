@@ -42,6 +42,24 @@ export class HerdrError extends Error {
   }
 }
 
+/**
+ * herdr 세션이 아직 있는지. 소켓 파일이 없거나(ENOENT) 받는 쪽이 없으면(ECONNREFUSED) false 다. 그 밖에(응답이 늦음,
+ * 권한 등) 알 수 없을 때는 있는 것으로 친다 — 바쁜 herdr 를 사라진 것으로 보고 서버를 내리지 않게.
+ */
+export function herdrAlive(timeoutMs = 3000): Promise<boolean> {
+  return new Promise((done) => {
+    const socket = createConnection(herdrSocketPath());
+    const finish = (alive: boolean) => {
+      clearTimeout(timer);
+      socket.destroy();
+      done(alive);
+    };
+    const timer = setTimeout(() => finish(true), timeoutMs);
+    socket.on("connect", () => finish(true));
+    socket.on("error", (e: NodeJS.ErrnoException) => finish(e.code !== "ENOENT" && e.code !== "ECONNREFUSED"));
+  });
+}
+
 let seq = 0;
 
 export function herdrRpc<T = unknown>(method: string, params: Record<string, unknown> = {}, timeoutMs = 3000): Promise<T> {

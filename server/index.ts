@@ -12,7 +12,7 @@ import type { SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
 import { controlRoutes } from "./control.ts";
 import { fontRoutes } from "./fonts.ts";
 import { MAX_IMAGE_BYTES } from "./images.ts";
-import { herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag, herdrSocketPath } from "./herdr.ts";
+import { herdrAlive, herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag, herdrSocketPath } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
 import { addressFile, isOurs, type Address } from "./address.ts";
 import { accessKey, keyMatches, keyedUrl, proofOf, writePrivate } from "./key.ts";
@@ -349,6 +349,26 @@ async function announce(at: number): Promise<void> {
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => process.exit(0));
 }
 
+/** herdr 세션이 사라진 것을 몇 번 거푸 본 뒤에 내려가는지와, 그 사이 간격. herdr 를 다시 띄우는 데 걸리는 몇 초는 넘긴다. */
+const HERDR_GONE_CHECKS = 6;
+const HERDR_CHECK_MS = 10_000;
+
+/**
+ * 플러그인으로 띄운 서버는 제 herdr 세션과 함께 끝난다. 떼어 띄운 서버라 herdr 가 내려가도 신호를 받지 못하고,
+ * 그대로 두면 사라진 세션의 서버가 포트와 옛 플러그인 코드를 쥔 채 남는다. 직접 띄운 서버(`bun start`)는 herdr 가
+ * 꺼져 있어도 로그로 찾은 세션을 보여 주는 쓸모가 있어 이 일을 하지 않는다. 사라진 것을 1분 동안 거푸 볼 때만 끝내므로,
+ * 그 안에 herdr 가 다시 뜨면 서버는 남고 herdr 의 시작 명령은 이 서버를 그대로 쓴다.
+ */
+function followHerdr(): void {
+  let gone = 0;
+  setInterval(async () => {
+    gone = (await herdrAlive()) ? 0 : gone + 1;
+    if (gone < HERDR_GONE_CHECKS) return;
+    console.log(say(L(`herdr 세션이 사라져 Agent World 를 끕니다(${identity.socket}).`, `The herdr session is gone; stopping Agent World (${identity.socket}).`)));
+    process.exit(0);
+  }, HERDR_CHECK_MS).unref();
+}
+
 /**
  * 그 포트에 떠 있는 것이 이 사용자의 Agent World 면 그 정체를, 아니면(다른 프로그램이거나, 다른 계정의 것이거나, 답이 없으면)
  * null 을 준다. 열쇠를 아는 서버만 만들 수 있는 증명으로 가린다.
@@ -532,6 +552,7 @@ console.log(
   `Agent World → ${keyedUrl(`http://127.0.0.1:${server.port}`, KEY)}${READONLY ? say(L(" (보기 전용)", " (read-only)")) : ""}${session ? say(L(` · herdr 세션 ${session}`, ` · herdr session ${session}`)) : ""}`,
 );
 void announce(server.port ?? port);
+if (process.env.AGENT_WORLD_FOLLOW_HERDR === "1") followHerdr();
 for (const host of TAILNET_HOSTS) {
   console.log(say(L(`  tailnet 에서도 받음(이 PC 의 계정만) → ${keyedUrl(`https://${host}`, KEY)}`, `  also served on the tailnet (this machine's account only) → ${keyedUrl(`https://${host}`, KEY)}`)));
 }

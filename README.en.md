@@ -96,7 +96,8 @@ herdr plugin install KyongSik-Yoon/agent-world
 ```
 
 It needs [Bun](https://bun.sh) (checked on 1.4.4). Once installed, herdr starts the server whenever herdr starts
-(and leaves it alone if one is already running for that session), and the command palette gets four actions.
+(and leaves it alone if one is already running for that session). The server stops by itself a minute after its herdr
+session ends. The command palette gets four actions.
 
 | Action | What it does |
 | --- | --- |

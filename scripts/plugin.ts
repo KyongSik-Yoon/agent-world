@@ -64,7 +64,9 @@ async function start(): Promise<Address | null> {
   const out = openSync(LOG, "a", 0o600);
   chmodSync(LOG, 0o600);
   // 제 세션을 갖는 프로세스로 떼어 띄운다 — 이 명령이 끝나도, herdr 가 이 명령의 무리를 정리해도 서버는 남는다.
-  const child = spawn(process.execPath, [join(ROOT, "server", "index.ts")], { cwd: ROOT, detached: true, stdio: ["ignore", out, out], env: process.env });
+  // 대신 서버가 herdr 세션을 지켜보다가 그 세션이 사라지면 스스로 끝난다(AGENT_WORLD_FOLLOW_HERDR, server/index.ts).
+  const env = { ...process.env, AGENT_WORLD_FOLLOW_HERDR: "1" };
+  const child = spawn(process.execPath, [join(ROOT, "server", "index.ts")], { cwd: ROOT, detached: true, stdio: ["ignore", out, out], env });
   child.unref();
   closeSync(out);
   const deadline = Date.now() + START_TIMEOUT_MS;
