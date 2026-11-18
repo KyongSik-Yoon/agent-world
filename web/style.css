@@ -1661,12 +1661,23 @@ kbd {
   }
 }
 
-/* 입력창 한 줄 높이 — 이미지 단추와 보내기 단추가 같은 높이로 선다. 입력창이 커지면 단추는 아래에 붙어 있다. */
+/* 입력줄은 테두리 하나짜리 상자다 — 이미지 단추와 보내기 단추가 그 안에 들어 있어서, 여러 줄로 커져도 단추가 상자 아래쪽에
+   자연스럽게 앉는다. --compose-h 는 한 줄일 때 상자의 높이. */
 .compose {
   --compose-h: 38px;
+  --compose-in: calc(var(--compose-h) - 8px);
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: flex-end;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-solid);
+}
+
+.compose:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .compose textarea,
@@ -1685,9 +1696,14 @@ kbd {
 
 .compose textarea {
   flex: 1;
-  height: var(--compose-h);
-  min-height: var(--compose-h);
+  min-width: 0;
+  height: var(--compose-in);
+  min-height: var(--compose-in);
   max-height: 220px;
+  padding: calc((var(--compose-in) - 1.4em) / 2) 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
   resize: none;
 }
 
@@ -1698,7 +1714,6 @@ kbd {
   text-overflow: ellipsis;
 }
 
-.compose textarea:focus,
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
@@ -1706,20 +1721,24 @@ kbd {
   outline: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
+.compose textarea:focus {
+  outline: none;
+}
+
 .compose .btn {
   flex: none;
-  height: var(--compose-h);
-  padding: 0 14px;
-  border-radius: 10px;
+  height: var(--compose-in);
+  padding: 0 13px;
+  border-radius: 9px;
 }
 
 .compose .attach {
   flex: none;
-  width: var(--compose-h);
-  height: var(--compose-h);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--soft);
+  width: var(--compose-in);
+  height: var(--compose-in);
+  border: 0;
+  border-radius: 9px;
+  background: none;
   color: var(--ink-2);
   cursor: pointer;
   display: grid;
