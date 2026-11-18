@@ -385,6 +385,22 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       }),
     },
 
+    // 지난 출력이 herdr 에 남는 pane 인지. 전체 화면으로 도는 앱(Claude Code 의 fullscreen 등)은 대체 화면에 그려
+    // 스크롤백이 없다 — 그런 pane 은 앱에 PageUp/PageDown 을 보내 앱의 화면을 넘긴다.
+    "/api/term/back": {
+      GET: guarded(async (req) => {
+        const paneId = new URL(req.url).searchParams.get("pane") ?? "";
+        try {
+          if (!(await world.hasPane(paneId))) return json({ error: say(NO_PANE, langOf(req)) }, 404);
+          const visible = (await herdrTerm(paneId, "visible")).split(/\r?\n/).length;
+          const recent = (await herdrTerm(paneId, "recent", visible + 1)).split(/\r?\n/).length;
+          // 셸처럼 화면이 덜 찬 pane 도 스크롤백이 없을 수 있다 — 넘김 키는 에이전트에게만 보낸다.
+          return json({ scrollback: recent > visible, page: !readonly && recent <= visible && (await world.has("agent", paneId)) });
+        } catch (e) {
+          return herdrDown(e, req);
+        }
+      }),
+    },
     "/api/term/theme": { GET: guarded(async (req) => json(await termTheme(new URL(req.url).searchParams.get("scheme") === "light" ? "light" : "dark"))) },
 
     // ── 말 걸기와 키 입력 ────────────────────────────────────────────────────────────────────────

@@ -713,6 +713,18 @@ export class TermScreen {
     this.redraw();
   }
 
+  /** 맨 위로 올리고 아래에 붙이기를 푼다 — 앱 화면을 넘겨 새로 드러난 지난 출력부터 보이게. */
+  toTop(): void {
+    this.pinned = false;
+    this.el.scrollTop = 0;
+  }
+
+  /** 맨 아래로 내리고 다시 붙인다. */
+  toBottom(): void {
+    this.pinned = true;
+    this.el.scrollTop = this.el.scrollHeight;
+  }
+
   /** 다시 붙은 미리보기의 스크롤을 떼기 전 자리로 돌린다 — 맨 아래에 있었으면 맨 아래로. */
   restoreScroll(): void {
     this.el.scrollTop = this.pinned ? this.el.scrollHeight : this.savedTop;
@@ -1034,6 +1046,12 @@ export function keyToInput(e: KeyboardEvent, held: { ctrl: boolean; alt: boolean
 }
 
 const BACK_LINES = 1200;
+const PAGE_UP = "\x1b[5~";
+const PAGE_DOWN = "\x1b[6~";
+/** 끌거나 휠을 굴려 앱 화면을 넘길 때 한 번 넘긴 뒤 다음 넘김까지 기다리는 시간(ms) — 화면이 새로 올 틈. */
+const PAGE_GAP_MS = 350;
+/** 화면 끝에서 이만큼(px) 더 끌면 앱 화면을 한 쪽 넘긴다. */
+const PAGE_PULL_PX = 48;
 
 /** 화면 자판에 없는 키들 — 크게 보기 위쪽에 단추로 둔다(터치 기기에서만 보인다). */
 /** 글자 기호(← ⏎ ⌫ ⇧)는 기기의 글꼴마다 굵기와 높이가 달라 선 아이콘으로 그린다. label 은 읽어 주는 이름이 된다. */
@@ -1078,6 +1096,14 @@ export class TermOverlay {
   private readonly latchBtns: Partial<Record<"ctrl" | "alt", HTMLButtonElement>> = {};
   /** 화면 자판이 조합 중인지(한글, 또는 단어 추천을 켠 영문). */
   private composing = false;
+  /**
+   * 스크롤백이 없는 에이전트 pane(전체 화면으로 도는 Claude Code 등)이면 true — 지난 출력은 앱에 PageUp 을 보내 앱의
+   * 화면을 넘겨 본다. 열 때 서버에 묻고, 답이 오기 전에는 undefined.
+   */
+  private pages: boolean | undefined;
+  /** 앱 화면을 위로 넘긴 횟수. 돌아갈 때(지금 화면으로, 창 닫기) 그만큼 PageDown 을 보낸다. */
+  private paged = 0;
+  private pagedAt = 0;
   /** 조합이 끝나기 전에 이미 보낸 앞부분. 뒤늦게 오는 compositionend 에서 떼어 낸다. */
   private sentEarly = "";
   onError: ((message: string) => void) | undefined;
@@ -1159,6 +1185,34 @@ export class TermOverlay {
     this.root.append(head, soft, this.body);
     document.body.append(this.root);
 
+    // 스크롤백이 없는 앱은 화면 끝에서 더 끌거나 굴리면 앱 화면을 넘긴다 — 위 끝에서 더 내리면 지난 출력으로,
+    // 넘겨 둔 동안 아래 끝에서 더 올리면 다시 아래로.
+    const el = this.screen.el;
+    const atTop = () => el.scrollTop <= 0;
+    const atBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight < 2;
+    let pullY: number | undefined;
+    el.addEventListener("touchstart", (e) => {
+      pullY = e.touches.length === 1 ? e.touches[0]!.clientY : undefined;
+    }, { passive: true });
+    el.addEventListener("touchmove", (e) => {
+      if (!this.pages || pullY === undefined) return;
+      const y = e.touches[0]!.clientY;
+      // 끝에 닿기 전에 끈 거리는 세지 않는다 — 끝에 닿은 뒤로 더 끈 만큼만.
+      if (!(atTop() && y > pullY) && !(atBottom() && y < pullY)) pullY = y;
+      else if (y - pullY > PAGE_PULL_PX) {
+        this.page(1);
+        pullY = y;
+      } else if (pullY - y > PAGE_PULL_PX) {
+        this.page(-1);
+        pullY = y;
+      }
+    }, { passive: true });
+    el.addEventListener("wheel", (e) => {
+      if (!this.pages) return;
+      if (e.deltaY < 0 && atTop()) this.page(1);
+      else if (e.deltaY > 0 && atBottom()) this.page(-1);
+    }, { passive: true });
+
     this.body.addEventListener("mouseup", () => {
       // 글을 긁어 복사하는 중이면 초점을 빼앗지 않는다.
       if (!window.getSelection()?.toString()) this.ime.focus();
@@ -1238,6 +1292,13 @@ export class TermOverlay {
     this.sub.textContent = sub;
     this.root.hidden = false;
     this.screen.start(paneId, 0);
+    this.pages = undefined;
+    this.paged = 0;
+    void get<{ page: boolean }>(`/api/term/back?pane=${encodeURIComponent(paneId)}`)
+      .then((r) => {
+        if (this.screen.pane === paneId) this.pages = r.page;
+      })
+      .catch(() => {});
     this.syncBack();
     this.fit();
     this.ime.focus();
@@ -1249,19 +1310,44 @@ export class TermOverlay {
     this.flush();
     this.setHeld("ctrl", false);
     this.setHeld("alt", false);
+    // 넘겨 둔 앱 화면은 지금 화면으로 돌려 두고 닫는다 — PC 에서 보는 화면도 같은 pane 이다.
+    this.unpage();
     this.root.hidden = true;
     this.screen.stop();
     this.onToggle?.(false);
   }
 
   private toggleBack(): void {
-    this.screen.start(this.screen.pane, this.screen.scrollback > 0 ? 0 : BACK_LINES);
+    if (this.paged > 0) this.unpage();
+    else if (this.pages) {
+      this.page(1);
+      this.screen.toTop();
+    } else this.screen.start(this.screen.pane, this.screen.scrollback > 0 ? 0 : BACK_LINES);
     this.syncBack();
     this.ime.focus();
   }
 
+  /** 앱 화면을 한 쪽 넘긴다(1 위로, -1 아래로). 손가락을 끌어 연달아 들어오는 것은 PAGE_GAP_MS 에 한 번만. */
+  private page(dir: 1 | -1): void {
+    const now = performance.now();
+    if (now - this.pagedAt < PAGE_GAP_MS || (dir < 0 && this.paged === 0)) return;
+    this.pagedAt = now;
+    this.paged += dir;
+    this.send({ text: dir > 0 ? PAGE_UP : PAGE_DOWN, raw: true });
+    this.syncBack();
+  }
+
+  /** 넘겨 둔 앱 화면을 맨 아래로 돌린다. 앱이 그새 스스로 내려갔어도 남는 PageDown 은 해가 없다. */
+  private unpage(): void {
+    if (this.paged <= 0) return;
+    this.send({ text: PAGE_DOWN.repeat(this.paged + 2), raw: true });
+    this.paged = 0;
+    this.screen.toBottom();
+    this.syncBack();
+  }
+
   private syncBack(): void {
-    const on = this.screen.scrollback > 0;
+    const on = this.screen.scrollback > 0 || this.paged > 0;
     this.backBtn.textContent = on ? t("지금 화면으로") : t("지난 출력 보기");
     this.screen.el.classList.toggle("back", on);
   }

@@ -33,7 +33,7 @@ opening `?lang=en`, or by setting `AGENT_WORLD_LANG=en`.
 | Send a prompt | The input at the bottom of the status window (`C`). Enter sends, Shift+Enter adds a line. Delivery is confirmed from the user turn that appears in the agent's log. |
 | Show an image | Paste it into the input, drop it, or pick it with `＋` (PNG, JPEG, GIF, WebP; 10MB each, 8 at a time). It goes with the prompt. |
 | Answer a question or permission request | When an agent needs input, the real dialog appears at the top of the status window. Press the number or key it shows with the quick-key row. |
-| Use the terminal directly | `` ` `` opens it large. While it is open, keystrokes go straight to the pane. `Scrollback` shows earlier output. Shift+Esc closes it. |
+| Use the terminal directly | `` ` `` opens it large. While it is open, keystrokes go straight to the pane. `Scrollback` shows earlier output; for agents with no scrollback (Claude Code in fullscreen mode) it sends PageUp/PageDown to page the app itself, and closing returns it to the live screen. Shift+Esc closes it. |
 | Mark a result as seen | Read a finished agent's status window and move on, and it is marked as seen and walks home (`D` does it at once; undo from the toast). |
 | Widen the status window | Drag its left edge. The width is remembered; double-click to reset. |
 | Build a house | `＋ New house` (`B`) — folder, name, worktree or not, the agent to add and its first prompt, in one go. |
