@@ -237,7 +237,25 @@ function cells(text: string, into: HTMLElement): void {
 const ESCAPE = /\x1b\[([0-9;:]*)([A-Za-z])|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
 
 // eslint-disable-next-line no-control-regex
-const TRAILING = /(?:\x1b\[[0-9;:]*m|[ \t])+$/;
+const SGR_TAIL = /^\x1b\[[0-9;:]*m$/;
+
+/**
+ * 줄 끝의 공백·탭과 색상 코드를 뗀다. 정규식 /(…|[ \t])+$/ 로 하면 줄 가운데의 긴 공백마다 끝까지 다시 훑어,
+ * 304칸 화면 한 번에 2ms 가 들었다 — 끝에서부터 거꾸로 본다.
+ */
+function trimTrailing(line: string): string {
+  let end = line.length;
+  for (;;) {
+    const c = line.charCodeAt(end - 1);
+    if (c === 32 || c === 9) end -= 1;
+    else if (c === 109) {
+      const at = line.lastIndexOf("\x1b[", end - 1);
+      if (at < 0 || !SGR_TAIL.test(line.slice(at, end))) break;
+      end = at;
+    } else break;
+  }
+  return end === line.length ? line : line.slice(0, end);
+}
 
 /** 그려 둔 줄 하나. 같은 글이 같은 스타일로 다시 오면 요소를 그대로 다시 쓴다. */
 interface Row {
@@ -253,6 +271,36 @@ interface Row {
   /** 그린 줄의 원문(SGR 포함)과 시작 스타일 — 상태줄을 펼쳐 다시 그릴 때 쓴다. */
   line: string;
   start: Style;
+  /** 다음 값들은 처음 쓸 때 재 두고 다시 쓴다 — 같은 줄은 그리기마다 같은 Row 로 돌아온다. */
+  cols?: number;
+  gapCols?: number;
+  logo?: number;
+  unfold?: { cut: number; line: string };
+}
+
+function rowCols(row: Row, trimRightGap: boolean): number {
+  return trimRightGap ? (row.gapCols ??= displayCols(row.text, true)) : (row.cols ??= displayCols(row.text));
+}
+
+/** 상자 묶음을 고쳐 쓴 결과. 묶음의 줄이 그대로면 다시 계산하지 않는다 — 화면은 대개 한두 줄만 바뀐다. */
+interface BoxForm {
+  /** 빈 칸 구간을 뗀 줄들. 뗄 것이 없으면 null. */
+  lines: string[] | null;
+  cols: number;
+  table: boolean;
+  /** 오른쪽 테두리까지 뗀 줄들(본문 크기로 넘칠 때). 처음 쓸 때 만든다. */
+  panel?: string[];
+}
+
+function boxForm(group: readonly Row[]): BoxForm {
+  const texts = group.map((r) => r.text);
+  const drop = blankColumns(texts);
+  const shown = drop ? texts.map((t) => dropColumns(t, drop)) : texts;
+  return {
+    lines: drop ? group.map((r) => dropColumns(r.line, drop)) : null,
+    cols: Math.max(0, ...shown.map((t) => displayCols(t))),
+    table: isTable(shown),
+  };
 }
 
 function styleKey(s: Style): string {
@@ -653,6 +701,8 @@ export class TermScreen {
    */
   private pinned = true;
   private savedTop = 0;
+  /** 지난 그리기의 상자 묶음 결과(묶음 줄들의 key → 결과). 이번에 쓴 것만 남긴다. */
+  private boxForms = new Map<string, BoxForm>();
 
   constructor(private readonly options: ScreenOptions = {}) {
     this.el.className = "term";
@@ -849,12 +899,14 @@ export class TermScreen {
    */
   private unfoldFooter(footer: Row[], pool: Map<string, Row[]>): Row[] | null {
     const width = this.el.clientWidth - 24;
-    const cols = Math.max(0, ...footer.map((r) => displayCols(r.text, true)));
+    const cols = Math.max(0, ...footer.map((r) => rowCols(r, true)));
     if (width <= 0 || cols * FIT_MIN_PX * 0.62 <= width) return null;
-    const cut = Math.max(0, ...footer.map((r) => logoCols(r.text)));
+    const cut = Math.max(0, ...footer.map((r) => (r.logo ??= logoCols(r.text))));
     const out: Row[] = [];
     for (const row of footer) {
-      const next = this.reline(row, unfoldLine(row.line, logoCols(row.text) > 0 ? cut : 0), pool);
+      const at = row.logo! > 0 ? cut : 0;
+      if (row.unfold?.cut !== at) row.unfold = { cut: at, line: unfoldLine(row.line, at) };
+      const next = this.reline(row, row.unfold.line, pool);
       // 로고만 있던 줄은 비어 버린다 — 빈 줄로 남기지 않는다.
       if (next.text.trim() !== "") out.push(next);
     }
@@ -883,7 +935,7 @@ export class TermScreen {
     }
     let style: Style = {};
     let rows = raw.map((full) => {
-      const line = reflow ? full.replace(TRAILING, "") : full;
+      const line = reflow ? trimTrailing(full) : full;
       const row = pool.get(styleKey(style) + line)?.pop() ?? renderLine(line, style, reflow);
       style = row.end;
       return row;
@@ -913,7 +965,7 @@ export class TermScreen {
       const grid = new Array<boolean>(rows.length).fill(false);
       const applyGroup = (from: number, to: number, trimGap: boolean, isGrid = false) => {
         let max = 0;
-        for (let i = from; i < to; i += 1) max = Math.max(max, displayCols(rows[i]!.text, trimGap));
+        for (let i = from; i < to; i += 1) max = Math.max(max, rowCols(rows[i]!, trimGap));
         if (max > 0) for (let i = from; i < to; i += 1) {
           fitCols[i] = max;
           grid[i] = isGrid;
@@ -924,26 +976,26 @@ export class TermScreen {
       // 표의 모든 줄에서 비어 있는 긴 칸 구간은 떼어 낸다. 배너 상자는 로고 자리가 흐트러지지 않게 두고 따로 맞춘다.
       // 표가 아닌 상자(선택지 대화상자 같은 글 상자)가 본문 크기로도 넘치면, 칸을 지키지 않고 오른쪽 테두리를 떼어 글을 접는다.
       const kept: Array<[number, number]> = [];
+      const forms = new Map<string, BoxForm>();
       let bodyCols = 0;
       for (const [from, to] of grids) {
         if (banners.some(([b, e]) => from < e && b < to)) {
           kept.push([from, to]);
           continue;
         }
-        const drop = blankColumns(rows.slice(from, to).map((r) => r.text));
-        if (drop) {
-          if (rows === this.rows) rows = rows.slice();
-          for (let i = from; i < to; i += 1) rows[i] = this.reline(rows[i]!, dropColumns(rows[i]!.line, drop), pool);
-        }
-        const texts = rows.slice(from, to).map((r) => r.text);
+        const group = rows.slice(from, to);
+        const key = group.map((r) => r.key).join("\n");
+        const form = this.boxForms.get(key) ?? boxForm(group);
+        forms.set(key, form);
         bodyCols ||= Math.max(1, (this.el.clientWidth - 24) / (parseFloat(getComputedStyle(this.el).fontSize) * 0.62));
-        if (isTable(texts) || Math.max(...texts.map((t) => displayCols(t))) <= bodyCols) {
-          kept.push([from, to]);
-          continue;
-        }
+        const fits = form.table || form.cols <= bodyCols;
+        if (fits) kept.push([from, to]);
+        const lines = fits ? form.lines : (form.panel ??= (form.lines ?? group.map((r) => r.line)).map(dropRightBorder));
+        if (!lines) continue;
         if (rows === this.rows) rows = rows.slice();
-        for (let i = from; i < to; i += 1) rows[i] = this.reline(rows[i]!, dropRightBorder(rows[i]!.line), pool);
+        group.forEach((row, i) => (rows[from + i] = this.reline(row, lines[i]!, pool)));
       }
+      this.boxForms = forms;
       for (const [from, to] of kept) applyGroup(from, to, false, true);
       if (!unfolded && footerAt >= 0 && footerAt < rows.length) applyGroup(footerAt, rows.length, true);
       for (const [from, to] of banners) applyGroup(from, to, false);
