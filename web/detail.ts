@@ -900,11 +900,18 @@ export class DetailPanel {
       return el;
     };
     if (ws.managed) {
-      for (const tab of snap.tabs.filter((tb) => tb.workspaceId === ws.id)) {
-        const head = h("h3", {}, `${t("탭 {n}", { n: tab.number })}${tab.label ? ` · ${tab.label}` : ""}`);
+      const wsTabs = snap.tabs.filter((tb) => tb.workspaceId === ws.id);
+      for (const [i, tab] of wsTabs.entries()) {
+        // herdr 의 tab.number 는 만든 순번이라 닫힌 탭만큼 건너뛴다(두 번째 탭이 3). herdr 화면의 번호는 목록 순서이고,
+        // 이름을 짓지 않은 탭의 label 은 herdr 가 "<순서> · <제목>" 으로 채운다. 그 앞머리를 떼어 번호가 두 번 찍히지 않게 한다.
+        const n = i + 1;
+        const prefix = `${n} · `;
+        const label = tab.label.startsWith(prefix) ? tab.label.slice(prefix.length) : tab.label;
+        const text = `${t("탭 {n}", { n })}${label ? ` · ${label}` : ""}`;
+        const head = h("h3", {}, h("span", { class: "label", title: text }, text));
         if (snap.control) {
           head.append(
-            this.button(t("이름"), () => this.callbacks.act({ type: "rename", kind: "tab", id: tab.id, current: tab.label, what: t("탭 이름") }), { cls: "" }),
+            this.button(t("이름"), () => this.callbacks.act({ type: "rename", kind: "tab", id: tab.id, current: label, what: t("탭 이름") }), { cls: "" }),
             this.button(t("닫기"), () => this.callbacks.act({ type: "close", kind: "tab", id: tab.id }), { cls: "" }),
           );
         }
