@@ -58,12 +58,9 @@ export function oneLine(text: string, max = MAX_ACTIVITY_CHARS): string {
 }
 
 export function pushActivity(s: LogSummary, kind: ActivityKind, name: string, text: string, at: string): Activity {
-  const last = s.recent[s.recent.length - 1];
-  if (kind === "thinking" && last?.kind === "thinking") {
-    // 연달아 이어지는 생각은 한 줄로 접는다 — 로그가 "생각 중"으로만 차지 않게.
-    last.at = at;
-    return last;
-  }
+  // 생각은 내용이 로그에 남지 않아 "지금 생각 중"이라는 현재 상태(말풍선)로만 쓸모가 있다. 다음 활동이 오면
+  // 자리를 넘겨, 활동 로그의 칸을 내용 없는 "생각 중…"이 차지하지 않게 한다.
+  if (s.recent[s.recent.length - 1]?.kind === "thinking") s.recent.pop();
   const activity: Activity = { kind, name, text: oneLine(text), at };
   s.recent.push(activity);
   if (s.recent.length > MAX_RECENT) s.recent.splice(0, s.recent.length - MAX_RECENT);
