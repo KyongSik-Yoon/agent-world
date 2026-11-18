@@ -61,6 +61,7 @@ function feedAssistant(s: LogSummary, row: Record<string, unknown>, at: string):
   const message = row.message;
   if (!isRecord(message)) return;
   s.sawAssistant = true;
+  s.compacted = false;
   const model = str(message.model);
   if (model && model !== "<synthetic>") s.model = model;
   s.effort = str(row.effort) ?? s.effort;
@@ -104,6 +105,11 @@ function feedAssistant(s: LogSummary, row: Record<string, unknown>, at: string):
 
 function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void {
   if (row.isMeta === true) return;
+  // 컴팩션이 남긴 요약문은 사용자 행 모양이지만 사람이 보낸 지시가 아니다.
+  if (row.isCompactSummary === true) {
+    s.compacted = true;
+    return;
+  }
   const message = row.message;
   if (!isRecord(message)) return;
   const content = message.content;
@@ -112,6 +118,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
     if (text) {
       setPrompt(s, text);
       pushActivity(s, "user", "", text, at);
+      s.compacted = false;
       s.turnOpen = true;
       s.open.clear();
     }
@@ -142,6 +149,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
     const text = texts.join("\n\n");
     setPrompt(s, text);
     pushActivity(s, "user", "", text, at);
+    s.compacted = false;
     s.turnOpen = true;
     s.open.clear();
   }

@@ -256,7 +256,7 @@ export class Pusher {
     for (const a of snapshot.agents) {
       now.set(a.id, a.status);
       const before = this.last.get(a.id);
-      if (!this.primed || before === undefined || before === a.status || (a.status !== "blocked" && a.status !== "done")) continue;
+      if (!this.primed || before === undefined || before === a.status || (a.status !== "blocked" && a.status !== "done") || a.compacted) continue;
       for (const target of this.targets.values()) void this.send(target, message(a, target.lang));
     }
     this.last = now;

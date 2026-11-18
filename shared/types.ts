@@ -52,6 +52,8 @@ export interface AgentView {
   statusSource: "herdr" | "log" | "card";
   /** 완료를 월드에서 이미 확인했다 — status 는 idle 로 내려가 있다. */
   seen?: boolean;
+  /** 이 완료는 새 결과가 아니다 — 컴팩션(대화 요약)이 끝나 다시 나온, 아직 확인하지 않은 예전 완료다. 알리지 않는다. */
+  compacted?: boolean;
   /** 아직 결과가 오지 않은 마지막 도구 호출. */
   pending?: PendingRequest;
   focused: boolean;

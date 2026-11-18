@@ -79,6 +79,8 @@ export class World {
   /** 완료 상태인 pane 의 herdr 상태 변경 번호 — 확인 기록을 남길 때 쓴다. */
   /** 완료 상태인 pane 과 그 상태 번호. 스냅샷을 만드는 도중에 확인 요청이 와도 답할 수 있게, 만들 때마다 비우지 않고 고쳐 쓴다. */
   private doneSeq = new Map<string, number>();
+  /** 마지막으로 쉬고 있을 때 확인하지 않은 완료가 있었는지(pane → 여부). 일하는 동안에는 그대로 둔다. */
+  private unread = new Map<string, boolean>();
 
   /** outside: herdr 에 붙어 있는 동안에도 herdr 밖 세션을 보여 준다. */
   constructor(
@@ -210,7 +212,17 @@ export class World {
     // 로그의 대기 요청은 확인 필요 카드에 보탤 내용일 뿐, 상태를 바꾸지는 않는다.
     if (status !== "blocked") view.pending = undefined;
     const seq = pane.state_change_seq ?? 0;
-    const seen = this.seen.check(pane.pane_id, seq);
+    let seen = this.seen.check(pane.pane_id, seq);
+    // 컴팩션(대화 요약)도 herdr 에게는 일하다 끝난 것이라 완료로 온다. 로그의 마지막 사건이 컴팩션이면 새 결과가
+    // 아니므로 그 전의 모습으로 둔다: 이미 확인했거나 쉬고 있었으면 확인한 것으로, 확인 전의 완료였으면 완료로 두되 알리지 않는다.
+    if (status === "done" && !seen && summary?.compacted) {
+      if (this.unread.get(pane.pane_id) === false) {
+        this.seen.set(pane.pane_id, seq);
+        seen = true;
+      } else view.compacted = true;
+    }
+    if (status === "done") this.unread.set(pane.pane_id, !seen);
+    else if (status === "idle" || status === "unknown") this.unread.set(pane.pane_id, false);
     if (status !== "done") this.doneSeq.delete(pane.pane_id);
     else {
       this.doneSeq.set(pane.pane_id, seq);
@@ -347,6 +359,7 @@ export class World {
       const alive = new Set(snap.panes.map((p) => p.pane_id));
       this.seen.prune(alive);
       for (const id of this.doneSeq.keys()) if (!alive.has(id)) this.doneSeq.delete(id);
+      for (const id of this.unread.keys()) if (!alive.has(id)) this.unread.delete(id);
     }
 
     // herdr 에 붙어 있으면 herdr 의 에이전트만 보여 준다 — 밖의 세션은 월드에서 말을 걸 수도, 확인 처리할 수도

@@ -317,7 +317,7 @@ function announce(snapshot: WorldSnapshot): void {
   for (const a of snapshot.agents) {
     const before = lastStatus.get(a.id);
     lastStatus.set(a.id, a.status);
-    if (!primed || before === undefined || before === a.status || !needsAttention(a.status)) continue;
+    if (!primed || before === undefined || before === a.status || !needsAttention(a.status) || a.compacted) continue;
     const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : a.workspaceLabel;
     // 확인 필요면 무엇을 기다리는지까지 알린다.
     const what = a.status === "blocked" && a.pending ? ` — ${bubbleText(a) ?? ""}` : "";

@@ -27,6 +27,8 @@ export interface LogSummary {
   sawAssistant: boolean;
   /** 결과를 기다리는 도구 호출들(호출 id → 요청). 결과 행이 오면 지운다. */
   open: Map<string, PendingRequest>;
+  /** 로그의 마지막 사건이 컴팩션(대화 요약)이다 — 그 뒤로 지시도 응답도 없었다. */
+  compacted?: boolean;
 }
 
 export function emptySummary(): LogSummary {
