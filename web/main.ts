@@ -14,13 +14,6 @@ import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
 
-// 휴대폰 자판은 화면 위로 덮이게 한다. 창이 줄어드는 방식(index.html 의 resizes-content)이면 안드로이드는 창을 먼저
-// 줄이고 자판을 뒤따라 올리는데, 그 사이 틈을 설치한 앱의 매니페스트 바탕색(낮 하늘색)으로 칠해 밤에도 하늘색이 비친다.
-// 덮이게 하면 창이 줄지 않아 틈이 없다 — 자판 높이만큼 줄이는 일은 CSS 가 env(keyboard-inset-height) 로 한다(--kb).
-// 이 길(VirtualKeyboard)을 모르는 브라우저(iOS·Firefox)는 지금처럼 창이 줄어드는 쪽에 남는다.
-const vk = (navigator as Navigator & { virtualKeyboard?: { overlaysContent: boolean } }).virtualKeyboard;
-if (vk) vk.overlaysContent = true;
-
 // index.html 에 적힌 글을 지금 말로 — HUD 와 장면을 짓기 전에 한 번.
 localizeStatic();
 
