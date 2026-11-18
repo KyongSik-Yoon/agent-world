@@ -17,9 +17,9 @@ export const en: Record<string, string> = {
   "{what} 스킬": "Skill {what}",
   "{what} 조언 구하는 중": "Asking for advice: {what}",
   "생각 중…": "Thinking…",
-  "⏳ 일하는 중…": "⏳ Working…",
-  "다 했어요!": "All done!",
-  "🙋 확인이 필요해요": "🙋 Needs your input",
+  "일하는 중…": "Working…",
+  "다 했어요": "All done",
+  "확인이 필요해요": "Needs your input",
   "질문이 있어요": "I have a question",
 
   // ── 시간 ──
@@ -73,7 +73,7 @@ export const en: Record<string, string> = {
   "새 브랜치": "New branch",
   "기준 (base)": "Base",
   "이 저장소를 신뢰합니다 (herdr 가 요구할 때만 켜세요)": "Trust this repository (only if herdr asks)",
-  "집 짓기": "Build a house",
+  "집 짓기": "New house",
   "짓기": "Build",
   "폴더": "Folder",
   "이 폴더에서 셸이 열립니다": "A shell opens in this folder.",
@@ -121,7 +121,7 @@ export const en: Record<string, string> = {
   "herdr 에 붙지 못했습니다.": "Could not connect to herdr.",
   "최근 30분 안에 움직인 에이전트 세션도 없습니다. herdr 를 띄우면 여기에 나타납니다.": "No agent sessions have been active in the last 30 minutes either. Start herdr and they will show up here.",
   "아직 에이전트가 없습니다.": "No agents yet.",
-  "위의 ＋ 집 짓기 (B) 에서 폴더를 열고 에이전트를 들여 보세요.": "Use ＋ New house (B) above to open a folder and add an agent.",
+  "위의 집 짓기 (B) 에서 폴더를 열고 에이전트를 들여 보세요.": "Use New house (B) above to open a folder and add an agent.",
   "herdr 에서 띄운 에이전트도 여기에 나타납니다.": "Agents started in herdr show up here too.",
   "herdr 에서 에이전트를 띄우면 여기에 나타납니다.": "Agents started in herdr show up here.",
   "되돌리기": "Undo",
@@ -182,8 +182,8 @@ export const en: Record<string, string> = {
   "이미지를 올리는 중입니다. 잠시 뒤에 다시 보내 주세요.": "Uploading the image. Send again in a moment.",
   "보냈습니다. 에이전트가 받으면 여기에 표시됩니다…": "Sent. This will update once the agent picks it up…",
   "에이전트가 질문에 대한 답을 기다리는 중입니다. 화면의 선택지를 위 키로 먼저 눌러 주세요.": "The agent is waiting for an answer. Pick an option with the keys above first.",
-  "✓ 에이전트가 받았습니다.": "✓ The agent received it.",
-  "✓ 에이전트가 일하기 시작했습니다.": "✓ The agent started working.",
+  "에이전트가 받았습니다.": "The agent received it.",
+  "에이전트가 일하기 시작했습니다.": "The agent started working.",
   "아직 받은 흔적이 없습니다. 터미널 화면에서 입력창에 그대로 남아 있는지 확인해 보세요.": "No sign it was received yet. Check the terminal to see if it is still sitting in the input.",
 
   // ── 상태 창: 에이전트 ──
@@ -278,5 +278,4 @@ export const en: Record<string, string> = {
   "이름·스페이스·모델 찾기 ( / )": "Search name, workspace, model ( / )",
   "에이전트 상태": "Agent status",
   "연결 중…": "Connecting…",
-  "＋ 집 짓기": "＋ New house",
 };

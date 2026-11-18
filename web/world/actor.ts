@@ -2,7 +2,8 @@
 import * as THREE from "three";
 
 import type { AgentStatus, AgentView } from "../../shared/types.ts";
-import { bubbleText } from "../format.ts";
+import { icon } from "../dom.ts";
+import { bubbleParts } from "../format.ts";
 import { createRig, type Pose, type Rig } from "./characters.ts";
 import { labels, type Size } from "./labels.ts";
 import { gateSpot, plazaSlot, restSpot, workSpots, type Layout, type Spot } from "./layout.ts";
@@ -105,6 +106,8 @@ export class Actor {
   private readonly plate: HTMLDivElement;
   /** 브라우저가 알려 준 조각들의 크기. 이름표가 겹치는지는 이 값으로 셈한다. */
   private bubbleSize: Size = GUESS.bubble;
+  /** 말풍선에 지금 그려 둔 그림과 글 — 같으면 다시 짓지 않는다. */
+  private bubbleKey = "";
   private plateSize: Size = GUESS.plate;
   private compactSize: Size = GUESS.compact;
   private lod = 0;
@@ -227,7 +230,7 @@ export class Actor {
     this.pillar.visible = view.status === "done" || view.status === "blocked";
 
     this.tag.dataset.status = view.status;
-    this.bubble.hidden = bubbleText(view) === null;
+    this.bubble.hidden = bubbleParts(view) === null;
     this.syncBubble();
     this.plateNum.textContent = view.workspaceNumber ? String(view.workspaceNumber) : "·";
     if (this.plateName.textContent !== view.title) this.plateName.textContent = view.title;
@@ -243,8 +246,12 @@ export class Actor {
     if (this.bubbleFor === this.view && this.bubbleFull === full) return;
     this.bubbleFor = this.view;
     this.bubbleFull = full;
-    const text = bubbleText(this.view, full);
-    if (text !== null && this.bubble.textContent !== text) this.bubble.textContent = text;
+    const parts = bubbleParts(this.view, full);
+    if (parts === null) return;
+    const key = `${parts.icon ?? ""}\n${parts.text}`;
+    if (this.bubbleKey === key) return;
+    this.bubbleKey = key;
+    this.bubble.replaceChildren(...(parts.icon ? [icon(parts.icon)] : []), parts.text);
   }
 
   /** 멀리서는 쉬거나 끝난 에이전트의 이름을 접는다(스타일시트의 .far 규칙과 같은 조건). */

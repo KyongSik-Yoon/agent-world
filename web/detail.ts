@@ -7,7 +7,7 @@ import type { AgentView, PaneView, PendingRequest, WorkspaceView, WorldSnapshot 
 import { ApiError, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
 import { type Child, type IconName, STATUS_VAR, h, icon, prose, store, stored } from "./dom.ts";
-import { STATUS_LABEL, activityParts, bubbleText, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
+import { STATUS_LABEL, activityParts, bubbleParts, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
 import { t } from "./i18n.ts";
 import { TermScreen } from "./term.ts";
 
@@ -364,7 +364,7 @@ export class DetailPanel {
   }
 
   private setNote(text: string, tone: "" | "ok" | "err" | "wait"): void {
-    this.note.textContent = text;
+    this.note.replaceChildren(...(tone === "ok" && text ? [icon("check")] : []), text);
     this.note.dataset.tone = tone;
     this.note.hidden = text === "";
   }
@@ -379,7 +379,7 @@ export class DetailPanel {
         break;
       }
       const url = URL.createObjectURL(file);
-      const remove = h("button", { type: "button", title: t("이미지 빼기"), "aria-label": t("이미지 빼기") }, "✕");
+      const remove = h("button", { type: "button", title: t("이미지 빼기"), "aria-label": t("이미지 빼기") }, icon("close"));
       const shot: (typeof this.shots)[number] = { url, el: h("div", { class: "shot busy" }, h("img", { src: url, alt: t("붙인 이미지") }), remove) };
       const drop = () => {
         this.shots = this.shots.filter((s) => s !== shot);
@@ -464,10 +464,10 @@ export class DetailPanel {
     const want = norm(sent.text).slice(0, 32);
     if (logged !== undefined && (want ? logged.startsWith(want) : a.lastPrompt !== sent.before)) {
       sent.confirmed = true;
-      this.setNote(t("✓ 에이전트가 받았습니다."), "ok");
+      this.setNote(t("에이전트가 받았습니다."), "ok");
     } else if (!a.hasLog && a.status === "working") {
       sent.confirmed = true;
-      this.setNote(t("✓ 에이전트가 일하기 시작했습니다."), "ok");
+      this.setNote(t("에이전트가 일하기 시작했습니다."), "ok");
     } else if (Date.now() - sent.at > 12_000) {
       this.setNote(t("아직 받은 흔적이 없습니다. 터미널 화면에서 입력창에 그대로 남아 있는지 확인해 보세요."), "err");
     }
@@ -523,10 +523,10 @@ export class DetailPanel {
     }
 
     const blocked = a.status === "blocked" && a.paneId !== undefined;
-    const now = a.status === "working" ? bubbleText(a) : null;
+    const now = a.status === "working" ? bubbleParts(a) : null;
     const parts: Child[] = [statusLine];
     if (blocked) parts.push(this.askCard(a));
-    if (now) parts.push(h("div", { class: "now" }, now));
+    if (now) parts.push(h("div", { class: "now" }, ...(now.icon ? [icon(now.icon)] : []), now.text));
     parts.push(this.facts(a), this.actions(a));
     if (a.lastPrompt) parts.push(this.textSection(t("마지막 지시"), a.lastPrompt, "prompt"));
     if (a.lastReply) parts.push(this.textSection(t("마지막 응답"), a.lastReply, "reply"));

@@ -87,6 +87,8 @@ export class WorldScene {
    * 고른 캐릭터를 카메라가 놓아 줬다. 쉬던 에이전트(완료·확인 필요·대기)가 다시 일하러 가면, 그 일은 이미
    * 시켰으니 집까지 가는 길을 확대한 채 따라갈 까닭이 없다 — 고르기 전에 보던 자리로 물러나 넓게 보여 준다.
    * 대기도 넣는다: 확인을 마친 완료는 서버가 대기로 내려보내므로, 완료·확인 필요만 보면 그런 에이전트에 시킬 때 따라간다.
+   * 광장의 완료가 대기로 내려가는 것도 넣는다: 지시를 보내면 서버가 바로 확인한 것으로 적어 완료 → 대기 → (herdr 가
+   * 알아챈 뒤) 작업 중으로 두 번 바뀐다. 작업 중만 기다리면 집으로 걸어가는 첫머리를 확대한 채 따라가다 뒤늦게 물러난다.
    * 고르기와 상태 창은 그대로 둔다. 같은 캐릭터를 다시 고르면 다시 다가간다.
    */
   private released = false;
@@ -317,7 +319,8 @@ export class WorldScene {
       seen.add(view.id);
       const actor = this.actors.get(view.id);
       if (actor && actor.view.vendor === view.vendor) {
-        if (view.id === this.selectedId && view.status === "working" && actor.view.status !== "working") this.release();
+        const was = actor.view.status;
+        if (view.id === this.selectedId && view.status !== was && (view.status === "working" || was === "done")) this.release();
         actor.apply(view);
         continue;
       }

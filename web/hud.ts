@@ -196,7 +196,7 @@ export class Hud {
           : !snap.herdr
             ? [t("herdr 에 붙지 못했습니다."), t("최근 30분 안에 움직인 에이전트 세션도 없습니다. herdr 를 띄우면 여기에 나타납니다."), ...(snap.herdrError ? [snap.herdrError[lang]] : [])]
             : snap.control
-              ? [t("아직 에이전트가 없습니다."), t("위의 ＋ 집 짓기 (B) 에서 폴더를 열고 에이전트를 들여 보세요."), t("herdr 에서 띄운 에이전트도 여기에 나타납니다.")]
+              ? [t("아직 에이전트가 없습니다."), t("위의 집 짓기 (B) 에서 폴더를 열고 에이전트를 들여 보세요."), t("herdr 에서 띄운 에이전트도 여기에 나타납니다.")]
               : [t("아직 에이전트가 없습니다."), t("herdr 에서 에이전트를 띄우면 여기에 나타납니다.")];
       const why = paragraphs.join("\n\n");
       children.push(h("div", { class: "empty" }, why));
