@@ -194,22 +194,46 @@ langBtn.title = lang === "ko" ? "Switch to English" : "한국어로 바꾸기";
 langBtn.addEventListener("click", () => setLang(lang === "ko" ? "en" : "ko"));
 
 const themeBtn = document.getElementById("btn-theme")!;
-/** 문서에 적힌 매니페스트(낮 색). 밤에는 색만 다른 것으로 바꿔 가리킨다 — 설치한 앱이 페이지 밖에 칠하는 색이 테마를 따라오게. */
+/** 문서에 적힌 매니페스트(낮 색). 낮으로 고른 때가 아니면 색만 다른 밤 것으로 바꿔 가리킨다 — 설치한 앱이 페이지 밖에 칠하는 색을 위해서다. */
 const manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
 const dayManifest = manifestLink?.getAttribute("href") ?? "";
 
-function setTheme(theme: Theme): void {
+/** 테마를 어떻게 정할지. auto 는 기기의 라이트/다크를 따라가고(기기가 시간에 맞춰 바꾸면 같이 바뀐다), 나머지는 그 테마에 붙박는다. */
+type ThemeMode = "auto" | Theme;
+const MODES: ThemeMode[] = ["auto", "day", "night"];
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+let themeMode: ThemeMode = MODES.find((m) => m === stored("agent-world.theme-mode")) ?? "auto";
+// 예전에는 처음 연 날의 테마를 그대로 적어 두었다(고른 것이 아니다). 이제 쓰지 않는다.
+store("agent-world.theme", null);
+
+function applyTheme(): void {
+  const theme: Theme = themeMode === "auto" ? (systemDark.matches ? "night" : "day") : themeMode;
   document.body.dataset.theme = theme;
-  manifestLink?.setAttribute("href", theme === "day" ? dayManifest : "./manifest-night.webmanifest");
+  // 설치한 앱(안드로이드)은 자판이 올라올 때 화면과 자판 사이의 틈을 매니페스트의 색으로 칠하는데, 그 색은 하루에 한 번쯤만
+  // 갱신된다. 기기를 따라 하루에 두 번 바뀌는 테마는 쫓아갈 수 없으니, auto 에서는 밤 색에 붙박는다 — 어두운 화면에서
+  // 밝은 틈이 번쩍이는 쪽이 더 거슬린다. 낮으로 고른 때만 낮 색이다.
+  manifestLink?.setAttribute("href", themeMode === "day" ? dayManifest : "./manifest-night.webmanifest");
   scene.setTheme(theme);
-  themeBtn.replaceChildren(icon(theme === "day" ? "moon" : "sun"));
+  themeBtn.replaceChildren(icon(themeMode === "auto" ? "auto" : themeMode === "day" ? "sun" : "moon"));
+  const label = themeMode === "auto" ? t("테마: 기기를 따름 (T)") : themeMode === "day" ? t("테마: 낮 (T)") : t("테마: 밤 (T)");
+  themeBtn.title = label;
+  themeBtn.setAttribute("aria-label", label);
   // 앱으로 설치했을 때 기기의 상태 표시줄이 하늘과 이어지게.
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "day" ? "#7cc4f1" : "#080c1f");
-  store("agent-world.theme", theme);
 }
 
-setTheme((stored("agent-world.theme") as Theme | null) ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "day"));
-themeBtn.addEventListener("click", () => setTheme(document.body.dataset.theme === "day" ? "night" : "day"));
+applyTheme();
+systemDark.addEventListener("change", () => {
+  if (themeMode === "auto") applyTheme();
+});
+// 단추는 기기를 따름 → 낮 → 밤 차례로 돈다. 기기를 따르는 동안에는 눌러도 화면이 그대로일 수 있어, 무엇이 됐는지 알려 준다.
+themeBtn.addEventListener("click", () => {
+  themeMode = MODES[(MODES.indexOf(themeMode) + 1) % MODES.length]!;
+  store("agent-world.theme-mode", themeMode);
+  applyTheme();
+  const name = themeMode === "auto" ? t("기기를 따름") : themeMode === "day" ? t("낮") : t("밤");
+  hud.toast(t("테마"), themeMode === "auto" ? t("{name} — 기기가 라이트/다크를 바꾸면 같이 바뀝니다.", { name }) : name, "var(--accent)");
+});
 
 // ── 알림 ─────────────────────────────────────────────────────────────────────────────────────
 
