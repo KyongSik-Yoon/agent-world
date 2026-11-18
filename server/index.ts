@@ -16,6 +16,7 @@ import { herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag, herdrSocket
 import { raiseHerdrWindow } from "./raise.ts";
 import { addressFile, isOurs, type Address } from "./address.ts";
 import { accessKey, keyMatches, keyedUrl, proofOf, writePrivate } from "./key.ts";
+import { Pusher, asTarget, pushPublicKey } from "./push.ts";
 import { L, defaultLang, langOf, say } from "./text.ts";
 import { World } from "./world.ts";
 
@@ -50,6 +51,9 @@ const READONLY = process.env.AGENT_WORLD_READONLY === "1";
 const DEV = process.env.AGENT_WORLD_DEV === "1";
 
 const world = new World(!READONLY, process.env.AGENT_WORLD_OUTSIDE === "1");
+/** 화면을 닫아 둔 브라우저에 보내는 알림. 구독이 없으면 아무 일도 하지 않는다. */
+const pusher = new Pusher(READONLY);
+void pusher.load();
 const encoder = new TextEncoder();
 type Client = ReadableStreamDefaultController<Uint8Array>;
 /** 붙어 있는 화면들. 값은 전체 스냅샷을 한 번 받았는지 — 받은 화면에는 바뀐 것만 보낸다. */
@@ -131,6 +135,7 @@ async function tick(force = false): Promise<void> {
     latest = snapshot;
     // 달라진 것이 없으면 아무것도 보내지 않는다 — 조용한 동안에는 브라우저가 아무 일도 하지 않는다.
     publish(snapshot);
+    pusher.observe(snapshot);
   } catch (e) {
     console.error(say(L("스냅샷 실패:", "Snapshot failed:")), e);
   } finally {
@@ -403,14 +408,15 @@ async function start() {
 /**
  * 홈 화면에 앱으로 설치할 때 쓰는 아이콘. 매니페스트(web/app/manifest.webmanifest)는 문서와 함께 묶여 나가지만, 그 안에
  * 적힌 아이콘 주소는 묶는 쪽이 고쳐 주지 않으므로 적힌 이름 그대로 내준다. 비밀이 아니라 열쇠를 요구하지 않는다.
+ * 알림을 받는 서비스 워커(sw.js)도 여기서 내준다 — 브라우저가 맨 위 주소에서 열쇠 없이 받아 가고, 고쳤는지 매번 확인한다.
  */
 async function appFiles(): Promise<Record<string, { GET: (req: Request) => Response }>> {
   const dir = join(import.meta.dir, "..", "web", "app");
-  const types: Record<string, string> = { "icon-192.png": "image/png", "icon-512.png": "image/png" };
+  const types: Record<string, string> = { "icon-192.png": "image/png", "icon-512.png": "image/png", "sw.js": "text/javascript; charset=utf-8" };
   const routes: Record<string, { GET: (req: Request) => Response }> = {};
   for (const [name, type] of Object.entries(types)) {
     const body = new Uint8Array(await Bun.file(join(dir, name)).arrayBuffer());
-    const headers = { "content-type": type, "x-content-type-options": "nosniff", "cache-control": "public, max-age=3600", etag: `"${Bun.hash(body).toString(16)}"` };
+    const headers = { "content-type": type, "x-content-type-options": "nosniff", "cache-control": name === "sw.js" ? "no-cache" : "public, max-age=3600", etag: `"${Bun.hash(body).toString(16)}"` };
     routes[`/${name}`] = { GET: (req) => (req.headers.get("if-none-match") === headers.etag ? new Response(null, { status: 304, headers }) : new Response(body, { headers })) };
   }
   return routes;
@@ -496,6 +502,21 @@ const listen = (at: number) =>
         }
         const raised = await raiseHerdrWindow().catch(() => false);
         return json({ ok: true, raised });
+      }),
+    },
+    "/api/push/key": { GET: guarded(async () => json({ key: await pushPublicKey() })) },
+    // 알림을 켠 브라우저의 구독을 적어 두고, 끄면 지운다. 보는 일이라 보기 전용 서버도 받는다.
+    "/api/push": {
+      POST: guarded(async (req) => {
+        const body = (await req.json().catch(() => null)) as { subscription?: unknown; off?: unknown } | null;
+        if (typeof body?.off === "string") {
+          await pusher.remove(body.off);
+          return json({ ok: true });
+        }
+        const target = asTarget(body?.subscription, langOf(req));
+        if (!target) return json({ error: say(L("알림 구독이 제 모양이 아닙니다.", "The push subscription is malformed."), langOf(req)) }, 400);
+        await pusher.add(target);
+        return json({ ok: true });
       }),
     },
     ...controlRoutes({ world, readonly: READONLY, guarded, json, refresh: () => void tick(true) }),

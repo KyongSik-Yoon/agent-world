@@ -1,6 +1,6 @@
 // 들머리: 서버의 스냅샷 흐름을 받아 장면과 HUD 에 나눠 주고, 둘 사이의 고르기·필터·단축키를 잇는다.
 import type { AgentStatus, AgentView, SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
-import { post, hasAccess, headers, serverBuild } from "./api.ts";
+import { get, post, hasAccess, headers, serverBuild } from "./api.ts";
 import { Builder } from "./build.ts";
 import { type Action, workspaceKey } from "./detail.ts";
 import { STATUS_VAR, h, store, stored } from "./dom.ts";
@@ -197,8 +197,61 @@ themeBtn.addEventListener("click", () => setTheme(document.body.dataset.theme ==
 // ── 알림 ─────────────────────────────────────────────────────────────────────────────────────
 
 const notifyBtn = document.getElementById("btn-notify")!;
+/** 화면을 닫아 둔 동안에도 알림을 받는 길(Web Push)이 이 브라우저에 있는지. iOS 는 홈 화면에 설치한 앱에만 있다. */
+const pushable = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 let notify = stored("agent-world.notify") === "on" && "Notification" in window && Notification.permission === "granted";
+/** 서버에 푸시 구독을 맡겼다 — 화면이 가려진 동안의 알림은 서버가 보내므로 화면은 따로 띄우지 않는다. */
+let pushed = false;
 notifyBtn.setAttribute("aria-pressed", String(notify));
+
+/** 서비스 워커를 깔고 이 브라우저의 구독을 서버에 맡긴다. 알림을 켠 브라우저만 여기까지 온다. */
+async function subscribePush(): Promise<boolean> {
+  if (!pushable) return false;
+  try {
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    const { key } = await get<{ key: string }>("/api/push/key");
+    let sub = await reg.pushManager.getSubscription();
+    // 구독은 서버의 열쇠에 묶인다. 열쇠가 바뀌었으면 옛 구독으로는 받지 못하니 새로 맺는다.
+    const boundTo = sub?.options.applicationServerKey;
+    if (sub && (!boundTo || toBase64Url(new Uint8Array(boundTo)) !== key)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromBase64Url(key) });
+    await post("/api/push", { subscription: sub.toJSON() as Record<string, unknown> });
+    return true;
+  } catch {
+    // 구독하지 못하면 화면이 열려 있는 동안의 알림만 남는다.
+    return false;
+  }
+}
+
+/** 구독을 브라우저와 서버 양쪽에서 지운다. */
+async function unsubscribePush(): Promise<void> {
+  if (!pushable) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration("/");
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) return;
+    await sub.unsubscribe();
+    await post("/api/push", { off: sub.endpoint });
+  } catch {
+    // 서버에 닿지 못해도 브라우저 쪽 구독은 지워졌다 — 서버는 다음에 보내다 거절당하면 스스로 지운다.
+  }
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
+  const raw = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
 notifyBtn.addEventListener("click", async () => {
   if (!notify && "Notification" in window) {
     const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
@@ -207,7 +260,38 @@ notifyBtn.addEventListener("click", async () => {
   } else notify = false;
   notifyBtn.setAttribute("aria-pressed", String(notify));
   store("agent-world.notify", notify ? "on" : "off");
+  if (notify) pushed = await subscribePush();
+  else {
+    pushed = false;
+    await unsubscribePush();
+  }
 });
+// 켜 둔 브라우저는 열 때마다 구독을 다시 맞춘다(서버가 기록을 잃었거나 브라우저가 구독을 갈았을 수 있다). 화면이 뜬 뒤로 미룬다.
+if (notify && pushable) setTimeout(() => void subscribePush().then((ok) => (pushed = ok && notify)), 3000);
+
+/** 알림을 눌러 들어왔을 때 고를 에이전트. 스냅샷에 나타나면 고른다. */
+let wanted: string | null = null;
+{
+  const m = /(?:^#|&)a=([^&]+)/.exec(location.hash);
+  if (m) {
+    wanted = decodeURIComponent(m[1]!);
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+}
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (e) => {
+    const id = (e.data as { select?: unknown } | null)?.select;
+    if (typeof id !== "string" || !id) return;
+    wanted = id;
+    if (hud.latest) selectWanted(hud.latest);
+  });
+}
+function selectWanted(snapshot: WorldSnapshot): void {
+  if (wanted === null || !snapshot.agents.some((a) => a.id === wanted)) return;
+  const id = wanted;
+  wanted = null;
+  select(id);
+}
 
 const lastStatus = new Map<string, AgentStatus>();
 let primed = false;
@@ -222,12 +306,16 @@ function announce(snapshot: WorldSnapshot): void {
     // 확인 필요면 무엇을 기다리는지까지 알린다.
     const what = a.status === "blocked" && a.pending ? ` — ${bubbleText(a) ?? ""}` : "";
     hud.toast(STATUS_LABEL[a.status], `${a.title} — ${where}${what}`, STATUS_VAR[a.status], () => select(a.id));
-    if (notify && document.visibilityState !== "visible") {
-      const n = new Notification(`${STATUS_LABEL[a.status]} · ${a.title}`, { body: `${where}${what}`, tag: a.id });
-      n.onclick = () => {
-        window.focus();
-        select(a.id);
-      };
+    if (notify && !pushed && document.visibilityState !== "visible") {
+      try {
+        const n = new Notification(`${STATUS_LABEL[a.status]} · ${a.title}`, { body: `${where}${what}`, tag: a.id });
+        n.onclick = () => {
+          window.focus();
+          select(a.id);
+        };
+      } catch {
+        // 이 방식의 알림을 막아 둔 브라우저(Android Chrome)다.
+      }
     }
   }
   const alive = new Set(snapshot.agents.map((a) => a.id));
@@ -249,6 +337,7 @@ function show(snapshot: WorldSnapshot): void {
   scene.sync(snapshot);
   hud.update(snapshot);
   builder.observe(snapshot);
+  selectWanted(snapshot);
   buildBtn.hidden = !snapshot.herdr || !snapshot.control;
 }
 

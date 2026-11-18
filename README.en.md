@@ -58,6 +58,12 @@ or Share → `Add to Home Screen` in iOS Safari. It then opens full-screen witho
 app has storage separate from Safari, so paste the keyed address once after installing. When the server comes back
 with a new version, open pages reload themselves (they wait while you are typing or have something open).
 
+Turn on the `🔔` at the top to be **notified** when an agent finishes or needs input — also while the page is closed or
+the app is in the background (Web Push). It is off by default, switched on per device, and one more tap turns it off.
+On iOS it is available only in the installed home-screen app (16.4 or later). The text is encrypted so that only your
+browser can read it; the push service in between (Google, Apple, Mozilla) cannot. While nobody has the page open the
+server looks at the agents only every 15 seconds, so a notification can be that late.
+
 Worth knowing:
 
 - **"Seen" is Agent World's own record.** herdr only counts a result as seen when its screen moves to that pane, and
@@ -182,10 +188,11 @@ server/   Bun server — herdr RPC, log tailing, snapshots pushed over SSE
   adapters/   log readers per harness
   text.ts     server messages in both languages
   key.ts      the access key and owner-only state files
+  push.ts     notifications while the page is closed (Web Push)
 web/      three.js scene and HUD
   detail.ts   status window (agent, shell, house), term.ts terminal mirror, build.ts create/close dialogs
   world/      island and plots (environment), characters, actors, layout, label layer (labels)
-  app/        manifest and icons for installing to the home screen
+  app/        manifest and icons for installing to the home screen, the service worker that receives notifications (sw.js)
   i18n.ts     t() and the language switch; locale/en.ts holds the English strings
 shared/   snapshot types used by both sides
 scripts/  plugin.ts — start/stop/open when run as a herdr plugin
