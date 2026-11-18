@@ -306,7 +306,7 @@ export interface ScreenOptions {
  * 선 글자로만 된 줄. 가운데 짧은 이름표 하나는 낄 수 있다 — 지난 입력을 ↑ 로 불러오면 Claude Code 가 입력창 위
  * 테두리에 `─── History 76/77 ───` 처럼 적는다.
  */
-const RULE_LINE = /^\s*[\u2500-\u257F]+(?: [^\u2500-\u257F]{1,40} [\u2500-\u257F]+)?\s*$/;
+const RULE_LINE = /^\s*[\u2500-\u257F]+(?: [^\u2500-\u257F]{1,40} [\u2500-\u257F]+)?(?:\s+\S{1,8})?\s*$/;
 /** 입력창 테두리로 볼 가로줄: ─ 가 스무 개 넘는 줄(이름표는 낄 수 있다). 표의 테두리(┼ ┬ 가 섞인 줄)는 아니다. */
 const INPUT_RULE = /^\u2500+(?: [^\u2500-\u257F]{1,40} \u2500+)?$/;
 const isInputRule = (line: string): boolean => INPUT_RULE.test(line) && line.split("\u2500").length > 20;
@@ -498,6 +498,48 @@ export function blankColumns(texts: readonly string[]): boolean[] | null {
     col = Math.max(end, col + 1);
   }
   return any ? drop : null;
+}
+
+/**
+ * 칸이 맞아야 읽히는 표인지: 안쪽에 글 없는 가로줄(머리글 밑줄)이 있거나, 글 사이에 세로선이 있으면 표로 본다.
+ * 그 밖의 상자(선택지 대화상자, 고친 파일 목록)는 글을 담은 틀일 뿐이다.
+ */
+export function isTable(texts: readonly string[]): boolean {
+  for (let i = 1; i < texts.length - 1; i += 1) {
+    const t = texts[i]!;
+    if (!HAS_TEXT.test(t) && /[\u2500\u2501\u2550\u253C\u254B\u256A]/.test(t)) return true;
+    if (/\S\s+[\u2502\u2503\u2551]\s+\S/.test(t.trim().slice(1, -1))) return true;
+  }
+  return false;
+}
+
+/** 상자 줄의 오른쪽 테두리와 그 앞 공백을 뗀다. 색상 코드는 그대로 둔다. */
+export function dropRightBorder(line: string): string {
+  const tokens = [...line.matchAll(ANSI_TOKEN)].map((m) => m[0]);
+  let last = tokens.length - 1;
+  while (last >= 0 && (tokens[last]!.startsWith("\x1b") || tokens[last] === " ")) last -= 1;
+  if (last < 0 || !/[\u2502\u2503\u2551\u256E\u256F\u2510\u2518\u2557\u255D]/.test(tokens[last]!)) return line;
+  let out = "";
+  let gap = "";
+  for (let i = 0; i < tokens.length; i += 1) {
+    const t = tokens[i]!;
+    if (i === last) {
+      gap = gap.replace(/ /g, "");
+      continue;
+    }
+    if (t.startsWith("\x1b")) {
+      if (gap) gap += t;
+      else out += t;
+      continue;
+    }
+    if (t === " " && i < last) {
+      gap += t;
+      continue;
+    }
+    out += gap + t;
+    gap = "";
+  }
+  return out + gap.replace(/ /g, "");
 }
 
 /** 줄에서 drop 으로 표시한 칸의 글자를 뗀다. 색상 코드는 그대로 둔다. */
@@ -868,14 +910,29 @@ export class TermScreen {
       const body = footerAt >= 0 ? footerAt : rows.length;
       const grids = gridRanges(rows.map((r) => r.text), body);
       // 표의 모든 줄에서 비어 있는 긴 칸 구간은 떼어 낸다. 배너 상자는 로고 자리가 흐트러지지 않게 두고 따로 맞춘다.
+      // 표가 아닌 상자(선택지 대화상자 같은 글 상자)가 본문 크기로도 넘치면, 칸을 지키지 않고 오른쪽 테두리를 떼어 글을 접는다.
+      const kept: Array<[number, number]> = [];
+      let bodyCols = 0;
       for (const [from, to] of grids) {
-        if (banners.some(([b, e]) => from < e && b < to)) continue;
+        if (banners.some(([b, e]) => from < e && b < to)) {
+          kept.push([from, to]);
+          continue;
+        }
         const drop = blankColumns(rows.slice(from, to).map((r) => r.text));
-        if (!drop) continue;
+        if (drop) {
+          if (rows === this.rows) rows = rows.slice();
+          for (let i = from; i < to; i += 1) rows[i] = this.reline(rows[i]!, dropColumns(rows[i]!.line, drop), pool);
+        }
+        const texts = rows.slice(from, to).map((r) => r.text);
+        bodyCols ||= Math.max(1, (this.el.clientWidth - 24) / (parseFloat(getComputedStyle(this.el).fontSize) * 0.62));
+        if (isTable(texts) || Math.max(...texts.map((t) => displayCols(t))) <= bodyCols) {
+          kept.push([from, to]);
+          continue;
+        }
         if (rows === this.rows) rows = rows.slice();
-        for (let i = from; i < to; i += 1) rows[i] = this.reline(rows[i]!, dropColumns(rows[i]!.line, drop), pool);
+        for (let i = from; i < to; i += 1) rows[i] = this.reline(rows[i]!, dropRightBorder(rows[i]!.line), pool);
       }
-      for (const [from, to] of grids) applyGroup(from, to, false, true);
+      for (const [from, to] of kept) applyGroup(from, to, false, true);
       if (!unfolded && footerAt >= 0 && footerAt < rows.length) applyGroup(footerAt, rows.length, true);
       for (const [from, to] of banners) applyGroup(from, to, false);
 
