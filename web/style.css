@@ -144,10 +144,24 @@ input {
   font-weight: 500;
   line-height: 1.35;
   box-shadow: 0 3px 12px rgba(10, 20, 50, 0.22);
+  overflow: hidden;
+  border: 1.5px solid transparent;
+  /* 아이콘은 글 왼쪽에 따로 세운다 — 글이 두 줄이 돼도 아이콘 아래로 흘러들지 않는다. */
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4em;
+}
+
+.bubble > span {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border: 1.5px solid transparent;
+}
+
+/* 아이콘이 있으면 왼쪽 여백을 위아래 여백과 같게 해서 동그라미가 말풍선 안에 고르게 앉는다. */
+.bubble:has(> .ico) {
+  padding-left: 5px;
 }
 
 .bubble[hidden] {
@@ -165,17 +179,15 @@ input {
   stroke-width: 2.2;
 }
 
-/* 말풍선의 아이콘은 상태 색 동그라미에 담아 멀리서도 상태가 먼저 읽히게 한다. */
+/* 말풍선의 아이콘은 상태 색 동그라미에 담아 멀리서도 상태가 먼저 읽히게 한다. 크기는 글줄 높이와 같다. */
 .bubble .ico {
-  display: inline-block;
-  width: 1.5em;
-  height: 1.5em;
-  margin: -0.15em 0.4em -0.15em -0.3em;
-  padding: 0.22em;
+  flex: none;
+  width: 1.35em;
+  height: 1.35em;
+  padding: 0.2em;
   border-radius: 50%;
   background: var(--badge, var(--working));
   color: #fff;
-  vertical-align: -0.42em;
   stroke-width: 2.6;
 }
 
@@ -194,11 +206,14 @@ input {
 
 .tag[data-status="done"] .bubble {
   border-color: var(--done);
+  max-width: 250px;
+}
+
+.tag[data-status="done"] .bubble > span {
   white-space: normal;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  max-width: 250px;
 }
 
 .tag[data-status="blocked"] .bubble {
@@ -298,6 +313,10 @@ body[data-beat-quick] .tag[data-status="blocked"] .dot {
   max-width: 190px;
   padding: 3px 8px;
   font-size: 11px;
+}
+
+.tag.far:not(.hovered, .selected) .bubble:has(> .ico) {
+  padding-left: 3px;
 }
 
 /* 자리가 모자라 밀린 이름표: 말풍선을 접고(lod1), 그래도 겹치면 번호만 남긴다(lod2). */

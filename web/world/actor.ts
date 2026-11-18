@@ -251,7 +251,9 @@ export class Actor {
     const key = `${parts.icon ?? ""}\n${parts.text}`;
     if (this.bubbleKey === key) return;
     this.bubbleKey = key;
-    this.bubble.replaceChildren(...(parts.icon ? [icon(parts.icon)] : []), parts.text);
+    const text = document.createElement("span");
+    text.textContent = parts.text;
+    this.bubble.replaceChildren(...(parts.icon ? [icon(parts.icon)] : []), text);
   }
 
   /** 멀리서는 쉬거나 끝난 에이전트의 이름을 접는다(스타일시트의 .far 규칙과 같은 조건). */
