@@ -65,6 +65,8 @@ function installGlyphFonts(): void {
     `@font-face{font-family:"AW Nerd";src:url("font/nerd");font-display:block;unicode-range:U+E000-F8FF,U+F0000-FFFFD}`,
     // 기술 기호(⏵ ⏸ ⎿ ⌘ …): Claude Code 의 auto mode 표시 등.
     `@font-face{font-family:"AW Symbols";src:url("font/symbols");font-display:block;unicode-range:U+2300-23FF}`,
+    // 상자 그리기·화살표·도형·딩뱃·점자(TUI 의 틀과 스피너): 웹판 JetBrains Mono 에 빠진 범위를 이 PC 의 JetBrains Mono 로.
+    `@font-face{font-family:"AW Mono";src:url("font/mono");font-display:block;unicode-range:U+2190-21FF,U+2500-25FF,U+2700-27BF,U+2800-28FF}`,
   ].join("\n");
   document.head.append(style);
 }

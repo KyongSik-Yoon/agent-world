@@ -11,7 +11,7 @@ min_herdr_version = "0.9.5"
 description = "A 3D village for your coding agents: see who is working, done or waiting on you, talk to them, answer prompts and build new workspaces from the browser."
 platforms = ["linux", "macos"]
 
-# 설치할 때 한 번: bun 이 있는지 보고 의존성(three)을 받는다. 화면 번들은 서버가 뜰 때 스스로 묶는다.
+# 설치할 때 한 번: bun 이 있는지 보고 의존성(three, 화면 글꼴 IBM Plex Sans KR·JetBrains Mono)을 받는다. 화면 번들은 서버가 뜰 때 스스로 묶는다.
 [[build]]
 command = ["sh", "scripts/with-bun.sh", "install", "--production", "--frozen-lockfile"]
 

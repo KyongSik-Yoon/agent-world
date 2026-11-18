@@ -3,9 +3,12 @@
   --done: #2fbf71;
   --blocked: #f0506e;
   --idle: #8a93a6;
-  --font: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
-  /* AW Nerd·AW Symbols 는 이 PC 의 기호 글꼴을 서버가 내준 것 — 아이콘·기술 기호 범위에만 걸려 있어 그 글자가 나올 때만 받는다. */
-  --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "D2Coding", "AW Nerd", "AW Symbols", ui-monospace, monospace;
+  /* IBM Plex Sans KR·JetBrains Mono Variable 은 서버가 npm 패키지에서 내주는 웹 글꼴이다(web/fonts.ts) — 어느 기기에서나 같다. */
+  --font: "IBM Plex Sans KR", "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
+  /* 이 PC 에 JetBrains Mono 가 깔려 있으면 그것을 먼저 쓴다(받을 것이 없고 상자 그리기까지 한 글꼴이다).
+     AW Mono·AW Nerd·AW Symbols 는 이 PC 의 글꼴을 서버가 내준 것 — 상자 그리기·아이콘·기술 기호 범위에만 걸려 있어 그 글자가 나올 때만 받는다.
+     한글은 D2Coding 이 있으면 그것, 없으면 화면 글꼴(IBM Plex Sans KR)로 — 두 칸 폭은 term.ts 의 fitWide 가 맞춘다. */
+  --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "JetBrains Mono Variable", "AW Mono", "D2Coding", "AW Nerd", "AW Symbols", "IBM Plex Sans KR", ui-monospace, monospace;
   --radius: 14px;
 }
 
