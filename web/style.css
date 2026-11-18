@@ -1336,11 +1336,12 @@ kbd {
   opacity: 0.5;
 }
 
-/* 입력창 아래의 상태줄·안내줄: 접지 않고 한 줄씩, 넘치는 끝만 끊는다. */
+/* 입력창 아래의 상태줄·안내줄과 배너 줄: 접지 않고 한 줄씩, 폭에 맞춰 줄여 넣고 넘치면 가로로 민다. */
 .term.preview .tl.fit {
-  overflow: hidden;
+  width: max-content;
+  min-width: 100%;
   white-space: pre;
-  text-overflow: ellipsis;
+  font-size: clamp(6px, calc((100cqi - 24px) / (var(--fit-cols, 55) * 0.62)), 10px);
 }
 
 .term .w1,
@@ -1398,8 +1399,9 @@ kbd {
 }
 
 .term.preview {
+  container-type: inline-size;
   max-height: 320px;
-  overflow-x: hidden;
+  overflow-x: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   border: 1px solid var(--line);

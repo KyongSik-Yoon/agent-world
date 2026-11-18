@@ -69,10 +69,12 @@ function installGlyphFonts(): void {
   document.head.append(style);
 }
 
-installGlyphFonts();
-if (document.body) fitWide();
-else addEventListener("DOMContentLoaded", fitWide, { once: true });
-document.fonts?.addEventListener("loadingdone", fitWide);
+if (typeof document !== "undefined") {
+  installGlyphFonts();
+  if (document.body) fitWide();
+  else addEventListener("DOMContentLoaded", fitWide, { once: true });
+  document.fonts?.addEventListener("loadingdone", fitWide);
+}
 
 const CUBE = [0, 95, 135, 175, 215, 255];
 
@@ -242,6 +244,8 @@ interface Row {
   node: HTMLDivElement;
   /** 색상 코드를 뺀 글. */
   text: string;
+  /** 줄 앞쪽에 배경색 공백 조각이 여럿 있는지(픽셀 로고 판별용). */
+  bgLogo: boolean;
   /** 줄이 끝났을 때의 스타일 — 다음 줄이 이어받는다. */
   end: Style;
 }
@@ -260,8 +264,12 @@ function renderLine(raw: string, start: Style, reflow: boolean): Row {
   const line = document.createElement("div");
   line.className = "tl";
   let last = 0;
+  let col = 0;
+  let bgRuns = 0;
   const emit = (chunk: string) => {
     if (!chunk) return;
+    if (style.bg && col < 30 && chunk.trim() === "") bgRuns += 1;
+    col += chunk.length;
     const rule = css(style);
     if (!rule) return cells(chunk, line);
     const span = document.createElement("span");
@@ -279,7 +287,7 @@ function renderLine(raw: string, start: Style, reflow: boolean): Row {
   if (!line.hasChildNodes()) line.append("\u200b");
   // 가로줄뿐인 줄(이름표가 낀 것도)은 접히면 여러 줄을 차지하므로 한 줄로 잘라 보여 준다.
   else if (reflow && RULE_LINE.test(text)) line.classList.add("rule");
-  return { key: styleKey(start) + raw, node: line, text, end: style };
+  return { key: styleKey(start) + raw, node: line, text, bgLogo: bgRuns >= 2, end: style };
 }
 
 export interface ScreenOptions {
@@ -299,17 +307,51 @@ const INPUT_RULE = /^\u2500+(?: [^\u2500-\u257F]{1,40} \u2500+)?$/;
 const isInputRule = (line: string): boolean => INPUT_RULE.test(line) && line.split("\u2500").length > 20;
 /** 입력창과 그 아래 꾸밈(상태줄·안내줄)이 차지할 수 있는 줄 수. */
 const FOOTER_REACH = 24;
+/** 입력창이 없는 대화상자 화면 맨 아래에 붙는 상태줄을 찾을 최대 줄 수. */
+const STATUS_REACH = 6;
 /** 입력창 안의 글이 차지할 수 있는 줄 수. 두 가로줄이 이보다 멀면 입력창이 아니라 대화를 가르는 줄이다. */
 const INPUT_ROWS = 12;
 /** 입력창의 첫 줄은 프롬프트 기호로 시작한다. 두 가로줄 사이가 이렇게 시작하지 않으면 입력창으로 보지 않는다. */
 const PROMPT_LINE = /^\s{0,2}[\u276f>\u203a\u00bb]/;
+const STATUS_STRONG = /^(?:\s*[\u23F5\u23F8]{1,2}\s|\s*[\u251C\u2514]\u2500\s.*?\b(?:5h|7d)\b)|[\u2580-\u259F\u{1FB00}-\u{1FBFF}\uE0B0-\uE0D7]{2,}\s+.*(?:\u2502|\u251C\u2500|\u2514\u2500|\b(?:5h|7d|context)\b)/u;
+const STATUS_CONT = /^(?:\s*[\u2580-\u259F\u{1FB00}-\u{1FBFF}\uE0B0-\uE0D7\s]+$|\s*[\u2580-\u259F\u{1FB00}-\u{1FBFF}\uE0B0-\uE0D7]{2,}\s+\S)/u;
+const LOGO_CHARS = /[\u2580-\u259F\u{1FB00}-\u{1FBFF}]/gu;
+const LOGO_ONLY = /^[\s\u2580-\u259F\u{1FB00}-\u{1FBFF}]+$/u;
+
+/**
+ * 입력창이 없는 화면(신뢰 확인 등 대화상자) 맨 아래에 Collie 상태줄이 남아 있으면 그 시작 줄을 찾는다.
+ */
+function statusFooterStart(lines: readonly string[]): number {
+  let end = -1;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    if (lines[i]!.trim() !== "") {
+      end = i;
+      break;
+    }
+  }
+  if (end < 0) return -1;
+  let start = end + 1;
+  let sawStrong = false;
+  for (let i = end; i >= Math.max(0, end - STATUS_REACH + 1); i -= 1) {
+    const line = lines[i]!;
+    if (line.trim() === "") break;
+    if (STATUS_STRONG.test(line)) {
+      sawStrong = true;
+      start = i;
+    } else if (sawStrong && STATUS_CONT.test(line)) {
+      start = i;
+    } else {
+      break;
+    }
+  }
+  return sawStrong ? start : -1;
+}
 
 /**
  * 입력창 아래의 꾸밈(상태줄·안내줄)이 시작하는 줄. 입력창을 확실히 찾지 못하면 -1.
  *
  * 데스크톱 폭에 맞춰 그린 상태줄은 좁은 미리보기에서 줄이 접혀 그림이 깨진다. 이 줄들은 접지 않고 한 줄씩,
- * 넘치는 끝만 … 로 끊어 보여 준다. 가로줄 두 개와 그 사이의 프롬프트 줄이 모두 보일 때만 그렇게 하므로,
- * 대화상자처럼 모양이 다른 화면은 평소대로 접혀 전부 나온다.
+ * 폭에 맞춰 줄여 넣고 넘치면 가로로 민다. 입력창이 없는 대화상자 화면이라도 맨 아래에 상태줄이 붙어 있으면 함께 잡는다.
  */
 export function footerStart(lines: readonly string[]): number {
   const rules: number[] = [];
@@ -317,9 +359,67 @@ export function footerStart(lines: readonly string[]): number {
     if (isInputRule(lines[i]!.trim())) rules.push(i);
   }
   const [bottom, top] = rules;
-  if (bottom === undefined || top === undefined || bottom - top > INPUT_ROWS + 1) return -1;
-  const first = lines.slice(top + 1, bottom).find((l) => l.trim() !== "");
-  return first !== undefined && PROMPT_LINE.test(first) ? bottom + 1 : -1;
+  if (bottom !== undefined && top !== undefined && bottom - top <= INPUT_ROWS + 1) {
+    const first = lines.slice(top + 1, bottom).find((l) => l.trim() !== "");
+    if (first !== undefined && PROMPT_LINE.test(first)) return bottom + 1;
+  }
+  return statusFooterStart(lines);
+}
+
+/** 문자열의 터미널 표시 칸 수(전각 2칸, 결합 문자 0칸). 우측 정렬용 긴 공백 뒤는 제외할 수 있다. */
+export function displayCols(text: string, trimRightGap = false): number {
+  const s = (trimRightGap ? text.replace(/ {20,}\S.*$/, "") : text).trimEnd();
+  let cols = 0;
+  for (const ch of s) {
+    if (JOINS.test(ch)) continue;
+    cols += WIDE.test(ch) ? 2 : 1;
+  }
+  return cols;
+}
+
+/** 왼쪽에 블록·배경 로고를 두고 오른쪽에 소개 글을 나란히 배치한 시작 배너 구간들 `[start, end)` 을 찾는다. */
+export function bannerRanges(lines: ReadonlyArray<{ text: string; bgLogo?: boolean }>, limit: number): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const kind = (row: { text: string; bgLogo?: boolean }): "none" | "logo" | "banner" => {
+    const t = row.text;
+    const head = t.slice(0, 30);
+    const blockCount = head.match(LOGO_CHARS)?.length ?? 0;
+    const hasLogo = blockCount >= 2 || row.bgLogo === true;
+    if (!hasLogo) return "none";
+    const onlyLogo = t.trim() === "" ? row.bgLogo === true : LOGO_ONLY.test(t);
+    return onlyLogo ? "logo" : "banner";
+  };
+
+  let i = 0;
+  while (i < limit) {
+    const k = kind(lines[i]!);
+    if (k === "none") {
+      i += 1;
+      continue;
+    }
+    const start = i;
+    let hasBannerText = k === "banner";
+    let count = 1;
+    i += 1;
+    while (i < limit) {
+      const next = kind(lines[i]!);
+      if (next !== "none") {
+        if (next === "banner") hasBannerText = true;
+        count += 1;
+        i += 1;
+        continue;
+      }
+      // 로고 위아래 조각 사이에 빈 줄 하나가 끼어도 같은 배너로 묶는다.
+      if (lines[i]!.text.trim() === "" && i + 1 < limit && kind(lines[i + 1]!) !== "none") {
+        count += 1;
+        i += 1;
+        continue;
+      }
+      break;
+    }
+    if (hasBannerText && count >= 2) ranges.push([start, i]);
+  }
+  return ranges;
 }
 
 /** 한 번 그린 뒤, 그리는 데 든 시간의 이만큼을 쉰다. 칠하기까지 쳐서, 쉬지 않고 흐르는 큰 화면이 메인 스레드의 40% 안팎을 쓴다. */
@@ -511,8 +611,31 @@ export class TermScreen {
     if (tail || this.back > 0) while (rows.length > 1 && rows[rows.length - 1]!.text.trim() === "") rows = rows.slice(0, -1);
     if (tail) {
       const start = this.fitFooter ? footerStart(rows.map((r) => r.text)) : -1;
-      rows.forEach((row, i) => row.node.classList.toggle("fit", start > 0 && i >= start));
+      const offset = Math.max(0, rows.length - tail);
       rows = rows.slice(-tail);
+      const footerAt = start >= 0 ? Math.max(0, start - offset) : -1;
+      const banners = this.fitFooter ? bannerRanges(rows, footerAt >= 0 ? footerAt : rows.length) : [];
+
+      const fitCols = new Array<number>(rows.length).fill(0);
+      const applyGroup = (from: number, to: number, trimGap: boolean) => {
+        let max = 0;
+        for (let i = from; i < to; i += 1) max = Math.max(max, displayCols(rows[i]!.text, trimGap));
+        if (max > 0) for (let i = from; i < to; i += 1) fitCols[i] = max;
+      };
+      if (footerAt >= 0 && footerAt < rows.length) applyGroup(footerAt, rows.length, true);
+      for (const [from, to] of banners) applyGroup(from, to, false);
+
+      rows.forEach((row, i) => {
+        const cols = fitCols[i]!;
+        const fit = cols > 0;
+        row.node.classList.toggle("fit", fit);
+        if (fit) {
+          const next = String(cols);
+          if (row.node.style.getPropertyValue("--fit-cols") !== next) row.node.style.setProperty("--fit-cols", next);
+        } else if (row.node.style.getPropertyValue("--fit-cols")) {
+          row.node.style.removeProperty("--fit-cols");
+        }
+      });
     }
     const stick = this.back === 0 || this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40;
     // 남는 줄은 붙어 있는 채로 두고, 빠진 줄만 떼고 새 줄만 끼운다.
