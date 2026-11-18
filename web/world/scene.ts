@@ -83,6 +83,12 @@ export class WorldScene {
   private flight: { target: THREE.Vector3; distance: number; position?: THREE.Vector3 } | null = null;
   /** 무언가를 고르기 직전의 시점 — 고르기를 풀면 여기로 돌아간다. */
   private home: { target: THREE.Vector3; position: THREE.Vector3 } | null = null;
+  /**
+   * 고른 캐릭터를 카메라가 놓아 줬다. 확인할 것이 있던 에이전트(완료·확인 필요)가 다시 일하러 가면, 그 일은 이미
+   * 시켰으니 집까지 가는 길을 확대한 채 따라갈 까닭이 없다 — 고르기 전에 보던 자리로 물러나 넓게 보여 준다.
+   * 고르기와 상태 창은 그대로 둔다. 같은 캐릭터를 다시 고르면 다시 다가간다.
+   */
+  private released = false;
   private downAt: { x: number; y: number } | null = null;
   /** 화면 부하에 따라 조절하는 해상도 배율(1 = 기기 화소 그대로, 상한 안에서). */
   private scale = 1;
@@ -310,6 +316,7 @@ export class WorldScene {
       seen.add(view.id);
       const actor = this.actors.get(view.id);
       if (actor && actor.view.vendor === view.vendor) {
+        if (view.id === this.selectedId && view.status === "working" && (actor.view.status === "done" || actor.view.status === "blocked")) this.release();
         actor.apply(view);
         continue;
       }
@@ -417,9 +424,12 @@ export class WorldScene {
     if (this.hoveredId === id) this.hoveredId = null;
   }
 
-  /** 고른 에이전트를 표시하고, fly 면 카메라가 따라간다. */
+  /** 고른 에이전트를 표시하고, fly 면 카메라가 따라간다. 놓아 준 캐릭터를 다시 고르면 다시 다가간다. */
   select(id: string | null, fly = true): void {
     const before = this.selectedId;
+    if (id === before && !this.released) return;
+    const released = this.released;
+    this.released = false;
     this.labelsDirty = 3;
     // 고르는 것은 어떻게 골랐든(목록에서 키보드로, 알림을 눌러서) 조작이다 — 다가가는 동안은 주사율 그대로 그린다.
     // 포인터나 키 입력만 조작으로 치면 그 밖의 길로 고른 때는 카메라가 초당 30장으로 끊겨 움직인다.
@@ -427,7 +437,7 @@ export class WorldScene {
       this.lastInputAt = performance.now();
       this.wake();
     } else if (id !== before) this.ease();
-    if (id && !before && fly) {
+    if (id && (!before || released) && fly) {
       // 돌아오는 중에 다시 골랐으면, 가던 곳이 돌아갈 자리다.
       const returning = this.flight?.position ? this.flight : null;
       this.home = { target: (returning?.target ?? this.controls.target).clone(), position: (returning?.position ?? this.camera.position).clone() };
@@ -552,6 +562,15 @@ export class WorldScene {
 
   private distance(): number {
     return this.camera.position.distanceTo(this.controls.target);
+  }
+
+  /** 고른 캐릭터를 따라가던 카메라를 고르기 전에 보던 자리로 물린다. 고르기는 그대로 둔다. */
+  private release(): void {
+    if (this.released) return;
+    this.released = true;
+    this.flight = this.home ? { target: this.home.target, position: this.home.position, distance: this.home.position.distanceTo(this.home.target) } : null;
+    this.home = null;
+    this.wake();
   }
 
   /** 처음 화면으로 돌아간다: 마을 전체가 보이는 자리·배율·각도. */
@@ -717,7 +736,7 @@ export class WorldScene {
     }
 
     // 고른 에이전트가 걸어가면 카메라의 목표도 같이 간다.
-    const selected = this.selectedId ? this.actors.get(this.selectedId) : undefined;
+    const selected = this.selectedId && !this.released ? this.actors.get(this.selectedId) : undefined;
     if (selected && this.flight) this.flight.target.copy(selected.group.position).setY(0.9);
     this.following = selected?.transit ?? false;
     if (this.flight?.position) {

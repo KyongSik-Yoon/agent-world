@@ -83,7 +83,11 @@ const builder = new Builder({
 });
 
 function select(id: string | null): void {
-  if (id === selectedId) return;
+  // 이미 고른 캐릭터를 다시 고르면, 카메라가 놓아 준 뒤라면 다시 다가간다(장면이 판단한다).
+  if (id === selectedId) {
+    if (id) scene.select(id);
+    return;
+  }
   // 완료한 에이전트의 상태 창을 들여다보다 떠나면, 읽은 것으로 적는다. 들여다본 시간은 "완료된 결과가
   // 눈앞에 보이던 동안"만 센다 — 고른 뒤에 끝났거나, 창을 가려 둔 사이에 끝난 것은 아직 읽지 않은 것이다.
   const left = hud.selected;
