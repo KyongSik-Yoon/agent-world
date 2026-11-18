@@ -597,7 +597,8 @@ export class DetailPanel {
       rows.push({ label: t("Effort"), value: h("span", { class: "with-gauge" }, level > 0 ? pips : null, a.effort) });
     }
     if (a.contextTokens) {
-      const text = a.contextWindow ? `${tokens(a.contextTokens)} / ${tokens(a.contextWindow)}` : t("{n} 토큰", { n: tokens(a.contextTokens) });
+      const used = a.contextWindow ? Math.round((a.contextTokens / a.contextWindow) * 100) : 0;
+      const text = a.contextWindow ? `${tokens(a.contextTokens)} / ${tokens(a.contextWindow)} · ${used}%` : t("{n} 토큰", { n: tokens(a.contextTokens) });
       let meter: HTMLElement | null = null;
       if (a.contextWindow) {
         const bar = h("i");

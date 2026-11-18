@@ -2,7 +2,9 @@
 //
 // slug 는 세션을 시작한 cwd 로 만들어지는데 herdr 가 알려주는 cwd 와 어긋날 수 있다(워크트리로
 // 들어간 세션 등). 그래서 slug 를 계산하지 않고 세션 id 로 파일을 찾는다.
-import { readdir, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -220,6 +222,60 @@ async function findSessionFile(sessionId: string): Promise<string | null> {
   return found;
 }
 
+/**
+ * 문맥 창 크기. 로그에는 쓴 토큰만 있고 창 크기(20만·100만)는 없다. herdr 웹 UI 의 statusLine tee 를 깔아 두었으면,
+ * Claude Code 가 statusLine 에 넘기는 창 크기를 세션마다 `~/.herdr/statusline-context/<프로필>-<세션>.json` 에 남긴다
+ * (프로필은 Claude 설정 폴더 실경로의 sha256 앞 16자리). 없으면 모르는 채로 둔다 — 토큰 수만 보인다.
+ * 이 파일은 세션의 첫 statusLine 때 한 번 쓰이고 덮어쓰이지 않는다. 세션 중에 /model 로 바꾸면 낡으므로, 적힌 모델이
+ * 지금 모델과 다르면 믿지 않는다. 파일은 바뀌었을 때만(mtime) 다시 읽는다.
+ */
+const WINDOW_FILE_MAX = 4096;
+const windows = new Map<string, { mtimeMs: number; model: string; window: number } | null>();
+let profile: string | null | undefined;
+
+function claudeProfile(): string | null {
+  if (profile !== undefined) return profile;
+  try {
+    const dir = realpathSync(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"));
+    profile = createHash("sha256").update(dir).digest("hex").slice(0, 16);
+  } catch {
+    profile = null;
+  }
+  return profile;
+}
+
+/** `claude-opus-5-5[1m]` 와 `claude-opus-5-5` 를 같은 모델로 본다. */
+const baseModel = (model: string): string => model.replace(/\[[^\]]*\]$/, "");
+
+async function contextWindow(sessionId: string, model: string | undefined): Promise<number | undefined> {
+  const prefix = SESSION_ID.test(sessionId) ? claudeProfile() : null;
+  if (!prefix) return undefined;
+  const path = join(homedir(), ".herdr", "statusline-context", `${prefix}-${sessionId}.json`);
+  let mtimeMs: number;
+  try {
+    const st = await stat(path);
+    if (!st.isFile() || st.size > WINDOW_FILE_MAX) return undefined;
+    mtimeMs = st.mtimeMs;
+  } catch {
+    return undefined;
+  }
+  let got = windows.get(path);
+  if (got === undefined || (got && got.mtimeMs !== mtimeMs)) {
+    got = null;
+    try {
+      const body: unknown = JSON.parse(await readFile(path, "utf8"));
+      const w = isRecord(body) ? num(body.window) : undefined;
+      const m = isRecord(body) ? str(body.model) : undefined;
+      if (w && Number.isSafeInteger(w) && w > 0 && m) got = { mtimeMs, model: m, window: w };
+    } catch {
+      // 쓰는 중이거나 깨진 파일이면 모르는 것으로 둔다.
+    }
+    windows.set(path, got);
+  }
+  if (!got || (model && baseModel(model) !== baseModel(got.model))) return undefined;
+  return got.window;
+}
+
 export const claude: Harness = {
   vendor: "claude",
   matches: (agent) => agent === "claude" || /^claude[-._]/.test(agent),
@@ -228,6 +284,7 @@ export const claude: Harness = {
     if (!SESSION_ID.test(sessionId)) return null;
     return findSessionFile(sessionId);
   },
+  contextWindow,
   async subagents(path) {
     // `<session>/subagents/agent-<id>.jsonl` — 최근에 움직인 로그를 돌고 있는 서브에이전트로 센다.
     const dir = join(path.replace(/\.jsonl$/, ""), "subagents");

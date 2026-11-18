@@ -178,6 +178,8 @@ tailscale serve --bg --https=4780 http://127.0.0.1:4780
 - Antigravity: `~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript_full.jsonl`
 - Codex: `~/.codex/sessions/YYYY/MM/DD/rollout-*-<session>.jsonl`
 
+Claude Code 의 로그에는 쓴 토큰만 있고 컨텍스트 창 크기는 없습니다. herdr 웹 UI 의 statusLine 기록을 켜 두었으면 그것이 세션마다 남기는 창 크기(`~/.herdr/statusline-context/`)를 읽어 상태 창에 비율과 막대를 함께 보여 주고, 없으면 토큰 수만 보여 줍니다.
+
 그 밖의 하네스는 herdr 가 알려 주는 제목과 상태만으로 캐릭터가 섭니다. 로그까지 읽게 하려면 `server/adapters/` 에 어댑터를 하나 추가하면 됩니다.
 
 herdr 에 붙어 있는 동안에는 herdr 의 에이전트만 보여 줍니다. herdr 밖의 세션(다른 터미널, 데스크톱 앱)에는 월드에서 말을 걸 수도, 확인 처리를 할 수도 없어서입니다. herdr 가 꺼져 있을 때는 최근 30분 안에 움직인 로그로 세션을 찾고, 상태는 로그 시각으로 추정합니다(`AGENT_WORLD_OUTSIDE=1` 이면 herdr 가 켜져 있어도 함께 보여 줍니다).

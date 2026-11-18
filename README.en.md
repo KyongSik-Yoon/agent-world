@@ -186,6 +186,10 @@ It does not hook into the harnesses. It reads two things.
 | Antigravity | `~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript_full.jsonl` |
 | Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*-<session>.jsonl` |
 
+Claude Code's log has the tokens used but not the size of the context window. If the herdr web UI's status-line
+capture is installed, the window size it leaves per session (`~/.herdr/statusline-context/`) is read so the status
+window shows a percentage and a bar; without it, only the token count is shown.
+
 While attached to herdr it shows herdr's agents only, because sessions outside herdr (other terminals, desktop
 apps) cannot be talked to or marked as seen from here. When herdr is not running it finds sessions from logs that
 moved in the last 30 minutes and estimates their status from log times (`AGENT_WORLD_OUTSIDE=1` shows them even

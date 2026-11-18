@@ -131,7 +131,7 @@ export function statusAge(a: AgentView, now = Date.now()): string {
 }
 
 export function tokens(n: number): string {
-  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+  return n >= 1_000_000 ? `${Number((n / 1_000_000).toFixed(2))}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 }
 
 export function clock(iso: string): string {

@@ -160,7 +160,7 @@ export class World {
     view.harnessVersion = s.harnessVersion;
     view.branch = s.branch;
     view.contextTokens = s.contextTokens;
-    view.contextWindow = s.contextWindow;
+    view.contextWindow = s.contextWindow ?? (s.contextTokens && harness.contextWindow ? await harness.contextWindow(sessionId, s.model) : undefined);
     view.recent = s.recent;
     view.activity = currentActivity(s);
     view.lastPrompt = s.lastPrompt;
