@@ -71,6 +71,8 @@ terminal.onGone = (title) => hud.toast(t("터미널을 닫았습니다"), t("{ti
 terminal.onToggle = (open) => {
   scene.setCovered(open);
   hud.setCovered(open);
+  // 덮인 화면의 애니메이션(일하는 로고, 이름표의 깜빡임)을 멈춘다 — 보이지 않는 움직임이 합성을 초당 수십 장 붙든다.
+  document.body.toggleAttribute("data-covered", open);
 };
 
 const builder = new Builder({
