@@ -36,6 +36,12 @@ const FIRST_PROMPT_HOLD_MS = 45_000;
 /** pane 이 닫히면서 로그에 마지막 몇 줄이 더 적히는 것을 "다시 움직였다"로 보지 않기 위한 여유. */
 const RETIRED_GRACE_MS = 15_000;
 
+/**
+ * herdr 가 알려 준 세션을 하네스가 아직 모를 때(서브에이전트인지 가릴 행이 아직 없을 때) pane 이 읽던 대화를 붙드는 최대 시간.
+ * 이보다 오래 모르면 새 대화로 받아들인다.
+ */
+const UNKNOWN_SESSION_HOLD_MS = 10_000;
+
 /** 스냅샷 사이가 이보다 벌어지면 "지켜보던 중"이 아니었다고 본다. */
 const WATCH_GAP_MS = 5_000;
 
@@ -95,6 +101,8 @@ export class World {
   private unread = new Map<string, boolean>();
   /** 월드가 첫 지시를 보낸 pane 과 보낸 시각. 첫 응답이 로그에 적히면 지운다. */
   private readonly firstPrompt = new Map<string, number>();
+  /** pane → 그 pane 에서 읽고 있는 맨 위 세션, 그리고 하네스가 모르는 세션을 받기 시작한 시각. */
+  private readonly mainOf = new Map<string, { id: string; unknownSince?: number }>();
 
   /** outside: herdr 에 붙어 있는 동안에도 herdr 밖 세션을 보여 준다. */
   constructor(
@@ -204,9 +212,10 @@ export class World {
     let summary: LogSummary | undefined;
     let harnessTitle: string | undefined;
     if (harness && session?.kind === "id" && session.value) {
-      view.sessionId = session.value;
-      summary = await this.fromLog(view, harness, session.value, undefined, this.firstPrompt.has(pane.pane_id));
-      harnessTitle = await harness.title?.(session.value);
+      const sessionId = await this.mainSession(pane.pane_id, harness, session.value);
+      view.sessionId = sessionId;
+      summary = await this.fromLog(view, harness, sessionId, undefined, this.firstPrompt.has(pane.pane_id));
+      harnessTitle = await harness.title?.(sessionId);
     }
 
     const terminalTitle = (pane.terminal_title_stripped ?? "").trim();
@@ -264,6 +273,29 @@ export class World {
     view.status = status;
     view.statusSince = this.statusSince(view.id, status, view.logUpdatedAt);
     return view;
+  }
+
+  /**
+   * pane 에서 읽을 세션. herdr 는 pane 안에서 마지막으로 훅을 부른 대화를 알려 주는데, AGY 의 서브에이전트도 같은 pane 에서
+   * 훅을 불러 그 자리를 차지한다. 하네스가 맨 위 대화를 알면 그것을 읽고, 아직 모르면 잠시 읽던 대화를 붙든다.
+   */
+  private async mainSession(paneId: string, harness: Harness, reported: string): Promise<string> {
+    if (!harness.mainSession) return reported;
+    const main = await harness.mainSession(reported);
+    const prev = this.mainOf.get(paneId);
+    if (main) {
+      this.mainOf.set(paneId, { id: main });
+      return main;
+    }
+    if (prev && prev.id !== reported) {
+      const since = prev.unknownSince ?? Date.now();
+      if (Date.now() - since < UNKNOWN_SESSION_HOLD_MS) {
+        this.mainOf.set(paneId, { id: prev.id, unknownSince: since });
+        return prev.id;
+      }
+    }
+    this.mainOf.set(paneId, { id: reported });
+    return reported;
   }
 
   private async externalView(file: LogFile & { harness: Harness }): Promise<AgentView | undefined> {
@@ -392,6 +424,7 @@ export class World {
       for (const id of this.doneSeq.keys()) if (!alive.has(id)) this.doneSeq.delete(id);
       for (const id of this.unread.keys()) if (!alive.has(id)) this.unread.delete(id);
       for (const id of this.firstPrompt.keys()) if (!alive.has(id)) this.firstPrompt.delete(id);
+      for (const id of this.mainOf.keys()) if (!alive.has(id)) this.mainOf.delete(id);
     }
 
     // herdr 에 붙어 있으면 herdr 의 에이전트만 보여 준다 — 밖의 세션은 월드에서 말을 걸 수도, 확인 처리할 수도

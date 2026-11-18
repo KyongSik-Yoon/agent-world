@@ -5,7 +5,7 @@
 // 곁의 `transcript.jsonl` 은 같은 행들을 줄여 적은 사본이다(도구 호출 인자와 긴 글이 잘리고 `truncated_fields` 가 붙는다).
 // 활동의 원문을 펼쳐 보려면 잘리지 않은 쪽을 읽어야 해서 `_full` 을 읽고, 없으면 줄인 쪽으로 물러난다.
 // 꼬리만 읽고 이어서 읽으므로 파일이 두 배 커도 읽는 비용은 거의 같다(갱신 한 번 0.16ms 안팎으로 같았다).
-// 제목은 로그에 없어서 `conversation_summaries.db` 에서 읽는다.
+// 제목과 서브에이전트의 부모 대화는 로그에 없어서 `conversation_summaries.db` 에서 읽는다.
 import { Database } from "bun:sqlite";
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -137,25 +137,56 @@ export const agyReader: LogReader<LogSummary> = {
   ready: (s) => s.sawAssistant,
 };
 
-const titles = new Map<string, { at: number; title?: string }>();
+// 요약 DB 의 한 행. 제목과, 서브에이전트면 그것을 부른 대화.
+interface SummaryRow {
+  title?: string;
+  parent?: string;
+}
 
-function readTitle(sessionId: string): string | undefined {
-  const hit = titles.get(sessionId);
-  if (hit && Date.now() - hit.at < TITLE_TTL_MS) return hit.title;
-  let title: string | undefined;
+/** id → 행. null 은 "DB 에 아직 행이 없다", undefined 는 "DB 를 읽지 못했다". */
+const rows = new Map<string, { at: number; row: SummaryRow | null | undefined }>();
+/** 행이 없던 id 는 금방 다시 본다 — 갓 만든 대화는 행이 조금 늦게 적힐 수 있다. */
+const MISSING_TTL_MS = 2_000;
+
+function readRow(sessionId: string): SummaryRow | null | undefined {
+  const hit = rows.get(sessionId);
+  if (hit && Date.now() - hit.at < (hit.row === null ? MISSING_TTL_MS : TITLE_TTL_MS)) return hit.row;
+  let row: SummaryRow | null | undefined;
   try {
     const db = new Database(join(root(), "conversation_summaries.db"), { readonly: true });
     try {
-      const row = db.query("select title from conversation_summaries where conversation_id = ?").get(sessionId) as { title?: string } | null;
-      title = row?.title?.trim() || undefined;
+      const r = db
+        .query("select title, parent_conversation_id as parent from conversation_summaries where conversation_id = ?")
+        .get(sessionId) as { title?: string; parent?: string } | null;
+      row = r ? { title: r.title?.trim() || undefined, parent: r.parent?.trim() || undefined } : null;
     } finally {
       db.close();
     }
   } catch {
-    // DB 가 없거나 잠겨 있다 — 제목 없이 간다.
+    // DB 가 없거나 잠겨 있거나 열이 다르다 — 모르는 채로 간다.
   }
-  titles.set(sessionId, { at: Date.now(), title });
-  return title;
+  rows.set(sessionId, { at: Date.now(), row });
+  return row;
+}
+
+/** 서브에이전트가 몇 겹으로 부를 수 있는지의 상한. 행이 서로를 부모로 가리켜도 돌지 않게 한다. */
+const MAX_NESTING = 8;
+
+/**
+ * 이 대화를 거슬러 올라간 맨 위 대화. 서브에이전트(invoke_subagent, 스웜)는 저마다 새 대화로 돌며 같은 pane 의 환경에서
+ * herdr 훅을 불러, herdr 가 pane 의 세션을 그 대화로 바꿔 적는다. 그대로 읽으면 서브에이전트들이 돌아가며 카드를 덮어쓴다.
+ * DB 에 행이 아직 없으면 null — 서브에이전트인지 아직 알 수 없다.
+ */
+function mainOf(sessionId: string): string | null {
+  let id = sessionId;
+  for (let depth = 0; depth < MAX_NESTING; depth += 1) {
+    const row = readRow(id);
+    if (row === undefined) return id;
+    if (row === null) return depth === 0 ? null : id;
+    if (!row.parent) return id;
+    id = row.parent;
+  }
+  return id;
 }
 
 export const agy: Harness = {
@@ -167,7 +198,10 @@ export const agy: Harness = {
     return (await findLog(sessionId))?.path ?? null;
   },
   async title(sessionId) {
-    return SESSION_ID.test(sessionId) ? readTitle(sessionId) : undefined;
+    return SESSION_ID.test(sessionId) ? (readRow(sessionId)?.title ?? undefined) : undefined;
+  },
+  async mainSession(sessionId) {
+    return SESSION_ID.test(sessionId) ? mainOf(sessionId) : sessionId;
   },
   async discover(sinceMs) {
     let ids: string[];
@@ -182,7 +216,8 @@ export const agy: Harness = {
         if (!SESSION_ID.test(sessionId)) return;
         // 로그가 아직 없는 대화는 null 이다.
         const log = await findLog(sessionId);
-        if (log && log.mtimeMs >= sinceMs) found.push({ sessionId, ...log });
+        // 서브에이전트는 부른 대화의 일부다 — 따로 주민으로 세우지 않는다.
+        if (log && log.mtimeMs >= sinceMs && !readRow(sessionId)?.parent) found.push({ sessionId, ...log });
       }),
     );
     return found;

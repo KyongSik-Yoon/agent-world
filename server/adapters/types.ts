@@ -21,6 +21,11 @@ export interface Harness {
   contextWindow?(sessionId: string, model: string | undefined): Promise<number | undefined>;
   /** 로그에 없는 제목을 다른 곳에서 읽는다(AGY 의 대화 요약 DB). */
   title?(sessionId: string): Promise<string | undefined>;
+  /**
+   * herdr 가 알려 준 세션이 서브에이전트면 그것을 부른 맨 위 세션을 돌려준다. 맨 위면 그대로, 아직 알 수 없으면 null.
+   * 없으면 herdr 의 세션을 그대로 읽는다.
+   */
+  mainSession?(sessionId: string): Promise<string | null>;
   /** herdr 밖에서 도는 세션을 찾는다 — sinceMs 이후로 바뀐 로그 파일들. */
   discover?(sinceMs: number): Promise<LogFile[]>;
 }
