@@ -412,6 +412,8 @@ export function gridRanges(lines: readonly string[], limit: number): Array<[numb
 
 /** 상태줄을 폭에 맞춰 줄일 때의 하한(px). 스타일시트의 .tl.fit 과 같은 값이다. */
 const FIT_MIN_PX = 8;
+/** 손가락·휠로 굴린 뒤 이만큼(ms)은 스크롤을 사용자가 한 것으로 본다(관성으로 구르는 동안). */
+const USER_SCROLL_MS = 1000;
 /** 오른쪽 정렬용으로 보고 줄일 공백의 길이. */
 const RIGHT_GAP = 8;
 const ANSI_TOKEN = /\x1b\[[0-9;:?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\s\S]/gu;
@@ -616,20 +618,43 @@ export class TermScreen {
     // 폭이 바뀌면 상태줄을 줄여 넣을지 펴서 접을지 다시 정한다(상세창 폭을 끌어 바꿀 때).
     let lastWidth = 0;
     new ResizeObserver(() => {
+      // 높이만 바뀌어도(화면 자판) 붙어 있던 화면은 다시 맨 아래로.
+      if (this.pinned && this.el.isConnected) this.el.scrollTop = this.el.scrollHeight;
       const w = this.el.clientWidth;
       if (w === lastWidth) return;
       lastWidth = w;
       if (this.flowing && this.fitFooter) this.redraw();
     }).observe(this.el);
     this.el.textContent = t("화면을 읽는 중…");
+    // 아래에 붙이기를 멈추는 것은 사용자가 직접 올렸을 때뿐이다. 브라우저도 스스로 스크롤 이벤트를 낸다(화면 자판이
+    // 열리고 닫힐 때, 위쪽 줄 높이가 바뀌어 보던 자리를 지킬 때) — 그것까지 "올려 읽는 중"으로 알면 휴대폰에서 상태줄이
+    // 입력칸 밑에 숨은 채 남았다.
+    let touching = false;
+    let touchedAt = -Infinity;
+    const touched = () => {
+      touchedAt = performance.now();
+    };
+    const opts = { passive: true };
+    for (const type of ["wheel", "pointerdown", "touchmove"] as const) this.el.addEventListener(type, touched, opts);
+    this.el.addEventListener("touchstart", () => {
+      touching = true;
+      touched();
+    }, opts);
+    for (const type of ["touchend", "touchcancel"] as const) this.el.addEventListener(type, () => {
+      touching = false;
+      touched();
+    }, opts);
     this.el.addEventListener(
       "scroll",
       () => {
         if (!this.el.isConnected) return;
         this.savedTop = this.el.scrollTop;
-        this.pinned = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40;
+        if (this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40) this.pinned = true;
+        // 손을 뗀 뒤에도 관성으로 한동안 구른다.
+        else if (touching || performance.now() - touchedAt < USER_SCROLL_MS) this.pinned = false;
+        else if (this.pinned) this.el.scrollTop = this.el.scrollHeight;
       },
-      { passive: true },
+      opts,
     );
   }
 
