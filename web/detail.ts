@@ -722,7 +722,7 @@ export class DetailPanel {
       const text = h("span", {}, item.error ? t("{line} — 실패", { line }) : line);
       text.title = line;
       const row = h("li", cls ? { class: cls } : {}, h("time", {}, clock(item.at)), kind ? icon(kind) : h("i", {}), text);
-      row.dataset.k = `log:${logKey(item)}`;
+      row.dataset.k = `log:${logKey(item, n)}`;
       if (ref) {
         // 줄 전체가 펼치는 단추다. 글을 골라 두고 뗀 손은 펼치지 않는다.
         row.tabIndex = 0;
