@@ -1,7 +1,7 @@
 // 만들고 정리하는 일: 집 짓기(스페이스·워크트리), 새 주민(에이전트 시작), 새 탭, 나누기, 이름 바꾸기, 닫기.
 //
 // 닫기는 herdr 의 API 가 TUI 처럼 되묻지 않으므로, 여기서 무엇이 함께 꺼지는지 보여 주고 확인을 받는다.
-import type { AgentView, WorldSnapshot } from "../shared/types.ts";
+import type { AgentView, ModelCatalog, WorldSnapshot } from "../shared/types.ts";
 import { ApiError, get, post } from "./api.ts";
 import { brandFor } from "./brands.ts";
 import { type TargetKind, workspaceKey } from "./detail.ts";
@@ -28,6 +28,20 @@ interface KindInfo {
   installed: boolean;
 }
 
+/** 모델·수준 칸 짝. 하네스를 정하면 그 하네스의 목록으로 채운다. */
+interface ModelPick {
+  el: HTMLElement;
+  /** kind 의 목록으로 채운다. now 는 떠 있는 세션의 지금 값 — 그 값을 고른 채로 연다. */
+  load(kind: string, now?: { model?: string; effort?: string }): Promise<ModelCatalog | null>;
+  model(): string;
+  effort(): string;
+  /** 고른 값이 지금 값(now)과 같은지. */
+  unchanged(): boolean;
+  /** 모델을 지금 것과 다른 것으로 골랐는지. */
+  modelChanged(): boolean;
+  onChange(listener: () => void): void;
+}
+
 const AGENT_NAME = /^[a-z][a-z0-9_-]{0,31}$/;
 const READY_TIMEOUT_MS = 60_000;
 
@@ -45,6 +59,7 @@ function splitArgs(text: string): string[] {
 export class Builder {
   private readonly waiters = new Set<(snapshot: WorldSnapshot) => void>();
   private kinds: KindInfo[] | undefined;
+  private readonly catalogs = new Map<string, Promise<ModelCatalog | null>>();
 
   constructor(private readonly deps: BuildDeps) {}
 
@@ -76,6 +91,97 @@ export class Builder {
   private async loadKinds(): Promise<KindInfo[]> {
     this.kinds ??= (await get<{ kinds: KindInfo[] }>("/api/kinds").catch(() => ({ kinds: [] }))).kinds;
     return this.kinds;
+  }
+
+  private catalog(kind: string): Promise<ModelCatalog | null> {
+    let got = this.catalogs.get(kind);
+    if (!got) {
+      got = get<ModelCatalog>(`/api/models?kind=${encodeURIComponent(kind)}`).catch(() => null);
+      this.catalogs.set(kind, got);
+      // 비었거나 못 받은 목록은 기억하지 않는다 — agy 의 목록은 네트워크를 거쳐 오고, 잠깐 실패할 수 있다.
+      void got.then((c) => {
+        if (!c || c.models.length === 0) this.catalogs.delete(kind);
+      });
+    }
+    return got;
+  }
+
+  /**
+   * 모델과 사고 수준을 고르는 두 칸. 띄울 때(start)는 비운 칸이 하네스의 기본값이고, 떠 있는 세션을 바꿀 때(switch)는
+   * 지금 값을 고른 채로 연다. Claude 는 비운 칸을 그대로 두고, Codex 는 모델을 늘 함께 보내며 비운 수준은 그 모델의 기본값이다.
+   */
+  private modelPick(mode: "start" | "switch"): ModelPick {
+    const model = h("select", {});
+    const effort = h("select", {});
+    const note = h("small", {}, mode === "start" ? t("이 세션에만 적용됩니다 — 하네스의 기본값은 그대로입니다.") : "");
+    const el = h("div", { class: "field-pair" }, field(t("모델"), model), field(t("Effort"), effort), note);
+    el.hidden = true;
+    let catalog: ModelCatalog | null = null;
+    let kind = "";
+    let now: { model?: string; effort?: string } = {};
+    let nowModel = "";
+    let loading = 0;
+    const listeners: Array<() => void> = [];
+    const changed = () => listeners.forEach((f) => f());
+
+    const fillEfforts = () => {
+      const choice = catalog?.models.find((m) => m.id === model.value);
+      const levels = choice ? choice.efforts : (catalog?.efforts ?? []);
+      const keep = effort.value || (model.value === nowModel ? (now.effort ?? "") : "");
+      const blank = mode === "start" ? t("기본값") : kind === "claude" ? t("지금 수준 그대로") : t("모델의 기본값");
+      effort.replaceChildren(
+        h("option", { value: "" }, blank),
+        ...levels.map((l) => h("option", { value: l }, l === choice?.defaultEffort ? t("{level} (기본)", { level: l }) : l)),
+      );
+      effort.value = levels.includes(keep) ? keep : "";
+      effort.disabled = levels.length === 0;
+    };
+    model.addEventListener("change", () => {
+      fillEfforts();
+      changed();
+    });
+    effort.addEventListener("change", changed);
+
+    return {
+      el,
+      load: async (next, current) => {
+        kind = next;
+        now = current ?? {};
+        const ticket = ++loading;
+        catalog = null;
+        el.hidden = !next;
+        if (!next) return null;
+        model.replaceChildren(h("option", { value: "" }, t("목록을 불러오는 중…")));
+        effort.replaceChildren(h("option", { value: "" }, "—"));
+        model.disabled = effort.disabled = true;
+        const got = await this.catalog(next);
+        if (ticket !== loading) return null;
+        catalog = got;
+        // 띄울 때는 고를 것이 없으면 칸을 감춘다 — 실행 인자 칸이 남아 있다.
+        if (!got || got.models.length === 0) {
+          el.hidden = mode === "start";
+          model.replaceChildren(h("option", { value: "" }, t("모델 목록을 읽지 못했습니다")));
+          changed();
+          return got;
+        }
+        // 로그가 말하는 지금 모델을 목록에서 찾는다. Claude 는 별칭(opus)으로, 로그는 id(claude-opus-5-5)로 적는다.
+        const lower = (now.model ?? "").toLowerCase();
+        nowModel = got.models.find((m) => m.id.toLowerCase() === lower)?.id ?? (next === "claude" ? (got.models.find((m) => lower.includes(m.id))?.id ?? "") : "");
+        const blank = mode === "start" ? t("기본값") : next === "claude" ? t("지금 모델 그대로") : null;
+        model.replaceChildren(...(blank ? [h("option", { value: "" }, blank)] : []), ...got.models.map((m) => h("option", { value: m.id }, m.label)));
+        model.value = nowModel || (blank ? "" : got.models[0]!.id);
+        model.disabled = false;
+        fillEfforts();
+        changed();
+        return got;
+      },
+      model: () => model.value,
+      effort: () => effort.value,
+      // 빈 칸이 "그대로"인 것은 Claude 뿐이다. Codex 의 빈 수준은 그 모델의 기본값으로 바꾸라는 뜻이다.
+      unchanged: () => (model.value === nowModel || model.value === "") && (effort.value === (now.effort ?? "") || (effort.value === "" && kind === "claude")),
+      modelChanged: () => model.value !== "" && model.value !== nowModel,
+      onChange: (listener) => listeners.push(listener),
+    };
   }
 
   private freeName(kind: string): string {
@@ -140,7 +246,8 @@ export class Builder {
     const kind = h("select", {});
     if (optional) kind.append(h("option", { value: "" }, t("없음 — 셸만 둡니다")));
     const name = h("input", { type: "text", autocomplete: "off", spellcheck: "false", pattern: "[a-z][a-z0-9_\\-]{0,31}" });
-    const args = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: t("예: --model opus") });
+    const args = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: t("예: --add-dir ~/notes") });
+    const pick = this.modelPick("start");
     const prompt = h("textarea", { rows: "3", placeholder: t("에이전트가 준비되면 바로 보낼 말 (비워 두면 보내지 않습니다)") });
     let touched = false;
     name.addEventListener("input", () => {
@@ -149,6 +256,7 @@ export class Builder {
     const syncName = () => {
       if (!touched) name.value = kind.value ? this.freeName(kind.value) : "";
       for (const el of [name, args, prompt]) el.disabled = kind.value === "";
+      void pick.load(kind.value);
     };
     kind.addEventListener("change", syncName);
     void this.loadKinds().then((kinds) => {
@@ -168,6 +276,7 @@ export class Builder {
     return {
       fields: [
         field(t("주민 (에이전트)"), kind),
+        pick.el,
         field(t("주민 이름"), name, t("herdr 에서 이 에이전트를 부르는 이름 — 영문 소문자로 시작, 소문자·숫자·-·_")),
         field(t("실행 인자"), args, t("선택 사항")),
         field(t("첫 지시"), prompt),
@@ -176,7 +285,7 @@ export class Builder {
       start: async (paneId, step) => {
         if (!AGENT_NAME.test(name.value)) throw new Error(t("주민 이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 32자까지 쓸 수 있습니다."));
         step(t("{name} 띄우는 중…", { name: brandFor(kind.value).name }));
-        await post("/api/agent/start", { paneId, kind: kind.value, name: name.value, args: splitArgs(args.value) });
+        await post("/api/agent/start", { paneId, kind: kind.value, name: name.value, model: pick.model(), effort: pick.effort(), args: splitArgs(args.value) });
         step(t("에이전트가 준비되기를 기다리는 중…"));
         const agent = await this.waitFor((s) => s.agents.find((a) => a.id === paneId && a.status !== "unknown"), READY_TIMEOUT_MS);
         if (!agent) throw new Error(t("에이전트가 제때 준비되지 않았습니다. 터미널 화면에서 무슨 일이 있는지 확인해 보세요."));
@@ -322,6 +431,30 @@ export class Builder {
   }
 
   // ── 이름 바꾸기 · 닫기 ─────────────────────────────────────────────────────────────────────
+
+  /** 떠 있는 세션의 모델·사고 수준을 그 세션에만 바꾼다. 다음에 들일 주민의 기본값은 그대로다. */
+  switchModel(a: AgentView): void {
+    const paneId = a.paneId;
+    if (!paneId) return;
+    const pick = this.modelPick("switch");
+    const note = h("p", { class: "dlg-note" }, t("이 세션에만 적용됩니다. 다음에 들이는 주민의 기본값은 그대로입니다."));
+    // 대화가 이어진 세션에서 모델을 바꾸면 그 대화의 캐시를 새 모델이 처음부터 다시 읽는다(Claude 는 확인창으로 묻는다 — 서버가 "예"를 고른다).
+    const cache = h("p", { class: "warn" }, t("모델을 바꾸면 다음 응답은 지금까지의 대화를 처음부터 다시 읽어 느리고 토큰이 더 듭니다."));
+    cache.hidden = true;
+    const dlg = this.dialog(t("모델 바꾸기 — {name}", { name: a.title }), t("적용"), [pick.el, note, cache], async (step) => {
+      if (pick.unchanged()) return;
+      step(t("{name} 의 모델을 바꾸는 중…", { name: brandFor(a.vendor).name }));
+      const { switched } = await post<{ switched: { model?: string; effort?: string } }>("/api/model", { paneId, model: pick.model(), effort: pick.effort() });
+      this.deps.toast(t("모델을 바꿨습니다"), [switched.model, switched.effort].filter(Boolean).join(" · "), "var(--accent)");
+    });
+    const submit = dlg.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    pick.onChange(() => {
+      cache.hidden = !(pick.modelChanged() && a.lastReply);
+      submit.disabled = pick.unchanged();
+    });
+    submit.disabled = true;
+    void pick.load(a.vendor, { model: a.model, effort: a.effort });
+  }
 
   rename(kind: TargetKind, id: string, current: string, what: string): void {
     const input = h("input", { type: "text", autocomplete: "off", value: current });

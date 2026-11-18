@@ -86,6 +86,32 @@ export interface AgentView {
   subagents: number;
 }
 
+/** 하네스에서 고를 수 있는 모델 하나와 그 모델이 받는 사고 수준(effort). */
+export interface ModelChoice {
+  /** 하네스에 넘기는 이름(Claude 는 별칭, Codex 는 slug, agy 는 수준을 뗀 모델 id). */
+  id: string;
+  label: string;
+  /** 낮은 것부터. 비어 있으면 수준을 고를 수 없는 모델이다. */
+  efforts: string[];
+  /** 하네스가 알려 준 이 모델의 기본 수준. */
+  defaultEffort?: string;
+}
+
+/**
+ * 떠 있는 세션의 모델을 그 세션에만 바꿀 수 있는 하네스. agy 는 바꾸면 다음 세션의 기본값까지 바뀌어 띄울 때만 고른다
+ * (server/models.ts 머리말).
+ */
+export const LIVE_MODEL_KINDS: readonly string[] = ["claude", "codex"];
+
+export interface ModelCatalog {
+  kind: string;
+  models: ModelChoice[];
+  /** 모델을 고르지 않았을 때 고를 수 있는 수준 — 목록의 모델들이 받는 것을 모두 모아 낮은 것부터. */
+  efforts: string[];
+  /** 떠 있는 세션의 모델을 그 세션에만 바꿀 수 있는지. 아니면 띄울 때만 고른다(agy 는 바꾸면 기본값까지 바뀐다). */
+  live: boolean;
+}
+
 export interface WorkspaceView {
   id: string;
   label: string;

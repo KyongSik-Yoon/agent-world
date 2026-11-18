@@ -149,6 +149,9 @@ function act(action: Action): void {
     case "rename":
       builder.rename(action.kind, action.id, action.current, action.what);
       break;
+    case "model":
+      builder.switchModel(action.agent);
+      break;
     case "close":
       builder.close(action.kind, action.id);
       break;

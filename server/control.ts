@@ -27,7 +27,9 @@ import {
   herdrTerm,
   type Kind,
 } from "./herdr.ts";
+import { claudeComposer, squash } from "./composer.ts";
 import { MAX_IMAGE_BYTES, MAX_IMAGES, imagePath, saveImage } from "./images.ts";
+import { ModelError, modelCatalog, startFlags, switchModel } from "./models.ts";
 import { termTheme } from "./termtheme.ts";
 import { L, asText, langOf, say, type Text } from "./text.ts";
 import type { World } from "./world.ts";
@@ -67,20 +69,6 @@ const SUBMIT_PRESSES = 3;
 const SUBMIT_MARK_CHARS = 12;
 /** Claude Code 는 긴 붙여넣기를 입력창에 이 표시로 접어 둔다. */
 const PASTED_MARK = /\[Pasted text #\d+/;
-/** Claude Code 입력창의 위아래 가로줄. */
-const RULE = /^\s*─{20,}/;
-
-function squash(s: string): string {
-  return s.replace(/\s+/g, "");
-}
-
-/** Claude Code 화면에서 입력창(맨 아래 가로줄 두 개 사이)의 글. 아직 그리지 않았으면 undefined. */
-export function claudeComposer(screen: string): string | undefined {
-  const lines = screen.split("\n");
-  const rules = lines.flatMap((l, i) => (RULE.test(l) ? [i] : []));
-  if (rules.length < 2) return undefined;
-  return lines.slice(rules[rules.length - 2]! + 1, rules[rules.length - 1]).join("\n");
-}
 
 type Handler = (req: Request) => Response | Promise<Response>;
 type Body = Record<string, unknown>;
@@ -190,7 +178,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         after();
         return json({ ok: true, ...(typeof result === "object" && result !== null ? result : {}) });
       } catch (e) {
-        if (e instanceof Reject) return json({ error: say(e.text, lang), code: e.code }, e.status);
+        if (e instanceof Reject || e instanceof ModelError) return json({ error: say(e.text, lang), code: e.code }, e.status);
         if (e instanceof HerdrError) return json({ error: say(e.text, lang), code: e.code }, 502);
         // 예상하지 못한 실패도 화면이 읽을 수 있는 모양으로 돌려준다.
         console.error(say(L("조작 요청 실패:", "Control request failed:")), e);
@@ -516,7 +504,21 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       if (!AGENT_NAME.test(name)) throw new Reject(L("이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 32자까지 쓸 수 있습니다.", "A name starts with a lowercase letter and may use lowercase letters, digits, - and _ (32 characters at most)."), 400);
       const args = Array.isArray(body.args) ? body.args : [];
       if (args.length > 32 || args.some((a) => typeof a !== "string" || a.length > 2000)) throw new Reject(L("args 가 올바르지 않습니다.", "args is not valid."), 400);
-      await herdrStartAgent(paneId, kind, name, args as string[]);
+      // 고른 모델·수준은 실행 인자로 넘긴다 — 그 세션에만 적용되고 하네스의 기본값은 그대로다(models.ts).
+      const flags = await startFlags(kind, text(body, "model", 120), text(body, "effort", 20));
+      await herdrStartAgent(paneId, kind, name, [...flags, ...(args as string[])]);
+    }),
+    "/api/model": mutate(async (body) => {
+      const paneId = await need("agent", text(body, "paneId"));
+      const pane = (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId);
+      // 일하는 중에 바꾸는 것은 하네스마다 어떻게 되는지 확인하지 않았다. 턴 사이에만 바꾼다.
+      if (pane?.agent_status === "working") throw new Reject(L("일하는 중에는 모델을 바꾸지 않습니다. 이번 일이 끝난 뒤에 바꿔 주세요.", "The model is not switched mid-task. Switch it once this task is done."), 409, "agent_busy");
+      if (pane?.agent_status === "blocked") throw new Reject(L("에이전트가 질문에 대한 답을 기다리는 중입니다.", "The agent is waiting for an answer to its question."), 409, "agent_blocked");
+      await refuseIfAsking(paneId);
+      const switched = await switchModel(paneId, (pane?.agent ?? "").toLowerCase(), text(body, "model", 120), text(body, "effort", 20));
+      world.modelSwitched(paneId, switched);
+      poke(paneId);
+      return { switched };
     }),
 
     // ── 관리 ─────────────────────────────────────────────────────────────────────────────────────
@@ -549,6 +551,12 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         } catch (e) {
           return json({ error: (e as Error).message }, 502);
         }
+      }),
+    },
+    "/api/models": {
+      GET: guarded(async (req) => {
+        const kind = new URL(req.url).searchParams.get("kind") ?? "";
+        return json((await modelCatalog(kind)) ?? { kind, models: [], efforts: [], live: false });
       }),
     },
     "/api/dirs": {

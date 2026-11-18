@@ -980,6 +980,22 @@ kbd {
   overflow-wrap: anywhere;
 }
 
+/* 줄 끝의 작은 동작(모델 바꾸기). 글자는 11px 이지만 누를 자리는 넓히고, 바깥 여백을 그만큼 빼서 줄 높이는 그대로 둔다. */
+.spec-top .link {
+  margin: -8px -6px -8px auto;
+  padding: 8px 6px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: 600 11px var(--font);
+  cursor: pointer;
+}
+
+.spec-top .link:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
 .spec-top .effort {
   display: inline-flex;
   align-items: center;
@@ -2341,6 +2357,36 @@ dialog.dlg hr {
 
 .field :disabled {
   opacity: 0.5;
+}
+
+/* 모델과 사고 수준은 한 줄에 나란히 — 둘은 함께 고르는 값이다. 안내 글은 두 칸 아래에 걸친다. */
+.field-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 4px 10px;
+}
+
+.field-pair[hidden] {
+  display: none;
+}
+
+.field-pair > small {
+  grid-column: 1 / -1;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.field-pair > small:empty {
+  display: none;
+}
+
+dialog.dlg .dlg-note {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+dialog.dlg .warn[hidden] {
+  display: none;
 }
 
 .check {

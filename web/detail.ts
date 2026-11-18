@@ -3,7 +3,7 @@
 //
 // 스냅샷이 올 때마다 위쪽(머리·본문)은 다시 그리지만, 아래쪽 도크(빠른 키·입력창)는 고른 대상이 바뀔 때만
 // 새로 만든다 — 치고 있던 글과 초점이 스냅샷에 쓸려 가지 않게.
-import type { Activity, AgentView, PaneView, PendingRequest, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
+import { type Activity, type AgentView, LIVE_MODEL_KINDS, type PaneView, type PendingRequest, type WorkspaceView, type WorldSnapshot } from "../shared/types.ts";
 import { ApiError, headers, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
 import { type Child, type IconName, STATUS_VAR, h, icon, prose, store, stored } from "./dom.ts";
@@ -21,6 +21,7 @@ export type Action =
   | { type: "new-tab"; workspaceId: string }
   | { type: "split"; paneId: string; direction: "right" | "down" }
   | { type: "rename"; kind: TargetKind; id: string; current: string; what: string }
+  | { type: "model"; agent: AgentView }
   | { type: "close"; kind: "workspace" | "tab" | "pane"; id: string }
   | { type: "seen"; paneId: string; undo: boolean }
   | { type: "roster" };
@@ -622,7 +623,18 @@ export class DetailPanel {
       for (let i = 1; i <= 5; i += 1) pips.append(h("i", i <= level ? { class: "on" } : {}));
       top.push(h("span", { class: "effort", title: t("Effort") }, level > 0 ? pips : null, a.effort));
     }
-    if (top.length > 0) card.append(h("div", { class: "spec-top" }, ...top));
+    // 모델은 턴 사이에만 바꾼다. 그 세션에만 바꾸는 길이 없는 하네스(agy)는 띄울 때만 고른다.
+    let change: HTMLButtonElement | null = null;
+    if (a.paneId && this.snapshot?.control && LIVE_MODEL_KINDS.includes(a.vendor)) {
+      const busy = a.status === "working" || a.status === "blocked";
+      change = this.button(t("바꾸기…"), () => this.callbacks.act({ type: "model", agent: a }), {
+        cls: "link",
+        disabled: busy,
+        title: busy ? t("일하는 중이거나 답을 기다리는 동안에는 모델을 바꾸지 않습니다") : t("이 세션의 모델과 사고 수준을 바꿉니다 — 이 세션에만 적용됩니다"),
+      });
+      if (!a.model) top.unshift(h("span", { class: "k" }, t("모델")));
+    }
+    if (top.length > 0) card.append(h("div", { class: "spec-top" }, ...top, change));
     if (a.contextTokens) {
       const used = a.contextWindow ? Math.round((a.contextTokens / a.contextWindow) * 100) : 0;
       const text = a.contextWindow ? `${tokens(a.contextTokens)} / ${tokens(a.contextWindow)} · ${used}%` : t("{n} 토큰", { n: tokens(a.contextTokens) });

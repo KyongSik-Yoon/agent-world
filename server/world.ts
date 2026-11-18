@@ -101,6 +101,11 @@ export class World {
   private unread = new Map<string, boolean>();
   /** 월드가 첫 지시를 보낸 pane 과 보낸 시각. 첫 응답이 로그에 적히면 지운다. */
   private readonly firstPrompt = new Map<string, number>();
+  /**
+   * 월드에서 그 세션에만 바꾼 모델·수준. 로그는 다음 응답이 와야 새 모델을 적으므로, 로그가 바꾸기 전의 값(base)을 말하는
+   * 동안은 바꾼 값을 보인다. 로그가 무엇이든 다른 값을 말하기 시작하면 로그를 믿는다.
+   */
+  private readonly switched = new Map<string, { model?: string; effort?: string; base?: { model?: string; effort?: string; session?: string } }>();
   /** pane → 그 pane 에서 읽고 있는 맨 위 세션, 그리고 하네스가 모르는 세션을 받기 시작한 시각. */
   private readonly mainOf = new Map<string, { id: string; unknownSince?: number }>();
 
@@ -216,6 +221,17 @@ export class World {
       view.sessionId = sessionId;
       summary = await this.fromLog(view, harness, sessionId, undefined, this.firstPrompt.has(pane.pane_id));
       harnessTitle = await harness.title?.(sessionId);
+    }
+
+    const switched = this.switched.get(pane.pane_id);
+    if (switched) {
+      const now = { model: view.model, effort: view.effort, session: view.sessionId };
+      switched.base ??= now;
+      if (now.model !== switched.base.model || now.effort !== switched.base.effort || now.session !== switched.base.session) this.switched.delete(pane.pane_id);
+      else {
+        view.model = switched.model ?? view.model;
+        view.effort = switched.effort ?? view.effort;
+      }
     }
 
     const terminalTitle = (pane.terminal_title_stripped ?? "").trim();
@@ -486,6 +502,11 @@ export class World {
     if (seq === undefined) return false;
     this.seen.set(paneId, seq);
     return true;
+  }
+
+  /** 그 세션의 모델·수준을 바꿨다고 적는다. 다음 응답이 로그에 적힐 때까지 바꾼 값을 보인다. */
+  modelSwitched(paneId: string, to: { model?: string; effort?: string }): void {
+    this.switched.set(paneId, { model: to.model, effort: to.effort });
   }
 
   /** 지시를 보냈다고 적는다. 그 세션의 첫 지시였으면 첫 응답까지 쉬는 것으로 보지 않는다(paneView 참고). */
