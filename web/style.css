@@ -2612,12 +2612,16 @@ dialog.dlg .warn {
   }
 
   #toasts {
-    bottom: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
     width: calc(100vw - 16px);
   }
 
+  /*
+   * 본문이 한 줄(nowrap)이라 알림의 최소 폭이 글 전체 길이가 된다. 상한을 풀면 긴 글에서 화면 양옆으로 빠져나가고
+   * 페이지까지 넓어지므로, 담는 칸 폭에서 자르고 넘치는 글은 말줄임으로 접는다.
+   */
   .toast {
-    max-width: none;
+    max-width: 100%;
   }
 
   /* 입력란 글자가 16px 보다 작으면 iOS 가 화면을 확대한다. */
