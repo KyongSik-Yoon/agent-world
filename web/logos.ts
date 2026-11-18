@@ -3,7 +3,7 @@
 //
 // 움직임을 SVG 안의 CSS 애니메이션 그대로 돌리면 프레임마다 벡터를 다시 칠해서, 로고 8개에 CPU 가 코어의 30% 에서
 // 63% 로 뛰었다(will-change 로도 줄지 않았다). 그래서 한 바퀴를 미리 그림 띠로 구워 두고, 그 띠를 한 칸씩 옮겨
-// 보여 준다 — 옮기는 일은 합성기가 하므로 다시 칠하지 않는다.
+// 보여 준다 — 옮기는 일은 합성기가 하므로 다시 칠하지 않는다. 칸은 장면이 그리는 프레임에 맞춰 넘긴다(beat.ts).
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -74,7 +74,9 @@ const AGY = `
 
 /**
  * 한 바퀴의 움직임. 원본의 박자를 한 바퀴 길이에 맞췄다(Clawd 는 걸음 네 번 = 3.84초, 아치는 3.6초).
- * 두 로고 모두 한 칸이 80ms 다 — 칸을 넘기는 때가 겹쳐, 화면을 다시 합성하는 횟수가 로고 종류만큼 늘지 않는다.
+ * 두 로고 모두 한 칸이 240ms 다(beat.ts 의 LOGO_STEP_MS). Clawd 의 한 걸음(0.96초)이 꼭 네 칸이라, 칸마다
+ * 원본 keyframes 의 꼭짓점(다리가 가장 올라간 때, 몸이 가장 뜬 때)이 그대로 찍힌다. 눈을 감는 두 순간은 칸 사이에
+ * 떨어지면 찍히지 않으므로(원본은 31%·65%) 가장 가까운 칸의 시각(31.25%·62.5%)으로 옮겨 두었다.
  * 프레임을 구울 때만 쓴다: --t 로 시각을 정하고 멈춰 둔 채 그린다.
  */
 const MOTION: Record<string, string> = {
@@ -93,7 +95,7 @@ const MOTION: Record<string, string> = {
 @keyframes step{0%,100%{transform:translate(0,.2px)}25%{transform:translate(.25px,-1.7px)}50%{transform:translate(-.15px,.6px)}75%{transform:translate(0,.4px)}}
 @keyframes arm-l{0%,100%{transform:translateY(-.55px) rotate(3.5deg)}50%{transform:translateY(.65px) rotate(-3.5deg)}}
 @keyframes arm-r{0%,100%{transform:translateY(.65px) rotate(3.5deg)}50%{transform:translateY(-.55px) rotate(-3.5deg)}}
-@keyframes gaze{0%,28%,68%,100%{transform:translateX(0) scaleY(1)}31%{transform:translateX(0) scaleY(.12)}34%,46%{transform:translateX(1.7px) scaleY(1)}50%,62%{transform:translateX(-1.7px) scaleY(1)}65%{transform:translateX(-1.7px) scaleY(.12)}}
+@keyframes gaze{0%,28%,68%,100%{transform:translateX(0) scaleY(1)}31.25%{transform:translateX(0) scaleY(.12)}34%,46%{transform:translateX(1.7px) scaleY(1)}50%,59.5%{transform:translateX(-1.7px) scaleY(1)}62.5%{transform:translateX(-1.7px) scaleY(.12)}}
 @keyframes sheen{0%{transform:translateX(0)}52%,100%{transform:translateX(72px)}}`,
   agy: `
 *{animation-play-state:paused!important}
@@ -114,14 +116,14 @@ interface Logo {
   /** 타일을 채우도록 둘레의 빈 곳을 조금 잘라 본다(좌표계는 그대로다). */
   viewBox: string;
   body: string;
-  /** 한 바퀴의 길이(초)와 그것을 나눈 칸 수 — 초당 12~13칸. */
+  /** 한 바퀴의 길이(초)와 그것을 나눈 칸 수 — 한 칸이 240ms. */
   seconds: number;
   frames: number;
 }
 
 const LOGOS: Record<string, Logo> = {
-  claude: { viewBox: "2 3.5 38 38", body: CLAWD, seconds: 3.84, frames: 48 },
-  agy: { viewBox: "2 4 108 108", body: AGY, seconds: 3.6, frames: 45 },
+  claude: { viewBox: "2 3.5 38 38", body: CLAWD, seconds: 3.84, frames: 16 },
+  agy: { viewBox: "2 4 108 108", body: AGY, seconds: 3.6, frames: 15 },
 };
 
 /** 띠의 한 칸 크기(px). 가장 큰 타일(46px)을 2배 밀도로 그릴 만큼. */
@@ -172,16 +174,30 @@ async function bake(key: string): Promise<string | null> {
   }
 }
 
-/** 움직이는 띠를 타일에 얹는다. 박자는 문서의 시계에 맞춘다 — 새로 만든 타일이 처음부터 다시 시작하지 않고 이어서 움직인다. */
+/** 지금 몇 번째 칸인가. 모든 로고가 같이 넘어간다. */
+let step = 0;
+
+/** 띠를 지금의 칸에 놓는다. */
+function place(strip: HTMLElement): void {
+  const frames = Number(strip.dataset.frames);
+  strip.style.transform = `translateX(${-((step % frames) / frames) * 100}%)`;
+}
+
+/** 모든 로고를 한 칸 넘긴다. 장면이 그리는 프레임 안에서 불린다(beat.ts). */
+export function stepLogos(): void {
+  step += 1;
+  for (const strip of document.querySelectorAll<HTMLElement>(".logo-strip")) place(strip);
+}
+
+/** 움직이는 띠를 타일에 얹는다. 칸은 다른 로고와 같이 센다 — 새로 만든 타일이 처음부터 다시 시작하지 않고 이어서 움직인다. */
 function play(tile: HTMLElement, key: string, url: string): void {
   if (!tile.hasAttribute("data-active") || tile.querySelector(".logo-strip")) return;
-  const logo = LOGOS[key]!;
   const strip = document.createElement("span");
   strip.className = "logo-strip";
   strip.style.backgroundImage = `url(${url})`;
-  strip.style.setProperty("--frames", String(logo.frames));
-  strip.style.setProperty("--loop", `${logo.seconds}s`);
-  strip.style.setProperty("--logo-t", `${(-performance.now() / 1000).toFixed(3)}s`);
+  strip.dataset.frames = String(LOGOS[key]!.frames);
+  strip.style.width = `${LOGOS[key]!.frames * 100}%`;
+  place(strip);
   tile.append(strip);
 }
 

@@ -172,7 +172,6 @@ input {
   background: var(--blocked);
   color: #fff;
   font-weight: 700;
-  animation: nudge 0.9s steps(2, jump-none) infinite;
 }
 
 .tag.hovered .bubble,
@@ -183,13 +182,12 @@ input {
 }
 
 /*
- * 이름표의 깜빡임·들썩임은 계단식으로 움직인다. 부드럽게 이어지는 애니메이션은 화면에 하나만 있어도
- * 브라우저가 초당 60장을 계속 합성하게 만들어, 3D 쪽에서 프레임을 줄인 보람이 없어진다.
+ * 이름표의 깜빡임·들썩임은 CSS 애니메이션이 아니라 body 의 박자 속성으로 움직인다(beat.ts). 애니메이션은 계단식이어도
+ * 제 박자마다 화면을 한 장씩 더 내보내, 3D 쪽에서 프레임을 줄인 보람이 없어진다. 박자는 장면이 그리는 프레임 안에서
+ * 넘어가므로 따로 드는 출력이 없다.
  */
-@keyframes nudge {
-  50% {
-    transform: translateY(-3px);
-  }
+body[data-beat-nudge] .tag[data-status="blocked"] .bubble {
+  transform: translateY(-3px);
 }
 
 .plate {
@@ -217,7 +215,11 @@ input {
 
 .tag[data-status="working"] .dot {
   background: var(--working);
-  animation: pulse 1.2s steps(2, jump-none) infinite;
+}
+
+body[data-beat] .tag[data-status="working"] .dot,
+body[data-beat-quick] .tag[data-status="blocked"] .dot {
+  opacity: 0.35;
 }
 
 .tag[data-status="done"] .dot {
@@ -226,13 +228,6 @@ input {
 
 .tag[data-status="blocked"] .dot {
   background: var(--blocked);
-  animation: pulse 0.6s steps(2, jump-none) infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.35;
-  }
 }
 
 .plate .num {
@@ -1281,8 +1276,6 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tag .bubble,
-  .dot,
   #roster {
     animation: none !important;
   }
@@ -1433,8 +1426,8 @@ kbd {
 }
 
 /*
- * 터미널 크게 보기가 덮은 동안에는 그 밑의 애니메이션(일하는 로고 띠, 이름표의 깜빡임)을 세운다. 가려져 보이지 않아도
- * 돌고 있으면 브라우저가 합성을 초당 수십 장 계속한다. 장면도 이때는 그리지 않으므로 가장자리에 비치는 모습과 어긋나지 않는다.
+ * 터미널 크게 보기가 덮은 동안에는 그 밑의 애니메이션을 세운다. 가려져 보이지 않아도 돌고 있으면 브라우저가 합성을
+ * 계속한다. 일하는 로고와 이름표의 깜빡임은 장면의 프레임을 따라가므로(beat.ts) 장면이 멈추는 이때 같이 선다.
  * 알림(#toasts)은 터미널 위에 뜨므로 세우지 않는다.
  */
 body[data-covered] :is(#world, #topbar, #roster, #detail) * {
@@ -2111,17 +2104,9 @@ dialog.dlg .warn {
   position: absolute;
   top: 0;
   left: 0;
-  width: calc(var(--frames) * 100%);
   height: 100%;
   background-size: 100% 100%;
   will-change: transform;
-  animation: logo-strip var(--loop) steps(var(--frames)) var(--logo-t, 0s) infinite;
-}
-
-@keyframes logo-strip {
-  to {
-    transform: translateX(-100%);
-  }
 }
 
 /* ── 터미널 크게 보기의 화면 키 줄 ───────────────────────────────── */

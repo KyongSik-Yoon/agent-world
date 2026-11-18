@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 import type { AgentView, WorldSnapshot } from "../../shared/types.ts";
+import { beat } from "../beat.ts";
 import { t } from "../i18n.ts";
 import { Actor, PICK_LAYER } from "./actor.ts";
 import { Environment, type Theme } from "./environment.ts";
@@ -85,6 +86,13 @@ export class WorldScene {
   private tunedAt = 0;
   private goodStreak = 0;
   private lastFrameAt = 0;
+  /** 쉬는 동안 다음 프레임을 그리려는 때. 0 이면 시각표가 없다(조작 중이거나 방금 깨어났다). */
+  private dueAt = 0;
+  /** 바로 앞 프레임의 requestAnimationFrame 시각. 연달아 온 프레임 사이의 간격으로 화면 주사율을 잰다. */
+  private lastStamp = 0;
+  /** 연달아 그린 프레임 사이의 간격 표본(ms). 가운데 값이 화면이 한 번 바뀌는 간격이다. */
+  private readonly refreshSamples: number[] = [];
+  private refreshMs = 1000 / 60;
   /** 장면을 직접 건드린(끌기·휠·단축키·고르기) 마지막 때. 이 뒤 ACTIVE_MS 는 주사율 그대로 그린다. */
   private lastInputAt = performance.now();
   /** 화면 어디든 손이 닿은 마지막 때 — 곁눈질 화면으로 내려갈지만 정한다. */
@@ -97,6 +105,8 @@ export class WorldScene {
   private covered = false;
   /** 덮여 있어 다음 프레임을 걸지 않고 멈춰 있다. */
   private parked = false;
+  /** 이번 프레임이 앞 프레임에서 곧바로 이어 건 것이다(타이머로 쉬었다 온 것이 아니다). */
+  private chained = false;
   /** 이름표 층을 다시 놓아야 하는 프레임 수(스냅샷·크기·고르기가 바뀐 직후). */
   private labelsDirty = 3;
   /** 고른 캐릭터가 다른 자리로 가는 중이라 카메라가 따라 움직이고 있다. */
@@ -521,6 +531,7 @@ export class WorldScene {
     if (this.timer === undefined) return;
     clearTimeout(this.timer);
     this.timer = undefined;
+    this.dueAt = 0;
     requestAnimationFrame(this.tick);
   }
 
@@ -608,15 +619,41 @@ export class WorldScene {
    *
    * 쉬는 동안에는 requestAnimationFrame 을 매번 걸지 않는다 — 걸어 두면 그리지 않는 프레임에도 브라우저가
    * 초당 60번 깨어나 화면 합성까지 돈다. 쉴 만큼 타이머로 기다렸다가 그때 한 번만 건다.
+   *
+   * 쉬는 간격은 화면이 바뀌는 간격의 배수로 맞추고, 지난 프레임이 아니라 시각표(dueAt)에서 센다. 화면에 따로 도는
+   * 애니메이션이 없으면 브라우저는 다음 화면 박자를 기다리지 않고 요청받은 즉시 그리므로, "조금 일찍 걸면 다음 박자에
+   * 그려진다"에 기대면 간격이 타이머만큼으로 줄고(60Hz 에서 30장이 50장이 됐다) 박자와도 어긋나 걸음이 떨린다.
    */
-  private readonly tick = (): void => {
+  private readonly tick = (stamp?: number): void => {
     if (this.covered) {
       this.parked = true;
+      this.dueAt = 0;
       return;
     }
+    const chained = this.chained;
+    this.chained = false;
     this.frame();
     const now = performance.now();
-    const wait = this.lastFrameAt + this.pace(now) - now;
+    const pace = this.pace(now);
+    if (pace === 0) {
+      // 연달아 온 프레임 사이의 간격이 화면이 바뀌는 간격이다. 창을 다른 모니터로 옮기면 따라 바뀐다.
+      if (chained && stamp !== undefined && this.lastStamp > 0) this.sampleRefresh(stamp - this.lastStamp);
+      this.lastStamp = stamp ?? 0;
+      this.dueAt = 0;
+      this.chained = true;
+      requestAnimationFrame(this.tick);
+      return;
+    }
+    this.lastStamp = 0;
+    // 간격을 화면 박자의 배수로 올림한다: 60Hz 에서 24ms → 두 박자(30장), 80ms → 다섯 박자(12장).
+    const period = Math.ceil((pace - 1) / this.refreshMs) * this.refreshMs;
+    // 시각표를 이어 간다. 처음이거나 한 주기 넘게 밀렸으면(탭이 가려졌다 돌아왔다) 이 프레임에서 다시 센다.
+    const base = this.dueAt > 0 && Math.abs(this.lastFrameAt - this.dueAt) < period ? this.dueAt : this.lastFrameAt;
+    this.dueAt = base + period;
+    // requestAnimationFrame 이 알려 주는 시각은 화면 박자 위에 있다. 시각표를 그 박자에 붙여 두면, 브라우저가 박자를
+    // 기다려 그리는 때와 즉시 그리는 때(이름표가 미끄러지는 transition 이 도는 동안은 기다린다)가 섞여도 간격이 고르다.
+    if (stamp !== undefined) this.dueAt = stamp + Math.round((this.dueAt - stamp) / this.refreshMs) * this.refreshMs;
+    const wait = this.dueAt - now;
     if (wait < 6) requestAnimationFrame(this.tick);
     else {
       this.timer = setTimeout(() => {
@@ -626,8 +663,19 @@ export class WorldScene {
     }
   };
 
+  private sampleRefresh(ms: number): void {
+    // 한두 프레임을 거른 간격이나 탭 전환 뒤의 긴 간격은 버린다(30Hz~360Hz).
+    if (ms < 2.5 || ms > 34) return;
+    const samples = this.refreshSamples;
+    samples.push(ms);
+    if (samples.length > 31) samples.shift();
+    if (samples.length >= 9) this.refreshMs = [...samples].sort((x, y) => x - y)[samples.length >> 1]!;
+  }
+
   private frame(): void {
     const now = performance.now();
+    // 이름표의 깜빡임과 일하는 로고는 이 프레임에 묻어 넘어간다 — 따로 화면을 내보내지 않게.
+    beat(now, Math.min(now - this.lastFrameAt, AMBIENT_FRAME_MS));
     this.lastFrameAt = now;
 
     const dt = Math.min(this.clock.getDelta(), 0.1);
