@@ -436,6 +436,10 @@ const MAX_FONT_PX = 17;
  * 1440 폭에 넣으면 7.5px). 그보다 넓은 화면은 이 크기로 두고 가로로 민다. 창 폭이나 기기와 상관없이 같다.
  */
 const MIN_FONT_PX = 10;
+/** 휴대폰 세로의 크게 보기는 칸에 맞추지 않고 줄을 접는다 — 304칸 pane 을 10px 로 두면 줄마다 옆으로 네다섯 화면을 밀어야 한다. */
+const FLOW_MEDIA = "(max-width: 760px) and (orientation: portrait)";
+/** 줄을 접을 때의 글자 크기(px). 칸에 맞출 일이 없으니 읽기 좋은 크기로 둔다. */
+const FLOW_FONT_PX = 12;
 
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
 export class TermScreen {
@@ -448,6 +452,8 @@ export class TermScreen {
   onGone: (() => void) | undefined;
   /** 미리보기에서 입력창 아래의 상태줄·안내줄을 접지 않고 한 줄씩 보여 준다. */
   fitFooter = false;
+  /** 칸에 맞춰 그리지 않고 창 폭에서 줄을 접는다. 미리보기는 늘, 크게 보기는 휴대폰 세로에서. */
+  private flowing = false;
   /** 받아 둔 화면의 줄들(SGR 포함). 서버는 처음에 통째로, 그 뒤로는 달라진 줄만 보낸다. */
   private raw: string[] | undefined;
   private rows: Row[] = [];
@@ -465,6 +471,7 @@ export class TermScreen {
 
   constructor(private readonly options: ScreenOptions = {}) {
     this.el.className = "term";
+    this.flow = options.tail !== undefined;
     this.el.textContent = t("화면을 읽는 중…");
     this.el.addEventListener(
       "scroll",
@@ -475,6 +482,19 @@ export class TermScreen {
       },
       { passive: true },
     );
+  }
+
+  get flow(): boolean {
+    return this.flowing;
+  }
+
+  /** 접기를 켜고 끈다. 접을 때만 붙는 표시(가로줄 자르기)가 있어, 그려 둔 줄을 다시 쓰지 않고 새로 그린다. */
+  set flow(on: boolean) {
+    if (on === this.flowing) return;
+    this.flowing = on;
+    this.el.classList.toggle("flow", on);
+    this.rows = [];
+    this.redraw();
   }
 
   /** 다시 붙은 미리보기의 스크롤을 떼기 전 자리로 돌린다 — 맨 아래에 있었으면 맨 아래로. */
@@ -597,7 +617,7 @@ export class TermScreen {
 
   private draw(raw: readonly string[]): void {
     const { tail } = this.options;
-    const reflow = tail !== undefined;
+    const reflow = this.flowing;
     // 앞서 그린 줄 가운데 글과 스타일이 같은 것은 요소를 그대로 쓴다. 글자를 치면 그 한 줄만 다시 만든다(큰 화면에서
     // 0.3ms — 전부 새로 만들면 20ms 안팎). 화면이 통째로 밀릴 때는 줄을 다시 써도 배치 값이 그대로라 덕을 보지 못한다.
     const pool = new Map<string, Row[]>();
@@ -615,12 +635,14 @@ export class TermScreen {
       return row;
     });
     this.rows = rows;
-    if (tail || this.back > 0) while (rows.length > 1 && rows[rows.length - 1]!.text.trim() === "") rows = rows.slice(0, -1);
+    if (tail || reflow || this.back > 0) while (rows.length > 1 && rows[rows.length - 1]!.text.trim() === "") rows = rows.slice(0, -1);
+    let footerAt = reflow && this.fitFooter ? footerStart(rows.map((r) => r.text)) : -1;
     if (tail) {
-      const start = this.fitFooter ? footerStart(rows.map((r) => r.text)) : -1;
       const offset = Math.max(0, rows.length - tail);
       rows = rows.slice(-tail);
-      const footerAt = start >= 0 ? Math.max(0, start - offset) : -1;
+      if (footerAt >= 0) footerAt = Math.max(0, footerAt - offset);
+    }
+    if (reflow) {
       const banners = this.fitFooter ? bannerRanges(rows, footerAt >= 0 ? footerAt : rows.length) : [];
 
       const fitCols = new Array<number>(rows.length).fill(0);
@@ -762,6 +784,7 @@ export class TermOverlay {
   private readonly screen = new TermScreen({ live: true });
   private readonly ime = document.createElement("textarea");
   private readonly body = document.createElement("div");
+  private readonly flowMedia = matchMedia(FLOW_MEDIA);
   private cols = 120;
   private pending = "";
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -919,6 +942,7 @@ export class TermOverlay {
       else this.screen.start(this.screen.pane, this.screen.scrollback);
     });
     new ResizeObserver(() => this.fit()).observe(this.body);
+    this.flowMedia.addEventListener("change", () => this.fit());
   }
 
   get isOpen(): boolean {
@@ -962,10 +986,14 @@ export class TermOverlay {
   /** 화면의 칸 수가 창 너비에 들어가도록 글자 크기를 맞춘다. */
   private fit(): void {
     if (this.root.hidden) return;
+    const flow = this.flowMedia.matches;
+    // 접어 보일 때는 입력창 아래의 상태줄도 미리보기처럼 접지 않고 폭에 맞춘다.
+    this.screen.fitFooter = flow;
+    this.screen.flow = flow;
     const width = this.body.clientWidth - 28;
     // 칸을 다 넣으려다 글자가 깨알이 되느니, 읽을 만한 크기로 두고 가로로 민다.
     // 칸 수가 적은 pane 은 글자를 조금 키우고(읽기 좋은 데까지만), 그래도 남는 폭은 양옆에 고르게 둔다(스타일시트).
-    const size = Math.max(MIN_FONT_PX, Math.min(MAX_FONT_PX, width / (this.cols * 0.6)));
+    const size = flow ? FLOW_FONT_PX : Math.max(MIN_FONT_PX, Math.min(MAX_FONT_PX, width / (this.cols * 0.6)));
     this.screen.el.style.fontSize = `${size.toFixed(2)}px`;
     this.screen.el.style.setProperty("--cols", String(this.cols));
     // 글자 크기가 바뀌면 화면 높이도 바뀐다 — 아래에 붙어 있었으면 다시 붙인다.
