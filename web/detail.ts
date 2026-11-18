@@ -330,8 +330,9 @@ export class DetailPanel {
     this.root.hidden = false;
     this.body.scrollTop = top;
 
-    // 에이전트의 미리보기는 상태줄을 접지 않고 보여 준다. 확인 필요일 때는 대화상자가 그 자리에 뜨므로 화면 그대로 둔다.
-    const fitFooter = agent !== undefined && agent.status !== "blocked";
+    // 에이전트의 미리보기는 상태줄을 접지 않고 보여 준다. 확인 필요일 때도 같다 — 질문 카드는 입력창 위에 떠 상태줄이
+    // 그대로 남고, 입력창을 대신해 뜨는 대화상자는 footerStart 가 입력창 모양이 아니라고 보고 평소대로 접는다.
+    const fitFooter = agent !== undefined;
     if (fitFooter !== this.preview.fitFooter) {
       this.preview.fitFooter = fitFooter;
       this.preview.redraw();
