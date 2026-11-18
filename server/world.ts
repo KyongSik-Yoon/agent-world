@@ -47,11 +47,13 @@ function isGenericTitle(title: string): boolean {
 
 /**
  * 지금 하고 있는 일 — 마지막 활동. 마지막이 사용자 지시면 이번 턴에는 아직 한 일이 없으므로 비워 둔다.
- * 지난 턴의 활동을 끌어오면 새 지시를 받고도 지난 응답을 말풍선에 단 채 일하러 간다.
+ * 로그가 턴이 끝났다고 하는데도 비워 둔다: herdr 는 지시를 받자마자 working 이 되지만 그 지시가 로그에
+ * 적혀 읽히기까지는 틈이 있고, 그 사이 마지막 활동은 지난 턴의 응답이다. 지난 턴의 활동을 끌어오면
+ * 새 지시를 받고도 지난 응답을 말풍선에 단 채 일하러 간다.
  */
-function currentActivity(recent: readonly Activity[]): Activity | undefined {
-  const last = recent[recent.length - 1];
-  return last?.kind === "user" ? undefined : last;
+function currentActivity(s: LogSummary): Activity | undefined {
+  const last = s.recent[s.recent.length - 1];
+  return !s.turnOpen || last?.kind === "user" ? undefined : last;
 }
 
 interface Tracked {
@@ -146,7 +148,7 @@ export class World {
     view.contextTokens = s.contextTokens;
     view.contextWindow = s.contextWindow;
     view.recent = s.recent;
-    view.activity = currentActivity(s.recent);
+    view.activity = currentActivity(s);
     view.lastPrompt = s.lastPrompt;
     view.lastReply = s.lastReply;
     view.pending = currentPending(s);
