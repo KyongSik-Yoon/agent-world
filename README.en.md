@@ -16,7 +16,7 @@ talk to them and build new workspaces without going back to the herdr window. On
 | Idle | Dozes beside the house (dimmed). |
 
 Click a character to open its status window: model, effort, context, last prompt and reply, activity log and the
-terminal screen. The camera moves in on that character, and closing the window (✕ or Esc) returns to where you were.
+terminal screen. `Copy` next to the last prompt and the last reply takes the original text (Markdown as written). The camera moves in on that character, and closing the window (✕ or Esc) returns to where you were.
 `Open in herdr` (Enter) switches herdr to that pane and, on Hyprland, brings the terminal window to the front.
 
 <img src="docs/img/detail.webp" alt="The status window of a working character: model, effort, context, branch, last prompt and reply, with the quick-key row and input below" width="960">
@@ -60,6 +60,7 @@ with a new version, open pages reload themselves (they wait while you are typing
 
 Turn on the `🔔` at the top to be **notified** when an agent finishes or needs input — also while the page is closed or
 the app is in the background (Web Push). It is off by default, switched on per device, and one more tap turns it off.
+Notifications for the same agent replace each other, and in Chromium browsers you only get the page's toast while you are looking at it.
 On iOS it is available only in the installed home-screen app (16.4 or later). The text is encrypted so that only your
 browser can read it; the push service in between (Google, Apple, Mozilla) cannot. While nobody has the page open the
 server looks at the agents only every 15 seconds, so a notification can be that late.
@@ -77,6 +78,12 @@ Worth knowing:
 - **Attached images become files on this machine.** They are written to `~/.cache/agent-world/images/` and the path
   is typed into the pane. Claude Code turns the path into `[Image #N]`; other harnesses get the path in the prompt
   text. Files older than seven days are removed.
+- **Question cards count as needs input.** While a desk-look or desk-plan question or plan card waits for an answer,
+  herdr still reports the agent as working; Agent World reads the marker file the card leaves and shows it as needs
+  input (desk-look 0.81.5 or later).
+- **Another PWA on the same host's default port can take the notifications.** Seen on Android Chrome: with another
+  app installed from the same tailnet address on port 443, notifications appeared under that app's name. Moving that
+  app to another port, removing it from the phone and turning the `🔔` on again fixed it.
 - Left to the herdr TUI: pane layout, size and movement, copy mode, mouse, plugins, remote machines, session management.
 
 <img src="docs/img/night.webp" alt="The world in the night theme: a dark blue island with name tags and speech bubbles" width="960">
