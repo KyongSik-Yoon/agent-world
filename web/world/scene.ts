@@ -38,11 +38,15 @@ const ACTIVE_MS = 2500;
  */
 const EASE_MS = 800;
 /**
- * 한동안 손대지 않았거나 다른 창을 쓰는 중이면 "곁눈질 화면"이다 — 초당 12장쯤으로 더 줄인다.
+ * 한동안 손대지 않았거나 다른 창을 쓰는 중이면 "곁눈질 화면"이다 — 초당 3장으로 줄인다.
  * 일하는 캐릭터는 늘 일터 사이를 오가므로, 걷는 동안을 예외로 두면 이 단계에 들어갈 틈이 없다.
+ * 실제 세션(4K 60Hz, 17명) 실측: 12장 20%, 6장 15%, 3장 11.5%, 1장 9.7% — 3장 밑으로는 얻는 것이 적다.
+ * 333ms 는 로고 한 칸(240ms)보다 길어 로고는 장마다 한 칸씩 고르게 넘어간다.
  */
 const AMBIENT_AFTER_MS = 20_000;
-const AMBIENT_FRAME_MS = 80;
+const AMBIENT_FRAME_MS = 333;
+/** 한 장 사이에 흐르게 둘 시간의 상한(초). 곁눈질 화면의 간격보다 길어야 그 동안에도 캐릭터가 제 속도로 걷는다. */
+const MAX_STEP_S = 0.4;
 /** 고른 캐릭터가 가려졌을 때 돌아 볼 각도들(도). 덜 도는 쪽부터 본다. */
 const VIEW_TURNS = [0, 25, -25, 50, -50, 80, -80, 115, -115, 150, -150, 180];
 /** 캐릭터가 보이는지 확인하는 높이들 — 발치, 몸통, 머리. */
@@ -192,6 +196,11 @@ export class WorldScene {
       this.wake();
     };
     for (const type of ["pointermove", "pointerdown", "wheel", "keydown", "touchstart"]) window.addEventListener(type, touched, { passive: true });
+    // 다른 창에서 돌아오면 다시 보기 시작한 것이다 — 곁눈질 화면의 긴 간격(333ms)을 기다리지 않고 바로 평소 박자로 올린다.
+    window.addEventListener("focus", () => {
+      this.lastSeenAt = performance.now();
+      this.wake();
+    });
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
@@ -597,11 +606,12 @@ export class WorldScene {
     this.covered = covered;
     if (covered || !this.parked) return;
     this.parked = false;
+    this.clock.getDelta(); // 덮여 있던 동안은 흐르지 않은 것으로 친다 — 걷히는 순간 캐릭터가 건너뛰지 않게.
     requestAnimationFrame(this.tick);
   }
 
   /**
-   * 지금 몇 ms 간격으로 그릴지: 조작 중 0(주사율 그대로), 가만히 두면 30장쯤, 곁눈질 화면이면 12장쯤.
+   * 지금 몇 ms 간격으로 그릴지: 조작 중 0(주사율 그대로), 가만히 두면 30장쯤, 곁눈질 화면이면 3장.
    *
    * 고른 캐릭터를 따라가는 flight 는 고르기를 풀 때까지 남아 있으므로, flight 가 있다는 것만으로 조작 중이라고
    * 치지 않는다(그러면 캐릭터를 고른 내내 주사율대로 그린다). 다가가는 동안은 고른 입력에서 ACTIVE_MS 가 덮고,
@@ -645,7 +655,7 @@ export class WorldScene {
       return;
     }
     this.lastStamp = 0;
-    // 간격을 화면 박자의 배수로 올림한다: 60Hz 에서 24ms → 두 박자(30장), 80ms → 다섯 박자(12장).
+    // 간격을 화면 박자의 배수로 올림한다: 60Hz 에서 24ms → 두 박자(30장), 333ms → 스무 박자(3장).
     const period = Math.ceil((pace - 1) / this.refreshMs) * this.refreshMs;
     // 시각표를 이어 간다. 처음이거나 한 주기 넘게 밀렸으면(탭이 가려졌다 돌아왔다) 이 프레임에서 다시 센다.
     const base = this.dueAt > 0 && Math.abs(this.lastFrameAt - this.dueAt) < period ? this.dueAt : this.lastFrameAt;
@@ -678,7 +688,7 @@ export class WorldScene {
     beat(now, Math.min(now - this.lastFrameAt, AMBIENT_FRAME_MS));
     this.lastFrameAt = now;
 
-    const dt = Math.min(this.clock.getDelta(), 0.1);
+    const dt = Math.min(this.clock.getDelta(), MAX_STEP_S);
     const t = this.clock.elapsedTime;
 
     const actors = [...this.actors.values()];
