@@ -412,7 +412,7 @@ async function start() {
  */
 async function appFiles(): Promise<Record<string, { GET: (req: Request) => Response }>> {
   const dir = join(import.meta.dir, "..", "web", "app");
-  const types: Record<string, string> = { "icon-192.png": "image/png", "icon-512.png": "image/png", "sw.js": "text/javascript; charset=utf-8" };
+  const types: Record<string, string> = { "icon-192.png": "image/png", "icon-512.png": "image/png", "badge.png": "image/png", "sw.js": "text/javascript; charset=utf-8" };
   const routes: Record<string, { GET: (req: Request) => Response }> = {};
   for (const [name, type] of Object.entries(types)) {
     const body = new Uint8Array(await Bun.file(join(dir, name)).arrayBuffer());

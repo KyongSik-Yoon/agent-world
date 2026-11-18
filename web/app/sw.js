@@ -24,6 +24,8 @@ self.addEventListener("push", (e) => {
       await self.registration.showNotification(d.title || "Agent World", {
         body: d.body || "",
         icon: "/icon-192.png",
+        // 휴대폰 상태 표시줄에 뜨는 작은 그림. 없으면 브라우저가 종 모양을 쓴다.
+        badge: "/badge.png",
         // 같은 에이전트의 알림은 한 장으로 갈아 끼우되, 바뀔 때마다 다시 울린다.
         ...(id ? { tag: id, renotify: true } : {}),
         data: { id },
