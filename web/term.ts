@@ -138,7 +138,11 @@ function css(s: Style): string {
   const bg = s.inverse ? (s.fg ?? "var(--term-fg)") : s.bg;
   let out = "";
   if (fg) out += `color:${fg};`;
-  if (bg) out += `background:${bg};`;
+  // 글자 배경은 칸(줄 높이)만큼만 칠한다. 그냥 칠하면 글꼴의 위아래 여백(content area)까지 덮어 줄 높이(1.22em)를 넘치고,
+  // 다음 줄 배경이 윗줄 글자 위에 그려진다 — Claude Code 캐릭터의 눈(검은 배경)이 머리 위 띠와 눈 사이 선으로 번진다.
+  // 위아래 여백(padding)으로 칠할 자리를 넓혀 두고(줄 배치는 그대로), 가운데에 줄 높이 + 1px 띠를 깐다(이웃 줄과 0.5px
+  // 겹쳐 소수점 경계에 틈이 없다 — 블록 문자 칸과 같다).
+  if (bg) out += `background:linear-gradient(${bg},${bg}) 0 50%/100% calc(1.22em + 1px) no-repeat;padding:0.2em 0;`;
   if (s.bold) out += "font-weight:700;";
   if (s.dim) out += "opacity:.62;";
   if (s.italic) out += "font-style:italic;";
