@@ -60,6 +60,30 @@ function withoutBlocks(text: string, open: string, close: string): string {
   }
 }
 
+/** 선택 창의 모델 이름("Sonnet 5.5")을 로그가 쓰는 모델 id("claude-sonnet-5-5")로. 모양이 다르면 이름 그대로 둔다. */
+export function claudeModelId(name: string): string {
+  return /^[A-Za-z]+ \d+(\.\d+)*$/.test(name) ? `claude-${name.toLowerCase().replace(/[ .]/g, "-")}` : name;
+}
+
+/**
+ * `/model`·`/effort` 가 남긴 결과 줄. 응답 행은 다음 응답이 와야 새 모델을 적으므로, 바꾼 순간을 여기서 읽는다 —
+ * 월드에서 바꿨든 터미널에서 직접 바꿨든.
+ *   Set model to `Sonnet 5.5` for this session only with `low` effort
+ *   Set model to `Opus 5.5` and saved as your default for new sessions
+ *   Set effort level to low (saved as your default for new sessions): …
+ */
+function feedCommandOutput(s: LogSummary, raw: string): void {
+  const out = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/.exec(raw)?.[1];
+  if (!out) return;
+  const model = /^Set model to `?([^`\n]+?)`?(?= for | and |$)(?:[^\n]*? with `?(\w+)`? effort)?/m.exec(out);
+  if (model) {
+    s.model = claudeModelId(model[1]!.trim());
+    if (model[2]) s.effort = model[2].toLowerCase();
+  }
+  const effort = /^Set effort level to `?(\w+)`?/m.exec(out);
+  if (effort) s.effort = effort[1]!.toLowerCase();
+}
+
 function feedAssistant(s: LogSummary, row: Record<string, unknown>, at: string): void {
   const message = row.message;
   if (!isRecord(message)) return;
@@ -117,6 +141,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
   if (!isRecord(message)) return;
   const content = message.content;
   if (typeof content === "string") {
+    feedCommandOutput(s, content);
     const text = userText(content);
     if (text) {
       setPrompt(s, text);
