@@ -13,13 +13,22 @@ self.addEventListener("push", (e) => {
   }
   const id = typeof d.id === "string" ? d.id : "";
   e.waitUntil(
-    self.registration.showNotification(d.title || "Agent World", {
-      body: d.body || "",
-      icon: "/icon-192.png",
-      // 같은 에이전트의 알림은 한 장으로 갈아 끼우되, 바뀔 때마다 다시 울린다.
-      ...(id ? { tag: id, renotify: true } : {}),
-      data: { id },
-    }),
+    (async () => {
+      // 지금 이 화면을 보고 있으면 화면의 토스트로 충분하다. 받은 푸시를 띄우지 않아도 되는 것은 Chrome 계열이
+      // "창이 앞에 떠 있을 때"만 봐주는 예외라서, 그 푸시 서버(FCM)로 온 것일 때만 건너뛴다.
+      const sub = await self.registration.pushManager.getSubscription();
+      if (sub && new URL(sub.endpoint).host === "fcm.googleapis.com") {
+        const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        if (windows.some((w) => w.focused && w.visibilityState === "visible")) return;
+      }
+      await self.registration.showNotification(d.title || "Agent World", {
+        body: d.body || "",
+        icon: "/icon-192.png",
+        // 같은 에이전트의 알림은 한 장으로 갈아 끼우되, 바뀔 때마다 다시 울린다.
+        ...(id ? { tag: id, renotify: true } : {}),
+        data: { id },
+      });
+    })(),
   );
 });
 

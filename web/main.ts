@@ -257,11 +257,18 @@ notifyBtn.addEventListener("click", async () => {
     const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
     notify = permission === "granted";
     if (!notify) hud.toast(t("알림이 막혀 있습니다"), t("브라우저의 사이트 설정에서 알림을 허용해 주세요."), "var(--blocked)");
-  } else notify = false;
+  } else {
+    // 알림이 아예 없는 브라우저다. iOS 는 홈 화면에 설치한 앱에서만 알림을 쓸 수 있다.
+    if (!notify) hud.toast(t("이 브라우저는 알림을 쓸 수 없습니다"), t("iOS 는 홈 화면에 앱으로 설치한 뒤에 켤 수 있습니다."), "var(--blocked)");
+    notify = false;
+  }
   notifyBtn.setAttribute("aria-pressed", String(notify));
   store("agent-world.notify", notify ? "on" : "off");
-  if (notify) pushed = await subscribePush();
-  else {
+  if (notify) {
+    pushed = await subscribePush();
+    // 켜진 것처럼 보이는데 앱을 내리면 오지 않는 일이 없게, 반쪽만 켜졌으면 그렇다고 알린다.
+    if (!pushed) hud.toast(t("화면이 열려 있는 동안에만 알립니다"), t("이 브라우저에서는 닫아 둔 동안의 알림을 켜지 못했습니다."), "var(--idle)");
+  } else {
     pushed = false;
     await unsubscribePush();
   }
@@ -271,13 +278,22 @@ if (notify && pushable) setTimeout(() => void subscribePush().then((ok) => (push
 
 /** 알림을 눌러 들어왔을 때 고를 에이전트. 스냅샷에 나타나면 고른다. */
 let wanted: string | null = null;
-{
+function wantedFromAddress(): void {
   const m = /(?:^#|&)a=([^&]+)/.exec(location.hash);
-  if (m) {
+  if (!m) return;
+  try {
     wanted = decodeURIComponent(m[1]!);
-    history.replaceState(null, "", location.pathname + location.search);
+  } catch {
+    // 깨진 주소는 버린다.
   }
+  history.replaceState(null, "", location.pathname + location.search);
 }
+wantedFromAddress();
+// 이미 열려 있는 화면이 알림의 주소로 옮겨 오면 문서를 새로 읽지 않고 # 뒤만 바뀐다.
+window.addEventListener("hashchange", () => {
+  wantedFromAddress();
+  if (hud.latest) selectWanted(hud.latest);
+});
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("message", (e) => {
     const id = (e.data as { select?: unknown } | null)?.select;
