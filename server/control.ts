@@ -509,7 +509,9 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       const label = text(body, "label", 120).trim();
       if (kind === "agent" && label && !AGENT_NAME.test(label)) throw new Reject(L("에이전트 이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 쓸 수 있습니다.", "An agent name starts with a lowercase letter and may use lowercase letters, digits, - and _."), 400);
       if ((kind === "workspace" || kind === "tab") && !label) throw new Reject(L("이름이 비어 있습니다.", "The name is empty."), 400);
-      await herdrRename(kind, await need(kind, text(body, "id")), label);
+      const id = await need(kind, text(body, "id"));
+      await herdrRename(kind, id, label);
+      if (kind === "pane") world.named(id, label);
     }),
     "/api/close": mutate(async (body) => {
       const kind = text(body, "kind") as Kind;

@@ -163,6 +163,9 @@ export async function herdrSnapshot(): Promise<HerdrSnapshot> {
   snap.tabs ??= [];
   snap.panes ??= [];
   snap.agents ??= [];
+  // 에이전트 목록에는 pane 이름(label)이 빠져 온다(herdr 0.9.5). pane 목록에서 이어 붙인다.
+  const labels = new Map(snap.panes.map((p) => [p.pane_id, p.label]));
+  for (const a of snap.agents) a.label ??= labels.get(a.pane_id) ?? undefined;
   return snap;
 }
 

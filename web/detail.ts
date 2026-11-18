@@ -582,7 +582,11 @@ export class DetailPanel {
     if (a.harnessVersion) rows.push({ label: t("하네스"), value: `${brandFor(a.vendor).name} ${a.harnessVersion}` });
     if (a.branch) rows.push({ label: t("브랜치"), value: a.branch, mono: true });
     if (a.cwd) rows.push({ label: t("작업 폴더"), value: shortPath(a.cwd), mono: true });
-    if (a.paneId) rows.push({ label: t("Pane"), value: a.tabLabel ? `${a.paneId} · ${a.tabLabel}` : a.paneId, mono: true });
+    if (a.paneId) {
+      // 탭 이름이 이미 pane 이름으로 끝나면(auto-title 이 둘을 같이 짓는다) 한 번만 보인다.
+      const pane = a.paneLabel && !a.tabLabel?.endsWith(a.paneLabel) ? a.paneLabel : undefined;
+      rows.push({ label: t("Pane"), value: [a.paneId, a.tabLabel, pane].filter(Boolean).join(" · "), mono: true });
+    }
 
     let note: string | undefined;
     if (!a.hasLog) {

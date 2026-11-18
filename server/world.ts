@@ -12,7 +12,7 @@ import type { Harness, LogFile } from "./adapters/types.ts";
 import { AskingPanes } from "./asking.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Text } from "./text.ts";
-import { SeenStore } from "./seen.ts";
+import { NameStore, SeenStore } from "./seen.ts";
 import { currentPending, oneLine, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
 
@@ -74,6 +74,8 @@ export class World {
   /** 이번 스냅샷에서 읽은 로그들 — 끝나면 나머지는 놓아준다. */
   private used = new Set<string>();
   private readonly seen = new SeenStore();
+  /** 월드에서 지어 준 pane 이름. label 이 그대로인 동안 주민의 제목이 된다. */
+  private readonly names = new NameStore();
   /** herdr 는 working 이라 하지만 카드를 띄워 답을 기다리는 pane 들. */
   private readonly asking = new AskingPanes();
   /** herdr pane 안에서 돌던 세션을 마지막으로 본 시각. pane 을 닫은 세션이 "herdr 밖 세션"으로 되살아나지 않게 한다. */
@@ -197,6 +199,7 @@ export class World {
 
     const terminalTitle = (pane.terminal_title_stripped ?? "").trim();
     view.title =
+      this.names.check(pane.pane_id, pane.label) ||
       (isGenericTitle(terminalTitle) ? "" : terminalTitle) ||
       summary?.title ||
       harnessTitle ||
@@ -302,7 +305,7 @@ export class World {
 
   private async build(): Promise<WorldSnapshot> {
     this.used = new Set();
-    await this.seen.load();
+    await Promise.all([this.seen.load(), this.names.load()]);
     let snap: HerdrSnapshot | undefined;
     let herdrError: Text | undefined;
     try {
@@ -360,6 +363,7 @@ export class World {
       }
       const alive = new Set(snap.panes.map((p) => p.pane_id));
       this.seen.prune(alive);
+      this.names.prune(alive);
       for (const id of this.doneSeq.keys()) if (!alive.has(id)) this.doneSeq.delete(id);
       for (const id of this.unread.keys()) if (!alive.has(id)) this.unread.delete(id);
     }
@@ -405,6 +409,11 @@ export class World {
       panes,
       agents,
     };
+  }
+
+  /** 월드에서 pane 이름을 바꿨다고 적는다(비웠으면 지운다). */
+  named(paneId: string, label: string): void {
+    this.names.set(paneId, label || null);
   }
 
   /** 완료를 확인했다고 적는다(undo 면 지운다). 지금 완료 상태가 아닌 pane 이면 false. */
