@@ -705,6 +705,8 @@ export class TermScreen {
    */
   private pinned = true;
   private savedTop = 0;
+  /** 이 pane 을 이 폭에서 그리는 동안 본 가장 넓은 상태줄의 칸 수(unfoldFooter). */
+  private footerSeen = { pane: "", width: 0, cols: 0 };
   /** 지난 그리기의 상자 묶음 결과(묶음 줄들의 key → 결과). 이번에 쓴 것만 남긴다. */
   private boxForms = new Map<string, BoxForm>();
 
@@ -903,7 +905,10 @@ export class TermScreen {
    */
   private unfoldFooter(footer: Row[], pool: Map<string, Row[]>): Row[] | null {
     const width = this.el.clientWidth - 24;
-    const cols = Math.max(0, ...footer.map((r) => rowCols(r, true)));
+    // 넘치는지는 이 pane·이 폭에서 본 가장 넓은 상태줄로 가린다. 그때그때의 폭으로 가리면 경계에 걸린 상태줄이 숫자 한 자리
+    // (컨텍스트 3% ↔ 13%)에 한 줄로 줄였다 펴서 접었다를 오가며 높이가 바뀐다.
+    if (this.footerSeen.pane !== this.paneId || this.footerSeen.width !== width) this.footerSeen = { pane: this.paneId, width, cols: 0 };
+    const cols = (this.footerSeen.cols = Math.max(this.footerSeen.cols, ...footer.map((r) => rowCols(r, true))));
     if (width <= 0 || cols * FIT_MIN_PX * 0.62 <= width) return null;
     const cut = Math.max(0, ...footer.map((r) => (r.logo ??= logoCols(r.text))));
     const out: Row[] = [];

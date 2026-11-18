@@ -49,7 +49,13 @@ const QUICK_KEYS: Array<{ label: string; title: string; icon?: IconName; caption
   { label: "Enter", title: "Enter", icon: "enter", keys: ["enter"] },
 ];
 
-const PREVIEW_LINES = 18;
+/**
+ * 미리보기에 그리는 화면의 아랫줄 수. 상자(스타일시트의 .term.preview, 높이 상한 320px)를 늘 넘치게 채우는 수다 — 한 줄도
+ * 접히지 않고 상태줄 세 줄이 8px 로 줄어도 26줄이면 330px 이다. 모자라게 그리면(18줄이던 때) 상자 높이가 줄이 접힌 수를
+ * 따라가, 스피너 옆 글이나 상태줄의 숫자가 바뀔 때마다 상자 아래 끝과 그 밑의 것이 위아래로 흔들린다(휴대폰 폭에서
+ * 0.4초마다 302↔320px). 넘치면 상자는 상한에 머물고 아래에 붙은 채 위쪽만 밀린다.
+ */
+const PREVIEW_LINES = 26;
 /** 원문을 펼쳐 볼 수 있는 활동 — 생각은 원문이 로그에 남지 않는다. */
 function expandable(a: Activity): boolean {
   return a.kind === "text" || a.kind === "user" || a.kind === "tool";
