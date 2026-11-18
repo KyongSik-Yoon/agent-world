@@ -14,6 +14,7 @@
 
 body[data-theme="day"] {
   --sky: linear-gradient(180deg, #7cc4f1 0%, #b9e0f6 46%, #e9f4ee 100%);
+  --ground: #e9f4ee;
   --panel: rgba(255, 255, 255, 0.8);
   --panel-solid: #ffffff;
   --line: rgba(30, 40, 70, 0.12);
@@ -31,6 +32,7 @@ body[data-theme="day"] {
 
 body[data-theme="night"] {
   --sky: radial-gradient(ellipse at 70% 12%, #2b3a78 0%, transparent 46%), linear-gradient(180deg, #080c1f 0%, #141a36 52%, #2a2648 100%);
+  --ground: #2a2648;
   --panel: rgba(18, 21, 36, 0.78);
   --panel-solid: #161a2c;
   --line: rgba(190, 205, 255, 0.14);
@@ -64,6 +66,9 @@ html {
 
 body {
   background: var(--sky);
+  /* 그라디언트 밑에 하늘 아래쪽 색을 단색으로 깐다. 브라우저는 이 색을 페이지 바탕으로 알고, 키보드가 올라오는 동안
+     비는 자리를 이 색으로 채운다 — 없으면 안드로이드 앱(PWA)은 매니페스트의 밝은 하늘색으로 채워 밤에도 비친다. */
+  background-color: var(--ground);
   color: var(--ink);
   font: 13px/1.45 var(--font);
   -webkit-font-smoothing: antialiased;
