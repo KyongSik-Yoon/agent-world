@@ -516,7 +516,7 @@ export class DetailPanel {
     close.addEventListener("click", () => this.callbacks.act({ type: "select", id: null }));
     // 휴대폰에서는 상태 창이 화면을 다 덮어 목록이 가려진다. 창을 닫지 않고 목록을 꺼내 다른 에이전트로 옮겨 가게 한다.
     // 가장자리·아래쪽에서 끌어내는 몸짓은 휴대폰의 뒤로 가기·홈 몸짓과 겹쳐 단추로 둔다. 넓은 화면에서는 숨는다.
-    const roster = h("button", { class: "btn icon roster-open", type: "button", title: t("에이전트 목록"), "aria-label": t("에이전트 목록") }, icon("list"));
+    const roster = h("button", { class: "btn icon roster-open", type: "button", title: t("에이전트 목록"), "aria-label": t("에이전트 목록") }, icon("menu"));
     roster.addEventListener("click", () => this.callbacks.act({ type: "roster" }));
     this.head.replaceChildren(roster, tile, h("div", {}, h("h2", {}, title), h("p", {}, sub)), close);
   }
