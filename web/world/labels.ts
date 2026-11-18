@@ -6,6 +6,9 @@
 //     급한 순서대로 자리를 잡게 하고, 밀린 이름표는 말풍선을 접고 그래도 안 되면 번호만 남긴다.
 //   - 달라진 것만 쓴다. 자리가 눈에 띄게 바뀌지 않은 요소의 스타일은 건드리지 않는다 — 가만히 있는 화면에서
 //     매 프레임 수십 개의 스타일을 다시 쓰면 그리는 것보다 스타일 계산이 더 든다.
+//   - 매 프레임 쓰는 자리(transform·쌓는 순서·보임)는 이름표를 감싼 빈 칸에 쓴다. 이름표 자신에는 비켜 서기의
+//     transition 과 `--lift`·`--shift` 가 있어, 거기에 자리를 쓰면 브라우저가 인라인 스타일만 바뀐 요소를 빨리
+//     처리하는 길을 못 탄다(끌어 돌리는 동안 이름표 40여 개에 프레임마다 스타일 계산 1ms 남짓이 더 들었다).
 import * as THREE from "three";
 
 /** 요소의 가로·세로(px). */
@@ -42,6 +45,8 @@ export interface LabelSpec {
 }
 
 interface Label extends LabelSpec {
+  /** 이름표를 감싼 칸. 화면 자리와 쌓는 순서, 보임은 여기에 쓴다. */
+  slot: HTMLElement;
   /** 지금 적용된 모습. */
   level: number;
   /** 지금 올라서 있는 높이(px). */
@@ -116,16 +121,22 @@ export class LabelLayer {
   }
 
   attach(spec: LabelSpec): void {
-    this.labels.set(spec.el, { ...spec, level: 0, lift: 0, shift: 0, roomSince: 0, shown: false, x: 0, y: 0, z: 0, wroteX: NaN, wroteY: NaN, wroteZ: NaN, wroteShown: false, depth: 0 });
+    const slot = document.createElement("div");
+    slot.className = "label-slot";
     // 자리를 받기 전에는 보이지 않게 둔다(왼쪽 위 구석에 한 프레임 비치지 않도록).
-    spec.el.style.visibility = "hidden";
-    this.domElement.append(spec.el);
+    slot.style.visibility = "hidden";
+    slot.append(spec.el);
+    this.labels.set(spec.el, { ...spec, slot, level: 0, lift: 0, shift: 0, roomSince: 0, shown: false, x: 0, y: 0, z: 0, wroteX: NaN, wroteY: NaN, wroteZ: NaN, wroteShown: false, depth: 0 });
+    this.domElement.append(slot);
     this.dirty = true;
   }
 
   detach(el: HTMLElement): void {
-    if (!this.labels.delete(el)) return;
+    const label = this.labels.get(el);
+    if (!label) return;
+    this.labels.delete(el);
     this.unmeasure(el);
+    label.slot.remove();
     el.remove();
     this.dirty = true;
   }
@@ -253,18 +264,18 @@ export class LabelLayer {
     for (const label of all) {
       const visible = label.shown && label.level < label.sizes().length;
       if (visible !== label.wroteShown) {
-        label.el.style.visibility = visible ? "" : "hidden";
+        label.slot.style.visibility = visible ? "" : "hidden";
         label.wroteShown = visible;
       }
       if (!visible) continue;
       if (!(Math.abs(label.x - label.wroteX) < 0.1 && Math.abs(label.y - label.wroteY) < 0.1)) {
         const [cx, cy] = label.center ?? [0.5, 1];
-        label.el.style.transform = `translate(${-100 * cx}%,${-100 * cy}%) translate(${label.x.toFixed(1)}px,${label.y.toFixed(1)}px)`;
+        label.slot.style.transform = `translate(${-100 * cx}%,${-100 * cy}%) translate(${label.x.toFixed(1)}px,${label.y.toFixed(1)}px)`;
         label.wroteX = label.x;
         label.wroteY = label.y;
       }
       if (label.z !== label.wroteZ) {
-        label.el.style.zIndex = String(label.z);
+        label.slot.style.zIndex = String(label.z);
         label.wroteZ = label.z;
       }
     }
