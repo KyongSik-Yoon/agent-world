@@ -1723,7 +1723,7 @@ body[data-covered] :is(#world, #topbar, #roster, #detail) * {
   --compose-in: calc(var(--compose-h) - 8px);
   display: grid;
   grid-template: "plus text send" auto / auto 1fr auto;
-  column-gap: 4px;
+  column-gap: 2px;
   align-items: end;
   padding: 3px;
   border: 1px solid var(--line);
@@ -1776,6 +1776,12 @@ body[data-covered] :is(#world, #topbar, #roster, #detail) * {
   border-radius: 8px;
   background: none;
   resize: none;
+}
+
+/* 한 줄일 때는 글이 ＋ 바로 옆에서 시작한다 — ＋ 와 글 사이가 ＋ 와 상자 가장자리 사이만큼만 벌어진다.
+   두 줄을 넘어 글이 상자 폭을 다 쓰면(.tall) 가장자리에서 조금 띄운다. */
+.compose:not(.tall) textarea {
+  padding-left: 2px;
 }
 
 /* 안내 문구가 넘치면 두 줄로 내려가 잘리지 않고 한 줄에서 줄인다. */

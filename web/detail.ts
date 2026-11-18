@@ -358,7 +358,7 @@ export class DetailPanel {
     if (same || !target) return;
     this.setInput("");
     this.clearShots();
-    this.input.placeholder = target.agent ? t("이 에이전트에게 보낼 말 — Enter 전송 · Shift+Enter 줄바꿈") : t("명령을 치고 Enter — 이 셸에서 바로 실행합니다");
+    this.input.placeholder = target.agent ? t("Enter 전송 · Shift+Enter 줄바꿈") : t("Enter 실행");
     this.sendBtn.textContent = target.agent ? t("보내기") : t("실행");
     this.setNote("", "");
   }
