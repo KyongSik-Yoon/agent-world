@@ -281,11 +281,13 @@ async function switchClaude(paneId: string, model: string, effort: string): Prom
   }
 
   const chosen = picker.rows.find((r) => r.cursor)!.name;
-  const result: Switched = { model: claudeModelId(chosen), effort: picker.effort };
+  const effortSet = picker.effort;
   // 글자 키는 raw 로 — 붙여넣기로 감싸면 선택 창이 키로 받지 않는다.
   await herdrRaw(paneId, "s");
   let agreed = false;
-  const done = await until(async () => {
+  // 선택 창이 닫히고 결과 줄이 나오면 바뀐 것이다. 모델 이름은 결과 줄에서 읽는다 — 모델을 고르지 않았으면 커서가
+  // "Default (recommended)" 처럼 모델 이름이 아닌 줄에 있을 수 있다. 모델을 골랐으면 그 이름인지 본다.
+  const name = await until(async () => {
     const now = await screen();
     if (/Switch model\?/.test(now) && /Yes, switch/.test(now)) {
       if (!agreed) {
@@ -296,10 +298,11 @@ async function switchClaude(paneId: string, model: string, effort: string): Prom
     }
     if (PICKER.test(now)) return undefined;
     const said = now.split("\n").findLast((l) => /Set model to .+ for this session only/.test(l));
-    return said?.includes(chosen) ? said : undefined;
+    const named = said && /Set model to `?(.+?)`? for this session only/.exec(said)?.[1];
+    return named && (!model || named === chosen) ? named : undefined;
   }, 6000);
-  if (!done) throw unconfirmed(L("모델을 바꿨는지 화면에서 확인하지 못했습니다. 터미널 화면을 확인해 주세요.", "Could not confirm the switch on screen. Check the terminal."));
-  return result;
+  if (!name) throw unconfirmed(L("모델을 바꿨는지 화면에서 확인하지 못했습니다. 터미널 화면을 확인해 주세요.", "Could not confirm the switch on screen. Check the terminal."));
+  return { model: claudeModelId(name), effort: effortSet };
 }
 
 /** Codex: 입력창에 `/model <slug> --reasoning=<수준>` 을 넣고, 쓰던 글이 없는지 본 뒤 제출한다. */
@@ -307,7 +310,11 @@ async function switchCodex(paneId: string, model: string, effort: string): Promi
   if (!model) throw new ModelError(L("Codex 는 모델을 함께 골라야 합니다.", "Codex needs a model to switch to."), 400);
   const command = `/model ${model}${effort ? ` --reasoning=${effort}` : ""}`;
   const screen = async () => (await herdrScreen(paneId)).split("\n");
-  if (!(await screen()).some((l) => /^\s*› /.test(l))) throw new ModelError(NO_INPUT, 409, "no_input");
+  /** 모델을 바꿨다는 줄이나 오류 줄 가운데 맨 아래 것. */
+  const lastSaid = (lines: string[]) => lines.findLast((l) => /Model changed to \S+/.test(l) || /^\s*■ /.test(l));
+  const before = await screen();
+  if (!before.some((l) => /^\s*› /.test(l))) throw new ModelError(NO_INPUT, 409, "no_input");
+  const saidBefore = lastSaid(before);
   await herdrInput(paneId, command, undefined);
   const line = await until(async () => (await screen()).find((l) => l.trimEnd().endsWith(command)), 3000);
   if (line === undefined) throw unconfirmed(L("입력창에 넣은 명령이 보이지 않습니다. 터미널 화면을 확인해 주세요.", "The command did not show up in the input. Check the terminal."));
@@ -316,10 +323,15 @@ async function switchCodex(paneId: string, model: string, effort: string): Promi
     throw new ModelError(DRAFT, 409, "draft");
   }
   await herdrInput(paneId, undefined, ["enter"]);
+  // 앞서 남은 줄을 이번 결과로 읽지 않는다: 요청한 모델로 바꿨다는 줄이거나, 명령 전과 다른 새 오류 줄이어야 한다.
   const said = await until(async () => {
     const lines = await screen();
     if (lines.some((l) => l.trimEnd().endsWith(command))) return undefined;
-    return lines.findLast((l) => /Model changed to \S+/.test(l) || /^\s*■ /.test(l));
+    const last = lastSaid(lines);
+    if (!last) return undefined;
+    const changed = /Model changed to (\S+)(?: (\S+))? for this session only/.exec(last);
+    if (changed) return changed[1] === model && (!effort || changed[2] === effort) ? last : undefined;
+    return last !== saidBefore ? last : undefined;
   }, 5000);
   if (said === undefined) throw unconfirmed(L("모델을 바꿨는지 화면에서 확인하지 못했습니다. 터미널 화면을 확인해 주세요.", "Could not confirm the switch on screen. Check the terminal."));
   const changed = /Model changed to (\S+)(?: (\S+))? for this session only/.exec(said);

@@ -73,7 +73,8 @@ export function claudeModelId(name: string): string {
  *   Set effort level to low (saved as your default for new sessions): …
  */
 function feedCommandOutput(s: LogSummary, raw: string): void {
-  const out = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/.exec(raw)?.[1];
+  // 결과 행은 이 꼬리표로 시작한다. 지시나 응답 안에 인용된 같은 글이 모델을 바꾸지 않게 맨 앞만 본다.
+  const out = /^\s*<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/.exec(raw)?.[1];
   if (!out) return;
   const model = /^Set model to `?([^`\n]+?)`?(?= for | and |$)(?:[^\n]*? with `?(\w+)`? effort)?/m.exec(out);
   if (model) {
