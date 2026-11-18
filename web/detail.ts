@@ -518,7 +518,8 @@ export class DetailPanel {
     // 가장자리·아래쪽에서 끌어내는 몸짓은 휴대폰의 뒤로 가기·홈 몸짓과 겹쳐 단추로 둔다. 넓은 화면에서는 숨는다.
     const roster = h("button", { class: "btn icon roster-open", type: "button", title: t("에이전트 목록"), "aria-label": t("에이전트 목록") }, icon("menu"));
     roster.addEventListener("click", () => this.callbacks.act({ type: "roster" }));
-    this.head.replaceChildren(roster, tile, h("div", {}, h("h2", {}, title), h("p", {}, sub)), close);
+    // 제목은 두 줄까지, 버금줄은 한 줄. 넘치는 글은 말풍선으로 다 보인다.
+    this.head.replaceChildren(roster, tile, h("div", { class: "d-title" }, h("h2", { title }, title), h("p", { title: sub }, sub)), close);
   }
 
   /** 다시 쓰는 노드는 제자리에 두고 그 앞뒤만 바꾼다. replaceChildren 은 모두 떼었다 붙여, 붙어 있던 노드 안의
@@ -544,9 +545,16 @@ export class DetailPanel {
 
   /** 상태 창을 그리고, 실시간 미리보기를 붙일 pane id 를 돌려준다(없으면 null). */
   private renderAgent(a: AgentView): string | null {
-    const brand = brandFor(a.vendor);
-    const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : t("{name} (herdr 밖)", { name: a.workspaceLabel });
-    this.setHead(brandTile(a.vendor, 46, a.status === "working"), a.title, `${brand.name}${a.name ? ` “${a.name}”` : ""} · ${where}`);
+    // 버금줄은 어느 집의 누구인지만: 하네스 이름은 옆 로고(말풍선)와 아는 것 카드의 버전 꼬리표에 이미 있고,
+    // 스페이스 번호는 무슨 숫자인지 읽히지 않아 뺀다(목록과 마을의 문패에는 그대로 있다).
+    const where = a.workspaceNumber ? a.workspaceLabel : t("{name} (herdr 밖)", { name: a.workspaceLabel });
+    const tile = brandTile(a.vendor, 36, a.status === "working");
+    const harness = brandFor(a.vendor).name;
+    tile.setAttribute("role", "img");
+    tile.setAttribute("aria-label", harness);
+    if (tile instanceof HTMLElement) tile.title = harness;
+    else tile.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "title")).textContent = harness;
+    this.setHead(tile, a.title, a.name ? `${where} · ${a.name}` : where);
 
     const source = a.statusSource === "herdr" ? t("herdr 가 알려준 상태") : a.statusSource === "card" ? t("질문 카드가 답을 기다리는 중") : a.statusSource === "prompt" ? t("보낸 첫 지시를 시작하는 중") : t("로그 시각으로 추정한 상태");
     const badge = h("span", { class: "badge", title: source }, a.seen ? t("확인함") : STATUS_LABEL[a.status]);
@@ -874,7 +882,7 @@ export class DetailPanel {
     const snap = this.snapshot!;
     const ws = snap.workspaces.find((w) => w.id === p.workspaceId);
     const tab = snap.tabs.find((tb) => tb.id === p.tabId);
-    this.setHead(h("span", { class: "shell-tile big" }, ">_"), p.label || p.title || t("터미널"), t("셸 · {where}", { where: ws ? `${ws.number} · ${ws.label}` : p.workspaceId }));
+    this.setHead(h("span", { class: "shell-tile big" }, ">_"), p.label || p.title || t("터미널"), t("셸 · {where}", { where: ws ? ws.label : p.workspaceId }));
     const rows: Fact[] = [
       { label: t("Pane"), value: tab?.label ? `${p.id} · ${tab.label}` : p.id, mono: true },
       { label: t("크기"), value: p.cols && p.rows ? `${p.cols} × ${p.rows}` : "—", mono: true },

@@ -756,28 +756,43 @@ kbd {
 
 .d-head {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 14px 12px 10px 14px;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 12px 10px 14px;
 }
 
 .d-head .brand-tile {
   flex: none;
-  border-radius: 12px;
+  border-radius: 10px;
+}
+
+/* 제목은 두 줄까지, 버금줄(집 · 주민 이름)은 한 줄 — 긴 제목이 머리를 네 줄로 불려 본문을 밀어내지 않게. */
+.d-title {
+  flex: 1;
+  min-width: 0;
 }
 
 .d-head h2 {
+  display: -webkit-box;
   margin: 0;
+  overflow: hidden;
   font-size: 15px;
   line-height: 1.3;
   letter-spacing: -0.01em;
+  word-break: keep-all;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .d-head p {
-  margin: 2px 0 0;
+  margin: 1px 0 0;
+  overflow: hidden;
   color: var(--ink-2);
   font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .d-head .close {
@@ -2180,9 +2195,9 @@ body[data-covered] :is(#world, #topbar, #roster, #detail) * {
 
 .house-tile,
 .shell-tile.big {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   font-size: 15px;
 }
 
@@ -2192,8 +2207,8 @@ body[data-covered] :is(#world, #topbar, #roster, #detail) * {
 }
 
 .house-tile .ico {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 
 .prow {
