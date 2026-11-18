@@ -339,7 +339,7 @@ export class DetailPanel {
     }
     if (wantPreview && !this.covered) this.preview.start(wantPreview);
     else this.preview.stop();
-    this.preview.el.scrollTop = this.preview.el.scrollHeight;
+    this.preview.restoreScroll();
 
     const control = snapshot.control;
     if (agent?.paneId && control) this.setDock({ paneId: agent.paneId, agent: true });

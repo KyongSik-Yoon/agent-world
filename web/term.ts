@@ -344,10 +344,31 @@ export class TermScreen {
   /** 이 시각까지는 다시 그리지 않는다. */
   private restUntil = 0;
   private restTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * 미리보기가 맨 아래에 붙어 있는지와, 떨어져 있다면 어디까지 올려 두었는지. 사용자가 위로 올려 읽는 동안에는 새 화면이
+   * 와도 끌어내리지 않는다. 요소가 문서에서 빠졌다 다시 붙으면(상세창이 본문을 새로 지을 때) 브라우저가 스크롤을 0 으로
+   * 되돌리므로, 붙어 있는 동안의 값을 따로 들고 있다가 restoreScroll 로 되살린다.
+   */
+  private pinned = true;
+  private savedTop = 0;
 
   constructor(private readonly options: ScreenOptions = {}) {
     this.el.className = "term";
     this.el.textContent = t("화면을 읽는 중…");
+    this.el.addEventListener(
+      "scroll",
+      () => {
+        if (!this.el.isConnected) return;
+        this.savedTop = this.el.scrollTop;
+        this.pinned = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40;
+      },
+      { passive: true },
+    );
+  }
+
+  /** 다시 붙은 미리보기의 스크롤을 떼기 전 자리로 돌린다 — 맨 아래에 있었으면 맨 아래로. */
+  restoreScroll(): void {
+    this.el.scrollTop = this.pinned ? this.el.scrollHeight : this.savedTop;
   }
 
   get pane(): string {
@@ -414,6 +435,8 @@ export class TermScreen {
 
   stop(): void {
     this.wanted = false;
+    // 다음에 열 때는 최신 줄부터 보여 준다.
+    this.pinned = true;
     this.el.classList.remove("stalled");
     this.source?.close();
     this.source = undefined;
@@ -496,7 +519,7 @@ export class TermScreen {
       if (at === node) at = at.nextSibling;
       else this.el.insertBefore(node, at);
     }
-    if (tail || (this.back > 0 && stick)) this.el.scrollTop = this.el.scrollHeight;
+    if (tail ? this.pinned : this.back > 0 && stick) this.el.scrollTop = this.el.scrollHeight;
   }
 }
 
