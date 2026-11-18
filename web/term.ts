@@ -250,6 +250,9 @@ interface Row {
   bgLogo: boolean;
   /** 줄이 끝났을 때의 스타일 — 다음 줄이 이어받는다. */
   end: Style;
+  /** 그린 줄의 원문(SGR 포함)과 시작 스타일 — 상태줄을 펼쳐 다시 그릴 때 쓴다. */
+  line: string;
+  start: Style;
 }
 
 function styleKey(s: Style): string {
@@ -289,7 +292,7 @@ function renderLine(raw: string, start: Style, reflow: boolean): Row {
   if (!line.hasChildNodes()) line.append("\u200b");
   // 가로줄뿐인 줄(이름표가 낀 것도)은 접히면 여러 줄을 차지하므로 한 줄로 잘라 보여 준다.
   else if (reflow && RULE_LINE.test(text)) line.classList.add("rule");
-  return { key: styleKey(start) + raw, node: line, text, bgLogo: bgRuns >= 2, end: style };
+  return { key: styleKey(start) + raw, node: line, text, bgLogo: bgRuns >= 2, end: style, line: raw, start };
 }
 
 export interface ScreenOptions {
@@ -407,6 +410,61 @@ export function gridRanges(lines: readonly string[], limit: number): Array<[numb
   return ranges;
 }
 
+/** 상태줄을 폭에 맞춰 줄일 때의 하한(px). 스타일시트의 .tl.fit 과 같은 값이다. */
+const FIT_MIN_PX = 8;
+/** 오른쪽 정렬용으로 보고 줄일 공백의 길이. */
+const RIGHT_GAP = 8;
+const ANSI_TOKEN = /\x1b\[[0-9;:?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\s\S]/gu;
+
+/** 상태줄 머리의 로고가 차지하는 칸 수. 앞쪽 몇 칸이 공백과 블록 글자뿐이고 블록 글자가 둘 넘으면 로고로 본다. */
+function logoCols(text: string): number {
+  const head = [...text].slice(0, 16);
+  let last = -1;
+  let count = 0;
+  head.forEach((ch, i) => {
+    if (/[\u2580-\u259F\u{1FB00}-\u{1FBFF}]/u.test(ch)) {
+      last = i;
+      count += 1;
+    }
+  });
+  if (count < 2 || !/^[\s\u2580-\u259F\u{1FB00}-\u{1FBFF}]*$/u.test(head.slice(0, last + 1).join(""))) return 0;
+  return last + 1;
+}
+
+/**
+ * 상태줄 한 줄을 접어 보일 수 있게 편다: 앞의 cut 칸(로고)을 떼고, 오른쪽 정렬을 위한 긴 공백을 세 칸으로 줄인다.
+ * 색상 코드는 하나도 버리지 않는다 — 줄이 끝날 때의 스타일이 원래와 같아야 다음 줄이 제 색으로 이어진다.
+ */
+export function unfoldLine(line: string, cut: number): string {
+  let out = "";
+  let col = 0;
+  let gap = "";
+  let spaces = 0;
+  for (const [t] of line.matchAll(ANSI_TOKEN)) {
+    if (t.startsWith("\x1b")) {
+      if (spaces) gap += t;
+      else out += t;
+      continue;
+    }
+    const w = JOINS.test(t) ? 0 : WIDE.test(t) ? 2 : 1;
+    if (col < cut) {
+      col += w;
+      continue;
+    }
+    col += w;
+    if (t === " ") {
+      spaces += 1;
+      gap += t;
+      continue;
+    }
+    if (spaces) out += spaces >= RIGHT_GAP ? `   ${gap.replace(/ /g, "")}` : gap;
+    gap = "";
+    spaces = 0;
+    out += t;
+  }
+  return out + gap.replace(/ /g, "");
+}
+
 /** 왼쪽에 블록·배경 로고를 두고 오른쪽에 소개 글을 나란히 배치한 시작 배너 구간들 `[start, end)` 을 찾는다. */
 export function bannerRanges(lines: ReadonlyArray<{ text: string; bgLogo?: boolean }>, limit: number): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
@@ -500,6 +558,14 @@ export class TermScreen {
   constructor(private readonly options: ScreenOptions = {}) {
     this.el.className = "term";
     this.flow = options.tail !== undefined;
+    // 폭이 바뀌면 상태줄을 줄여 넣을지 펴서 접을지 다시 정한다(상세창 폭을 끌어 바꿀 때).
+    let lastWidth = 0;
+    new ResizeObserver(() => {
+      const w = this.el.clientWidth;
+      if (w === lastWidth) return;
+      lastWidth = w;
+      if (this.flowing && this.fitFooter) this.redraw();
+    }).observe(this.el);
     this.el.textContent = t("화면을 읽는 중…");
     this.el.addEventListener(
       "scroll",
@@ -643,6 +709,27 @@ export class TermScreen {
     });
   }
 
+  /**
+   * 상태줄 묶음이 폭에 맞춰 하한(8px)까지 줄여도 넘치면, 펴서 본문 크기로 접어 보일 줄들을 돌려준다. 넘치지 않으면 null.
+   * 줄여 한 줄에 넣으면 컨텍스트 비율처럼 뒤쪽 값이 잘린다. 접으면 여러 줄짜리 로고가 흩어지므로 로고 칸은 뗀다.
+   */
+  private unfoldFooter(footer: Row[], pool: Map<string, Row[]>): Row[] | null {
+    const width = this.el.clientWidth - 24;
+    const cols = Math.max(0, ...footer.map((r) => displayCols(r.text, true)));
+    if (width <= 0 || cols * FIT_MIN_PX * 0.62 <= width) return null;
+    const cut = Math.max(0, ...footer.map((r) => logoCols(r.text)));
+    const out: Row[] = [];
+    for (const row of footer) {
+      const line = unfoldLine(row.line, logoCols(row.text) > 0 ? cut : 0);
+      const key = styleKey(row.start) + line;
+      const next = key === row.key ? row : (pool.get(key)?.pop() ?? renderLine(line, row.start, true));
+      if (next !== row) this.rows.push(next);
+      // 로고만 있던 줄은 비어 버린다 — 빈 줄로 남기지 않는다.
+      if (next.text.trim() !== "") out.push(next);
+    }
+    return out;
+  }
+
   private draw(raw: readonly string[]): void {
     const { tail } = this.options;
     const reflow = this.flowing;
@@ -670,6 +757,15 @@ export class TermScreen {
       rows = rows.slice(-tail);
       if (footerAt >= 0) footerAt = Math.max(0, footerAt - offset);
     }
+    // 상태줄이 하한 크기에서도 넘쳐 끝이 잘리면(넓은 pane 을 좁은 곳에서 볼 때) 줄이지 않고 펴서 접는다.
+    let unfolded = false;
+    if (reflow && footerAt >= 0 && footerAt < rows.length) {
+      const open = this.unfoldFooter(rows.slice(footerAt), pool);
+      if (open) {
+        rows = [...rows.slice(0, footerAt), ...open];
+        unfolded = true;
+      }
+    }
     if (reflow) {
       const banners = this.fitFooter ? bannerRanges(rows, footerAt >= 0 ? footerAt : rows.length) : [];
 
@@ -686,7 +782,7 @@ export class TermScreen {
       };
       const body = footerAt >= 0 ? footerAt : rows.length;
       for (const [from, to] of gridRanges(rows.map((r) => r.text), body)) applyGroup(from, to, false, true);
-      if (footerAt >= 0 && footerAt < rows.length) applyGroup(footerAt, rows.length, true);
+      if (!unfolded && footerAt >= 0 && footerAt < rows.length) applyGroup(footerAt, rows.length, true);
       for (const [from, to] of banners) applyGroup(from, to, false);
 
       rows.forEach((row, i) => {
