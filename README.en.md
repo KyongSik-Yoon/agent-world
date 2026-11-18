@@ -16,7 +16,7 @@ talk to them and build new workspaces without going back to the herdr window. On
 | Idle | Dozes beside the house (dimmed). |
 
 Click a character to open its status window: model, effort, context, last prompt and reply, activity log and the
-terminal screen. `Copy` next to the last prompt and the last reply takes the original text (Markdown as written). The camera moves in on that character, and closing the window (✕ or Esc) returns to where you were.
+terminal screen. `Copy` next to the last prompt and the last reply takes the original text (Markdown as written). The activity log shows one-line summaries; tap a line to expand that activity in full (the whole reply, the exact command it ran). The camera moves in on that character, and closing the window (✕ or Esc) returns to where you were.
 `Open in herdr` (Enter) switches herdr to that pane and, on Hyprland, brings the terminal window to the front.
 
 <img src="docs/img/detail.webp" alt="The status window of a working character: model, effort, context, branch, last prompt and reply, with the quick-key row and input below" width="960">
@@ -175,12 +175,13 @@ It does not hook into the harnesses. It reads two things.
 - **The herdr socket** — `session.snapshot` tells it which pane runs which agent, its status and its session id.
   Control goes through the same socket (`agent.prompt`, `pane.send_input`, `workspace.create`, `agent.start` …).
 - **The logs the harnesses write themselves** — it finds the file by session id, reads only the tail, and takes the
-  model, effort and current activity from it.
+  model, effort and current activity from it. It does not keep the full text of activities: tapping a line in the
+  activity log reads just that one line again.
 
 | Harness | Log |
 | --- | --- |
 | Claude Code | `~/.claude/projects/*/<session>.jsonl` |
-| Antigravity | `~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript.jsonl` |
+| Antigravity | `~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript_full.jsonl` |
 | Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*-<session>.jsonl` |
 
 While attached to herdr it shows herdr's agents only, because sessions outside herdr (other terminals, desktop

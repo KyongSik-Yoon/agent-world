@@ -29,7 +29,7 @@ herdr plugin install KyongSik-Yoon/agent-world
 
 <img src="docs/img/detail.webp" alt="작업 중인 캐릭터의 상태 창. 모델, effort, 컨텍스트, 브랜치와 마지막 지시·응답이 보이고 아래에 빠른 키 줄과 입력창이 있다" width="960">
 
-모델, effort, 컨텍스트, 마지막 지시와 응답, 활동 로그, 터미널 화면이 한 창에 나옵니다. 카메라가 그 캐릭터 쪽으로 다가가고, 창을 닫으면(✕ 또는 Esc) 보던 자리와 배율로 돌아옵니다. 창이 좁으면 왼쪽 가장자리를 끌어 넓히면 됩니다. 맞춘 폭은 브라우저가 기억하고, 두 번 누르면 처음 폭으로 돌아갑니다. 마지막 지시와 마지막 응답은 제목 옆의 `복사`로 원문(마크다운 그대로)을 가져갈 수 있습니다.
+모델, effort, 컨텍스트, 마지막 지시와 응답, 활동 로그, 터미널 화면이 한 창에 나옵니다. 카메라가 그 캐릭터 쪽으로 다가가고, 창을 닫으면(✕ 또는 Esc) 보던 자리와 배율로 돌아옵니다. 창이 좁으면 왼쪽 가장자리를 끌어 넓히면 됩니다. 맞춘 폭은 브라우저가 기억하고, 두 번 누르면 처음 폭으로 돌아갑니다. 마지막 지시와 마지막 응답은 제목 옆의 `복사`로 원문(마크다운 그대로)을 가져갈 수 있습니다. 활동 로그는 한 줄 요약이라 길면 잘리는데, 줄을 누르면 그 활동의 원문(응답 전문, 실제로 돌린 명령)이 펼쳐집니다.
 
 아래 입력창(`C`)에 지시를 쓰고 Enter 로 보냅니다. 줄바꿈은 Shift+Enter 입니다. 보냈다고 바로 "전달됨"이라 하지 않고, 에이전트의 로그에 사용자 턴이 찍힌 것을 확인한 뒤에 알려 줍니다. 이미지는 입력창에 붙여 넣거나 끌어다 놓거나 `＋` 로 고르면 지시와 함께 갑니다(PNG·JPEG·GIF·WebP, 장당 10MB, 한 번에 8장).
 
@@ -172,10 +172,10 @@ tailscale serve --bg --https=4780 http://127.0.0.1:4780
 
 먼저 herdr 소켓입니다. `session.snapshot` 으로 어느 pane 에 어떤 에이전트가 있는지, 상태가 무엇인지, 세션 id 가 무엇인지 읽습니다. 조작도 같은 소켓으로 보냅니다(`agent.prompt`, `pane.send_input`, `workspace.create`, `agent.start` …).
 
-다른 하나는 하네스가 직접 남기는 로그입니다. 세션 id 로 파일을 찾아 끝부분만 읽고, 모델·effort·지금 하는 일을 뽑아냅니다.
+다른 하나는 하네스가 직접 남기는 로그입니다. 세션 id 로 파일을 찾아 끝부분만 읽고, 모델·effort·지금 하는 일을 뽑아냅니다. 활동의 원문은 들고 있지 않고, 활동 로그의 줄을 누를 때 그 한 줄만 다시 읽습니다.
 
 - Claude Code: `~/.claude/projects/*/<session>.jsonl`
-- Antigravity: `~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript.jsonl`
+- Antigravity: `~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript_full.jsonl`
 - Codex: `~/.codex/sessions/YYYY/MM/DD/rollout-*-<session>.jsonl`
 
 그 밖의 하네스는 herdr 가 알려 주는 제목과 상태만으로 캐릭터가 섭니다. 로그까지 읽게 하려면 `server/adapters/` 에 어댑터를 하나 추가하면 됩니다.
