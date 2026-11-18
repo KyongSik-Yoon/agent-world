@@ -1855,7 +1855,12 @@ body[data-covered] :is(#world, #topbar, #roster, #detail) * {
 
 .house-tile {
   background: var(--soft-2);
-  font-size: 22px;
+  color: var(--ink-2);
+}
+
+.house-tile .ico {
+  width: 24px;
+  height: 24px;
 }
 
 .prow {

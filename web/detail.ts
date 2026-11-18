@@ -742,7 +742,7 @@ export class DetailPanel {
     const agents = snap.agents.filter((a) => a.workspaceId === ws.id);
     const panes = snap.panes.filter((p) => p.workspaceId === ws.id);
     const sub = ws.managed ? `${t("스페이스 {n}", { n: ws.number })}${ws.repo ? ` · ${ws.repo}` : ""}${ws.worktree?.linked ? ` · ${t("워크트리")}` : ""}` : t("herdr 밖의 세션들");
-    this.setHead(h("span", { class: "house-tile" }, "🏠"), ws.label, sub);
+    this.setHead(h("span", { class: "house-tile" }, icon("house")), ws.label, sub);
 
     const parts: Child[] = [];
     if (ws.topic) parts.push(h("div", { class: "now" }, ws.topic));

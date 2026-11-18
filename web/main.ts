@@ -3,7 +3,7 @@ import type { AgentStatus, AgentView, SnapshotPatch, WorldSnapshot } from "../sh
 import { get, post, hasAccess, headers, serverBuild } from "./api.ts";
 import { Builder } from "./build.ts";
 import { type Action, workspaceKey } from "./detail.ts";
-import { STATUS_VAR, h, store, stored } from "./dom.ts";
+import { STATUS_VAR, h, icon, store, stored } from "./dom.ts";
 import { STATUS_LABEL, bubbleText, needsAttention } from "./format.ts";
 import { Hud } from "./hud.ts";
 import { lang, localizeStatic, t, setLang } from "./i18n.ts";
@@ -191,7 +191,7 @@ const themeBtn = document.getElementById("btn-theme")!;
 function setTheme(theme: Theme): void {
   document.body.dataset.theme = theme;
   scene.setTheme(theme);
-  themeBtn.textContent = theme === "day" ? "🌙" : "☀️";
+  themeBtn.replaceChildren(icon(theme === "day" ? "moon" : "sun"));
   // 앱으로 설치했을 때 기기의 상태 표시줄이 하늘과 이어지게.
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "day" ? "#7cc4f1" : "#080c1f");
   store("agent-world.theme", theme);

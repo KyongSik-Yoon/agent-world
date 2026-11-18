@@ -59,7 +59,7 @@ or Share → `Add to Home Screen` in iOS Safari. It then opens full-screen witho
 app has storage separate from Safari, so paste the keyed address once after installing. When the server comes back
 with a new version, open pages reload themselves (they wait while you are typing or have something open).
 
-Turn on the `🔔` at the top to be **notified** when an agent finishes or needs input — also while the page is closed or
+Turn on the bell button at the top to be **notified** when an agent finishes or needs input — also while the page is closed or
 the app is in the background (Web Push). It is off by default, switched on per device, and one more tap turns it off.
 Notifications for the same agent replace each other, and in Chromium browsers you only get the page's toast while you are looking at it.
 On iOS it is available only in the installed home-screen app (16.4 or later). The text is encrypted so that only your
@@ -84,7 +84,7 @@ Worth knowing:
   input (desk-look 0.81.5 or later).
 - **Another PWA on the same host's default port can take the notifications.** Seen on Android Chrome: with another
   app installed from the same tailnet address on port 443, notifications appeared under that app's name. Moving that
-  app to another port, removing it from the phone and turning the `🔔` on again fixed it.
+  app to another port, removing it from the phone and turning the bell on again fixed it.
 - Left to the herdr TUI: pane layout, size and movement, copy mode, mouse, plugins, remote machines, session management.
 
 <img src="docs/img/night.webp" alt="The world in the night theme: a dark blue island with name tags and speech bubbles" width="960">
