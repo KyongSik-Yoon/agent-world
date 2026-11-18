@@ -34,9 +34,10 @@ opening `?lang=en`, or by setting `AGENT_WORLD_LANG=en`.
 | Show an image | Paste it into the input, drop it, or pick it with `＋` (PNG, JPEG, GIF, WebP; 10MB each, 8 at a time). It goes with the prompt. |
 | Answer a question or permission request | When an agent needs input, the real dialog appears at the top of the status window. Press the number or key it shows with the quick-key row. |
 | Use the terminal directly | `` ` `` opens it large. While it is open, keystrokes go straight to the pane. `Scrollback` shows earlier output; for agents with no scrollback (Claude Code in fullscreen mode) it sends PageUp/PageDown to page the app itself, and closing returns it to the live screen. Shift+Esc closes it. |
+| Switch model or effort | `Switch…` at the end of the model row, for Claude Code and Codex sessions. It applies to that session only; sessions you start later keep the harness defaults (the slash commands would change those too, so the world uses Claude Code's "this session only" picker option and Codex's `/model … --reasoning=…`). Not while the agent is working, waiting on a question, or has unsent text in its input. Antigravity has no session-only switch, so its model is picked at start. |
 | Mark a result as seen | Read a finished agent's status window and move on, and it is marked as seen and walks home (`D` does it at once; undo from the toast). |
 | Widen the status window | Drag its left edge. The width is remembered; double-click to reset. |
-| Build a house | `＋ New house` (`B`) — folder, name, worktree or not, the agent to add and its first prompt, in one go. |
+| Build a house | `＋ New house` (`B`) — folder, name, worktree or not, the agent to add with its model and effort, and its first prompt, in one go. The model and effort go in as launch flags (`--model`, `-m` …), so they apply to that session only. |
 | Add residents and tabs | Click a house sign for the house panel — `New resident`, `New tab`, rename, demolish. Shell panes stand in front of the house as small terminals. |
 | Close things | Closing a pane, tab or house lists the agents that will stop with it and asks first. |
 
@@ -201,6 +202,7 @@ under `server/adapters/` to read their logs.
 ```
 server/   Bun server — herdr RPC, log tailing, snapshots pushed over SSE
   control.ts  control endpoints (prompts, keys, terminal mirror, create, close)
+  models.ts   model lists per harness, launch flags, session-only model switches
   adapters/   log readers per harness
   text.ts     server messages in both languages
   key.ts      the access key and owner-only state files
