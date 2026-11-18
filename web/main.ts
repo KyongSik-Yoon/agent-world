@@ -194,9 +194,13 @@ langBtn.title = lang === "ko" ? "Switch to English" : "한국어로 바꾸기";
 langBtn.addEventListener("click", () => setLang(lang === "ko" ? "en" : "ko"));
 
 const themeBtn = document.getElementById("btn-theme")!;
+/** 문서에 적힌 매니페스트(낮 색). 밤에는 색만 다른 것으로 바꿔 가리킨다 — 설치한 앱이 페이지 밖에 칠하는 색이 테마를 따라오게. */
+const manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+const dayManifest = manifestLink?.getAttribute("href") ?? "";
 
 function setTheme(theme: Theme): void {
   document.body.dataset.theme = theme;
+  manifestLink?.setAttribute("href", theme === "day" ? dayManifest : "./manifest-night.webmanifest");
   scene.setTheme(theme);
   themeBtn.replaceChildren(icon(theme === "day" ? "moon" : "sun"));
   // 앱으로 설치했을 때 기기의 상태 표시줄이 하늘과 이어지게.

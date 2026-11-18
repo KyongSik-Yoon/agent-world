@@ -440,6 +440,16 @@ async function appFiles(): Promise<Record<string, { GET: (req: Request) => Respo
     const headers = { "content-type": type, "x-content-type-options": "nosniff", "cache-control": name === "sw.js" ? "no-cache" : "public, max-age=3600", etag: `"${Bun.hash(body).toString(16)}"` };
     routes[`/${name}`] = { GET: (req) => (req.headers.get("if-none-match") === headers.etag ? new Response(null, { status: 304, headers }) : new Response(body, { headers })) };
   }
+  // 밤 테마의 매니페스트: 낮 것에서 두 색만 바꾼다. 안드로이드에 설치한 앱은 페이지 밖의 자리(자판이 올라올 때 화면과
+  // 자판 사이에 잠깐 비는 틈, 시작 화면)를 매니페스트의 색으로 칠하는데, 이 색은 페이지에서 바꿀 수 없다. 화면은 밤
+  // 테마일 때 이 주소를 매니페스트로 가리키고(web/main.ts), 설치된 앱은 하루에 한 번 확인해 바뀐 색으로 갱신한다.
+  // 색은 web/style.css 의 밤하늘에서 — theme_color 는 main.ts 가 상태 표시줄에 쓰는 색과 같다.
+  {
+    const night = { ...((await Bun.file(join(dir, "manifest.webmanifest")).json()) as Record<string, unknown>), background_color: "#141a36", theme_color: "#080c1f" };
+    const body = new TextEncoder().encode(JSON.stringify(night));
+    const headers = { "content-type": "application/manifest+json", "x-content-type-options": "nosniff", "cache-control": "no-cache", etag: `"${Bun.hash(body).toString(16)}"` };
+    routes["/manifest-night.webmanifest"] = { GET: (req) => (req.headers.get("if-none-match") === headers.etag ? new Response(null, { status: 304, headers }) : new Response(body, { headers })) };
+  }
   return routes;
 }
 
