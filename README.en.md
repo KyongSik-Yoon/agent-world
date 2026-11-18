@@ -46,7 +46,8 @@ opening `?lang=en`, or by setting `AGENT_WORLD_LANG=en`.
 
 On a narrow screen such as a phone, the list becomes a drawer opened with `☰`, and the status window and terminal
 use the whole screen. On touch devices the terminal shows a row of keys the on-screen keyboard lacks (Esc, Tab,
-arrows, Ctrl+C …) and an input line that shows what you type.
+arrows, Ctrl+C …) and an input line that shows what you type. Ctrl and Alt on that row stick to the next key: tap Alt,
+then Enter, and Alt+Enter goes out; tap Alt and type m for Alt+M.
 
 <p>
   <img src="docs/img/phone.webp" alt="The world at phone width" width="300">

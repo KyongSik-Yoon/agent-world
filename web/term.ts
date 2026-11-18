@@ -551,34 +551,61 @@ const RAW: Record<string, string> = {
   Insert: "\x1b[2~",
 };
 
-/** 키 입력 하나를 pane 으로 보낼 입력으로 바꾼다. 보낼 것이 없으면(조합 키만 눌림 등) null. */
-export function keyToInput(e: KeyboardEvent): { text?: string; keys?: string[]; raw?: boolean } | null {
-  if (e.metaKey) return null;
-  const logical = LOGICAL[e.key];
+/**
+ * 한글 자판으로 친 자모를 두벌식에서 같은 자리의 영문 글자로. Ctrl·Alt 조합은 PC 에서도 IME 를 거치지 않고 영문 자리로
+ * 가므로, 한글 자판을 띄운 채 Alt 를 걸고 ㅡ 를 눌러도 Alt+M 이 되게 한다.
+ */
+const DUBEOLSIK: Record<string, string> = Object.fromEntries(
+  [..."ㅂㅈㄷㄱㅅㅛㅕㅑㅐㅔㅁㄴㅇㄹㅎㅗㅓㅏㅣㅋㅌㅊㅍㅠㅜㅡㅃㅉㄸㄲㅆㅒㅖ"].map((jamo, i) => [jamo, "qwertyuiopasdfghjklzxcvbnmQWERTOP"[i]!]),
+);
+
+/** 조합 키. 실제 키보드에서 눌린 것이든, 화면 단추로 걸어 둔 것이든. */
+interface Mods {
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+}
+
+type Input = { text?: string; keys?: string[]; raw?: boolean };
+
+/** 키 하나(KeyboardEvent.key 의 값)와 조합 키를 pane 으로 보낼 입력으로 바꾼다. 보낼 것이 없으면 null. */
+function chord(key: string, mods: Mods): Input | null {
+  const logical = LOGICAL[key];
   if (logical) {
-    const mods = `${e.ctrlKey ? "ctrl+" : ""}${e.altKey ? "alt+" : ""}${e.shiftKey ? "shift+" : ""}`;
-    return { keys: [`${mods}${logical}`] };
+    return { keys: [`${mods.ctrl ? "ctrl+" : ""}${mods.alt ? "alt+" : ""}${mods.shift ? "shift+" : ""}${logical}`] };
   }
-  if (RAW[e.key]) return { text: RAW[e.key], raw: true };
-  if (/^F([1-9]|1[0-2])$/.test(e.key)) return { keys: [e.key.toLowerCase()] };
-  if (e.key.length !== 1) return null;
-  if (e.ctrlKey) {
+  if (RAW[key]) return { text: RAW[key], raw: true };
+  if (/^F([1-9]|1[0-2])$/.test(key)) return { keys: [key.toLowerCase()] };
+  if ([...key].length !== 1) return null;
+  if (!mods.ctrl && !mods.alt) return { text: key };
+  const ch = DUBEOLSIK[key] ?? key;
+  // Alt 는 ESC 를 앞에 붙인다 — herdr 의 alt+글자 와 같은 바이트이고, Claude Code 도 맨 Esc 가 아닌 Alt 로 읽는다.
+  const esc = mods.alt ? "\x1b" : "";
+  if (mods.ctrl) {
     // Ctrl+글자는 제어 문자 그대로 — 셸이든 TUI 든 가장 널리 통한다.
-    const code = e.key.toUpperCase().charCodeAt(0);
-    if (code >= 64 && code <= 95) return { text: String.fromCharCode(code - 64), raw: true };
-    if (e.key === " ") return { text: "\x00", raw: true };
+    const code = ch.toUpperCase().charCodeAt(0);
+    if (code >= 64 && code <= 95) return { text: esc + String.fromCharCode(code - 64), raw: true };
+    if (ch === " ") return { text: `${esc}\x00`, raw: true };
     return null;
   }
-  if (e.altKey) return { text: `\x1b${e.key}`, raw: true };
-  return { text: e.key };
+  return { text: esc + ch, raw: true };
+}
+
+/** 키 입력 하나를 pane 으로 보낼 입력으로 바꾼다. 보낼 것이 없으면(조합 키만 눌림 등) null. */
+export function keyToInput(e: KeyboardEvent, held: { ctrl: boolean; alt: boolean } = { ctrl: false, alt: false }): Input | null {
+  if (e.metaKey) return null;
+  return chord(e.key, { ctrl: e.ctrlKey || held.ctrl, alt: e.altKey || held.alt, shift: e.shiftKey });
 }
 
 const BACK_LINES = 1200;
 
 /** 화면 자판에 없는 키들 — 크게 보기 위쪽에 단추로 둔다(터치 기기에서만 보인다). */
 /** 글자 기호(← ⏎ ⌫ ⇧)는 기기의 글꼴마다 굵기와 높이가 달라 선 아이콘으로 그린다. label 은 읽어 주는 이름이 된다. */
-const SOFT_KEYS: Array<{ label: string; icon?: IconName; caption?: string; keys?: string[]; text?: string }> = [
+/** latch 는 누를 때 보내지 않고 걸어 두었다가 다음 키 하나에 붙이는 조합 키다. */
+const SOFT_KEYS: Array<{ label: string; icon?: IconName; caption?: string; keys?: string[]; text?: string; latch?: "ctrl" | "alt" }> = [
   { label: "Esc", keys: ["esc"] },
+  { label: "Ctrl", latch: "ctrl" },
+  { label: "Alt", latch: "alt" },
   { label: "Tab", keys: ["tab"] },
   { label: "Shift+Tab", icon: "shift", caption: "Tab", keys: ["shift+tab"] },
   { label: "Left", icon: "left", keys: ["left"] },
@@ -609,6 +636,13 @@ export class TermOverlay {
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
   /** 보내고 아직 답을 받지 못한 입력의 수. */
   private sending = 0;
+  /** 화면 단추로 걸어 둔 조합 키. 다음 키 하나에 붙고 풀린다. */
+  private readonly held = { ctrl: false, alt: false };
+  private readonly latchBtns: Partial<Record<"ctrl" | "alt", HTMLButtonElement>> = {};
+  /** 화면 자판이 조합 중인지(한글, 또는 단어 추천을 켠 영문). */
+  private composing = false;
+  /** 조합이 끝나기 전에 이미 보낸 앞부분. 뒤늦게 오는 compositionend 에서 떼어 낸다. */
+  private sentEarly = "";
   onError: ((message: string) => void) | undefined;
   /** 보고 있던 pane 이 herdr 에서 사라져 창을 닫을 때 알린다. */
   onGone: ((title: string) => void) | undefined;
@@ -650,10 +684,22 @@ export class TermOverlay {
       } else btn.textContent = key.label;
       // 단추를 눌러도 입력란의 초점(과 화면 자판)이 그대로 있도록 한다.
       btn.addEventListener("pointerdown", (e) => e.preventDefault());
-      btn.addEventListener("click", () => {
-        this.flush();
-        this.send(key.keys ? { keys: key.keys } : { text: key.text, raw: true });
-      });
+      const latch = key.latch;
+      if (latch) {
+        btn.setAttribute("aria-pressed", "false");
+        btn.title = t("다음 키에 {key} 붙이기", { key: key.label });
+        this.latchBtns[latch] = btn;
+        btn.addEventListener("click", () => {
+          this.commitComposition();
+          this.setHeld(latch, !this.held[latch]);
+        });
+      } else {
+        btn.addEventListener("click", () => {
+          this.commitComposition();
+          this.flush();
+          this.sendHeld(this.softInput(key));
+        });
+      }
       soft.append(btn);
     }
     const keyboard = document.createElement("button");
@@ -681,10 +727,29 @@ export class TermOverlay {
       if (!window.getSelection()?.toString()) this.ime.focus();
     });
     this.ime.addEventListener("keydown", (e) => this.onKey(e));
+    this.ime.addEventListener("compositionstart", () => {
+      // 새 조합이다 — 앞서 끊은 조합의 확정이 뒤늦게 올 일은 없다.
+      this.composing = true;
+      this.sentEarly = "";
+    });
     this.ime.addEventListener("input", (e) => {
-      if ((e as InputEvent).isComposing) return;
-      this.type(this.ime.value);
+      const data = (e as InputEvent).data;
+      if ((e as InputEvent).isComposing) {
+        this.composing = true;
+        // 조합 키를 걸어 두었으면 조합이 끝나기를 기다리지 않는다 — 한글 자판은 ㅡ 하나를 다음 글자가 올 때까지 쥐고 있다.
+        // 첫 글자에 조합 키를 붙여 보내고, 입력란을 비워 조합을 끊는다.
+        if (this.isHeld() && data) {
+          this.sentEarly = data;
+          this.ime.value = "";
+          this.composing = false;
+          this.typeHeld([...data].at(-1)!);
+        }
+        return;
+      }
+      const typed = this.takeEarly(this.ime.value);
       this.ime.value = "";
+      if (this.isHeld()) this.typeHeld(typed);
+      else this.type(typed);
     });
     // 화면 자판은 지우기·줄바꿈을 keydown 이 아니라 이 이벤트로만 알려 주는 경우가 많다.
     this.ime.addEventListener("beforeinput", (e) => {
@@ -692,15 +757,16 @@ export class TermOverlay {
       if (e.inputType === "deleteContentBackward" && this.ime.value === "") {
         e.preventDefault();
         this.flush();
-        this.send({ keys: ["backspace"] });
+        this.sendHeld(chord("Backspace", this.mods()));
       } else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
         e.preventDefault();
         this.flush();
-        this.send({ keys: ["enter"] });
+        this.sendHeld(chord("Enter", this.mods()));
       }
     });
     this.ime.addEventListener("compositionend", (e) => {
-      this.type(e.data);
+      this.composing = false;
+      this.type(this.takeEarly(e.data ?? ""));
       this.ime.value = "";
     });
     this.ime.addEventListener("paste", (e) => {
@@ -743,6 +809,8 @@ export class TermOverlay {
   close(): void {
     if (this.root.hidden) return;
     this.flush();
+    this.setHeld("ctrl", false);
+    this.setHeld("alt", false);
     this.root.hidden = true;
     this.screen.stop();
     this.onToggle?.(false);
@@ -770,6 +838,68 @@ export class TermOverlay {
     const size = Math.max(floor, Math.min(MAX_FONT_PX, width / (this.cols * 0.6)));
     this.screen.el.style.fontSize = `${size.toFixed(2)}px`;
     this.screen.el.style.setProperty("--cols", String(this.cols));
+  }
+
+  private isHeld(): boolean {
+    return this.held.ctrl || this.held.alt;
+  }
+
+  private mods(): Mods {
+    return { ctrl: this.held.ctrl, alt: this.held.alt, shift: false };
+  }
+
+  private setHeld(which: "ctrl" | "alt", on: boolean): void {
+    this.held[which] = on;
+    this.latchBtns[which]?.setAttribute("aria-pressed", String(on));
+  }
+
+  /** 키 줄 단추 하나를 보낼 입력으로. 걸어 둔 조합 키가 있으면 붙인다. */
+  private softInput(key: (typeof SOFT_KEYS)[number]): Input | null {
+    const { ctrl, alt } = this.held;
+    if (key.keys) return { keys: key.keys.map((k) => `${ctrl ? "ctrl+" : ""}${alt ? "alt+" : ""}${k}`) };
+    // ^C 같은 제어 문자 단추는 이미 Ctrl 이 붙어 있다 — Alt 만 더한다.
+    return { text: `${alt ? "\x1b" : ""}${key.text ?? ""}`, raw: true };
+  }
+
+  /** 조합 키를 붙인 입력을 보내고 걸어 둔 조합 키를 푼다. */
+  private sendHeld(input: Input | null): void {
+    if (!input) return;
+    this.send(input);
+    this.setHeld("ctrl", false);
+    this.setHeld("alt", false);
+  }
+
+  /** 조합 키를 걸어 둔 채 들어온 글자. 첫 글자에만 붙이고 나머지는 그대로 친다. */
+  private typeHeld(text: string): void {
+    const [first, ...rest] = [...text];
+    if (!first) return;
+    this.flush();
+    const input = chord(first, this.mods());
+    // 조합 키를 붙일 수 없는 글자(Ctrl+완성된 한글 등)는 그냥 치고, 걸어 둔 것은 다음 키를 위해 남긴다.
+    if (input) this.sendHeld(input);
+    else this.type(first);
+    this.type(rest.join(""));
+  }
+
+  /** 조합 중인 글자를 확정해 먼저 보낸다 — 키 줄 단추가 그보다 앞질러 가지 않게. */
+  private commitComposition(): void {
+    if (!this.composing || !this.ime.value) return;
+    const text = this.ime.value;
+    this.sentEarly = text;
+    this.ime.value = "";
+    this.composing = false;
+    this.type(text);
+    this.flush();
+  }
+
+  /**
+   * 조합을 끊고 먼저 보낸 글자가 뒤늦게 다시 들어오면 떼어 낸다. 입력란을 비우면 브라우저는 조합을 접지만 화면 자판은
+   * 저마다 달라서, 쥐고 있던 글자를 compositionend 로도, 그냥 글자 넣기로도 다시 보낼 수 있다.
+   */
+  private takeEarly(text: string): string {
+    const early = this.sentEarly;
+    this.sentEarly = "";
+    return early && text.startsWith(early) ? text.slice(early.length) : text;
   }
 
   private send(input: { text?: string; keys?: string[]; raw?: boolean }): void {
@@ -817,12 +947,12 @@ export class TermOverlay {
     // 복사·붙여넣기·새로고침 같은 브라우저 조합은 그대로 둔다.
     if (e.ctrlKey && e.shiftKey && /^[cv]$/i.test(e.key)) return;
     if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "v") return;
-    const input = keyToInput(e);
+    const input = keyToInput(e, this.held);
     if (!input) return;
     // 그냥 글자는 input 이벤트로 받는다(한글 조합과 같은 길).
     if (input.text !== undefined && !input.raw) return;
     e.preventDefault();
     this.flush();
-    this.send(input);
+    this.sendHeld(input);
   }
 }

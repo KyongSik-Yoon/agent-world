@@ -2155,6 +2155,13 @@ dialog.dlg .warn {
   font: 600 13px var(--mono);
 }
 
+/* 걸어 둔 Ctrl·Alt — 다음 키 하나에 붙는다. */
+.soft-keys button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--panel-solid);
+}
+
 .soft-keys .ico {
   width: 17px;
   height: 17px;

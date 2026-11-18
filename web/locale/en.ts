@@ -42,6 +42,7 @@ export const en: Record<string, string> = {
   "입력은 그대로 터미널로 갑니다 · Shift+Esc 닫기": "Typing goes straight to the terminal · Shift+Esc to close",
   "닫기 (Shift+Esc)": "Close (Shift+Esc)",
   "자판 열기": "Show keyboard",
+  "다음 키에 {key} 붙이기": "Hold {key} for the next key",
   "터미널 입력": "Terminal input",
   "여기에 치면 터미널로 들어갑니다": "Type here to send to the terminal",
   "지금 화면으로": "Live view",
