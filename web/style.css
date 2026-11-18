@@ -1661,14 +1661,15 @@ kbd {
   }
 }
 
-/* 입력줄은 테두리 하나짜리 상자다 — 이미지 단추와 보내기 단추가 그 안에 들어 있어서, 여러 줄로 커져도 단추가 상자 아래쪽에
-   자연스럽게 앉는다. --compose-h 는 한 줄일 때 상자의 높이. */
+/* 입력줄은 테두리 하나짜리 상자다. 한 줄일 때는 [＋ 글 보내기] 가 한 줄에 서고, 글이 두 줄을 넘으면(.tall) 글이 상자 폭을
+   다 쓰고 단추는 그 아래 줄로 내려간다 — 단추 위아래로 빈 기둥이 생기지 않는다. --compose-h 는 한 줄일 때 상자의 높이. */
 .compose {
   --compose-h: 38px;
   --compose-in: calc(var(--compose-h) - 8px);
-  display: flex;
-  gap: 4px;
-  align-items: flex-end;
+  display: grid;
+  grid-template: "plus text send" auto / auto 1fr auto;
+  column-gap: 4px;
+  align-items: end;
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1694,8 +1695,23 @@ kbd {
   resize: vertical;
 }
 
+.compose.tall {
+  grid-template:
+    "text text text" auto
+    "plus . send" auto / auto 1fr auto;
+  row-gap: 2px;
+}
+
+.compose .attach {
+  grid-area: plus;
+}
+
+.compose .btn {
+  grid-area: send;
+}
+
 .compose textarea {
-  flex: 1;
+  grid-area: text;
   min-width: 0;
   height: var(--compose-in);
   min-height: var(--compose-in);

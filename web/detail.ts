@@ -263,7 +263,16 @@ export class DetailPanel {
 
   /** 입력창은 한 줄 높이에서 시작해 글이 늘면 따라 커진다(최대 높이는 CSS 가 정한다). */
   private fitInput(): void {
+    // 한 줄 배치의 폭에서 재서 정한다 — 넓어진 폭에서 재면 줄 수가 줄어 두 배치 사이를 오간다.
+    const box = this.input.parentElement;
+    box?.classList.remove("tall");
     this.input.style.height = "auto";
+    const style = getComputedStyle(this.input);
+    const oneLine = parseFloat(style.lineHeight) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    if (box && this.input.scrollHeight > oneLine + 2) {
+      box.classList.add("tall");
+      this.input.style.height = "auto";
+    }
     this.input.style.height = `${this.input.scrollHeight + this.input.offsetHeight - this.input.clientHeight}px`;
   }
 
