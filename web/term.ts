@@ -465,6 +465,58 @@ export function unfoldLine(line: string, cut: number): string {
   return out + gap.replace(/ /g, "");
 }
 
+/** 가로줄 글자. 상자의 위·아래 테두리에서는 이것이 안쪽의 빈칸 자리다. */
+const RULE_CHAR = /[─━┄┅┈┉╌╍═]/;
+
+/**
+ * 상자 묶음의 모든 줄에서 빈칸(테두리 줄은 가로줄)인 칸이 RIGHT_GAP 넘게 이어지면, 세 칸만 남기고 뗄 칸 표시. 뗄 칸이 없으면 null.
+ * Claude 는 오른쪽 끝에 값을 둔 상자(고친 파일 목록 등)를 pane 폭 가득 그려, 넓은 pane 을 좁은 곳에서 보면 하한 크기로도
+ * 들어가지 않는다. 칸째로 떼므로 세로선은 그대로 맞는다.
+ */
+export function blankColumns(texts: readonly string[]): boolean[] | null {
+  const cells = texts.map((text) => {
+    const out: boolean[] = [];
+    for (const ch of text) {
+      if (JOINS.test(ch)) continue;
+      out.push(ch === " " || RULE_CHAR.test(ch));
+      if (WIDE.test(ch)) out.push(false);
+    }
+    return out;
+  });
+  const width = Math.max(0, ...cells.map((c) => c.length));
+  const drop = new Array<boolean>(width).fill(false);
+  let any = false;
+  for (let col = 0; col < width; ) {
+    let end = col;
+    while (end < width && cells.every((c) => end >= c.length || c[end])) end += 1;
+    if (end - col >= RIGHT_GAP) {
+      for (let i = col + 3; i < end; i += 1) drop[i] = true;
+      any = true;
+    }
+    col = Math.max(end, col + 1);
+  }
+  return any ? drop : null;
+}
+
+/** 줄에서 drop 으로 표시한 칸의 글자를 뗀다. 색상 코드는 그대로 둔다. */
+export function dropColumns(line: string, drop: readonly boolean[]): string {
+  let out = "";
+  let col = 0;
+  let kept = true;
+  for (const [t] of line.matchAll(ANSI_TOKEN)) {
+    if (t.startsWith("\x1b")) {
+      out += t;
+      continue;
+    }
+    if (!JOINS.test(t)) {
+      kept = !drop[col];
+      col += WIDE.test(t) ? 2 : 1;
+    }
+    if (kept) out += t;
+  }
+  return out;
+}
+
 /** 왼쪽에 블록·배경 로고를 두고 오른쪽에 소개 글을 나란히 배치한 시작 배너 구간들 `[start, end)` 을 찾는다. */
 export function bannerRanges(lines: ReadonlyArray<{ text: string; bgLogo?: boolean }>, limit: number): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
@@ -720,14 +772,19 @@ export class TermScreen {
     const cut = Math.max(0, ...footer.map((r) => logoCols(r.text)));
     const out: Row[] = [];
     for (const row of footer) {
-      const line = unfoldLine(row.line, logoCols(row.text) > 0 ? cut : 0);
-      const key = styleKey(row.start) + line;
-      const next = key === row.key ? row : (pool.get(key)?.pop() ?? renderLine(line, row.start, true));
-      if (next !== row) this.rows.push(next);
+      const next = this.reline(row, unfoldLine(row.line, logoCols(row.text) > 0 ? cut : 0), pool);
       // 로고만 있던 줄은 비어 버린다 — 빈 줄로 남기지 않는다.
       if (next.text.trim() !== "") out.push(next);
     }
     return out;
+  }
+
+  /** 고쳐 쓴 줄을 그린다. 그려 둔 같은 줄이 있으면 그 요소를 쓰고, 새로 그린 줄은 다음 그리기에서 쓰도록 rows 에 넣는다. */
+  private reline(row: Row, line: string, pool: Map<string, Row[]>): Row {
+    const key = styleKey(row.start) + line;
+    const next = key === row.key ? row : (pool.get(key)?.pop() ?? renderLine(line, row.start, true));
+    if (next !== row) this.rows.push(next);
+    return next;
   }
 
   private draw(raw: readonly string[]): void {
@@ -781,7 +838,16 @@ export class TermScreen {
         }
       };
       const body = footerAt >= 0 ? footerAt : rows.length;
-      for (const [from, to] of gridRanges(rows.map((r) => r.text), body)) applyGroup(from, to, false, true);
+      const grids = gridRanges(rows.map((r) => r.text), body);
+      // 표의 모든 줄에서 비어 있는 긴 칸 구간은 떼어 낸다. 배너 상자는 로고 자리가 흐트러지지 않게 두고 따로 맞춘다.
+      for (const [from, to] of grids) {
+        if (banners.some(([b, e]) => from < e && b < to)) continue;
+        const drop = blankColumns(rows.slice(from, to).map((r) => r.text));
+        if (!drop) continue;
+        if (rows === this.rows) rows = rows.slice();
+        for (let i = from; i < to; i += 1) rows[i] = this.reline(rows[i]!, dropColumns(rows[i]!.line, drop), pool);
+      }
+      for (const [from, to] of grids) applyGroup(from, to, false, true);
       if (!unfolded && footerAt >= 0 && footerAt < rows.length) applyGroup(footerAt, rows.length, true);
       for (const [from, to] of banners) applyGroup(from, to, false);
 
