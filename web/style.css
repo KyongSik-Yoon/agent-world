@@ -1226,9 +1226,15 @@ kbd {
 }
 
 .log-detail .log-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
   margin-bottom: 2px;
+  padding: 4px 0 2px;
+  background: var(--panel-solid);
 }
 
 /* 섹션 머리의 복사 단추와 같은 모양. 누를 자리는 넓히고 바깥 여백을 그만큼 뺀다. */

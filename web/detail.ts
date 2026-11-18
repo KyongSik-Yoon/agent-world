@@ -114,6 +114,9 @@ export class DetailPanel {
   private logOpen: string | null = null;
   /** logKey → 받아 온 원문(받는 중이면 빈 객체). 그려 둔 상자도 같이 둬서 스냅샷마다 다시 짓지 않는다. */
   private readonly logText = new Map<string, { text?: string; error?: string; el?: HTMLElement }>();
+  /** 접은 뒤 보이는 자리로 데려올 줄(다시 그린 다음에 쓴다). */
+  private logReveal: HTMLElement | null = null;
+  private logRevealKey: string | null = null;
   private busy = false;
 
   constructor(
@@ -322,6 +325,10 @@ export class DetailPanel {
     // 스크롤 위치는 본문을 짓기 전에 읽는다 — 다시 쓰는 노드(응답 글·미리보기)가 새 본문으로 옮겨 가는 순간
     // 옛 본문이 짧아져, 그 뒤에 읽으면 이미 위로 밀린 값이 나온다.
     const top = selectedId === this.selectedId ? this.body.scrollTop : 0;
+    // 펼쳐 읽던 원문이 보이고 있으면 그 자리를 붙든다. 일하는 주민은 활동 로그의 맨 위에 새 줄이 붙으므로, 스크롤 값만
+    // 되돌리면 읽던 글이 줄 높이만큼씩 아래로 밀린다. 다시 지어도 원문 상자는 같은 노드다(logDetail 이 들고 있다).
+    const anchor = selectedId === this.selectedId ? this.visibleLogDetail() : undefined;
+    const anchorTop = anchor?.getBoundingClientRect().top;
     if (selectedId !== this.selectedId) {
       this.open.prompt = this.open.reply = this.open.screen = false;
       this.sent = null;
@@ -347,6 +354,10 @@ export class DetailPanel {
     }
     this.root.hidden = false;
     this.body.scrollTop = top;
+    if (anchor && anchorTop !== undefined && anchor.isConnected) this.body.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+    // 접기를 눌렀으면 접힌 그 줄이 보이는 자리로 돌아간다 — 긴 원문의 끝에서 접어도 길을 잃지 않게.
+    if (this.logReveal?.isConnected) this.logReveal.scrollIntoView({ block: "nearest" });
+    this.logReveal = null;
 
     // 에이전트의 미리보기는 상태줄을 접지 않고 보여 준다. 확인 필요일 때도 같다 — 질문 카드는 입력창 위에 떠 상태줄이
     // 그대로 남고, 입력창을 대신해 뜨는 대화상자는 footerStart 가 입력창 모양이 아니라고 보고 평소대로 접는다.
@@ -702,14 +713,28 @@ export class DetailPanel {
           this.toggleLog(a.id, item);
         });
       }
+      if (ref && ref === this.logRevealKey) {
+        this.logReveal = row;
+        this.logRevealKey = null;
+      }
       list.append(row);
-      if (open) list.append(this.logDetail(item));
+      if (open) list.append(this.logDetail(a.id, item));
     });
     return h("section", {}, h("h3", {}, t("활동 로그")), list);
   }
 
+  /** 화면 안에 들어와 있는 펼친 원문 상자. */
+  private visibleLogDetail(): HTMLElement | undefined {
+    const el = this.logOpen ? this.logText.get(this.logOpen)?.el : undefined;
+    if (!el?.isConnected) return undefined;
+    const box = el.getBoundingClientRect();
+    const view = this.body.getBoundingClientRect();
+    return box.bottom > view.top && box.top < view.bottom ? el : undefined;
+  }
+
   private toggleLog(agentId: string, item: Activity): void {
     const ref = logKey(item);
+    if (this.logOpen === ref) this.logRevealKey = ref;
     this.logOpen = this.logOpen === ref ? null : ref;
     const got = this.logText.get(ref);
     if (this.logOpen && (!got || got.error)) void this.loadLog(agentId, item);
@@ -736,7 +761,7 @@ export class DetailPanel {
   }
 
   /** 펼친 줄 아래의 원문. 응답·지시는 글로, 도구 호출은 입력 그대로 고정폭으로. */
-  private logDetail(item: Activity): HTMLElement {
+  private logDetail(agentId: string, item: Activity): HTMLElement {
     const got = this.logText.get(logKey(item));
     if (!got || (got.text === undefined && !got.error)) return h("li", { class: "log-detail wait" }, t("원문을 불러오는 중…"));
     if (got.text === undefined) return h("li", { class: "log-detail err" }, got.error ?? "");
@@ -745,7 +770,13 @@ export class DetailPanel {
     const text = raw.replace(OMITTED, (_, n: string) => t("…(약 {n}토큰 생략)…", { n }));
     const body = item.kind === "tool" ? h("pre", {}, text || item.name) : h("div", { class: "prose" }, prose(text));
     const what = t("활동 원문");
-    const bar = h("div", { class: "log-bar" }, this.button(t("복사"), () => this.copy(raw, what), { cls: "", icon: "copy", title: t("이 원문을 클립보드에 복사합니다") }));
+    // 단추 줄은 긴 원문을 읽는 내내 위에 붙어 있어, 어디까지 내려가 있든 바로 접을 수 있다.
+    const bar = h(
+      "div",
+      { class: "log-bar" },
+      this.button(t("복사"), () => this.copy(raw, what), { cls: "", icon: "copy", title: t("이 원문을 클립보드에 복사합니다") }),
+      this.button(t("접기"), () => this.toggleLog(agentId, item), { cls: "" }),
+    );
     got.el = h("li", { class: "log-detail" }, bar, body);
     return got.el;
   }
