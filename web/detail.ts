@@ -7,7 +7,7 @@ import type { AgentView, PaneView, PendingRequest, WorkspaceView, WorldSnapshot 
 import { ApiError, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
 import { type Child, type IconName, STATUS_VAR, h, icon, prose, store, stored } from "./dom.ts";
-import { STATUS_LABEL, activityLine, bubbleText, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
+import { STATUS_LABEL, activityParts, bubbleText, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
 import { t } from "./i18n.ts";
 import { TermScreen } from "./term.ts";
 
@@ -649,10 +649,10 @@ export class DetailPanel {
     const list = h("ol", { class: "log" });
     [...a.recent].reverse().forEach((item, i) => {
       const cls = [item.error ? "err" : "", i === 0 ? "latest" : ""].filter(Boolean).join(" ");
-      const line = activityLine(item);
+      const { icon: kind, text: line } = activityParts(item);
       const text = h("span", {}, item.error ? t("{line} — 실패", { line }) : line);
       text.title = line;
-      list.append(h("li", cls ? { class: cls } : {}, h("time", {}, clock(item.at)), text));
+      list.append(h("li", cls ? { class: cls } : {}, h("time", {}, clock(item.at)), kind ? icon(kind) : h("i", {}), text));
     });
     return h("section", {}, h("h3", {}, t("활동 로그")), list);
   }

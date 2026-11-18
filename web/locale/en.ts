@@ -16,7 +16,7 @@ export const en: Record<string, string> = {
   "{what} 계획 정리": "Planning {what}",
   "{what} 스킬": "Skill {what}",
   "{what} 조언 구하는 중": "Asking for advice: {what}",
-  "💭 생각 중…": "💭 Thinking…",
+  "생각 중…": "Thinking…",
   "⏳ 일하는 중…": "⏳ Working…",
   "다 했어요!": "All done!",
   "🙋 확인이 필요해요": "🙋 Needs your input",

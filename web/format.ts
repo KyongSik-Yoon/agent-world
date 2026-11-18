@@ -1,5 +1,6 @@
 // 스냅샷의 값을 사람이 읽는 한국어 문구로 바꾼다 — 말풍선, 로스터, 상세 패널이 같이 쓴다.
 import type { Activity, AgentStatus, AgentView } from "../shared/types.ts";
+import type { IconName } from "./dom.ts";
 import { lang, t } from "./i18n.ts";
 
 export const STATUS_LABEL: Record<AgentStatus, string> = {
@@ -17,17 +18,18 @@ export function needsAttention(status: AgentStatus): boolean {
   return status === "blocked" || status === "done";
 }
 
-// 활동 줄 틀: {what} 자리에 대상이 들어간다(영어는 동사가 앞에 와서 문장째로 풀어야 한다). 빈 틀이면 icon 과 대상만 쓴다.
-const VERBS: Array<[RegExp, string, string]> = [
-  [/^(bash|shell|exec|run_command|local_shell|command_status|send_command_input)/i, "⚡", ""],
-  [/^(read|view_file|view_|list_dir|ls$|notebookread)/i, "📖", t("{what} 읽는 중")],
-  [/^(edit|write|multiedit|notebookedit|apply_patch|write_to_file|replace_file_content|multi_replace)/i, "✏️", t("{what} 고치는 중")],
-  [/^(grep|glob|grep_search|find|codebase_search|toolsearch)/i, "🔍", t("{what} 찾는 중")],
-  [/^(agent|task$|taskcreate|browser_subagent|workflow)/i, "🤝", t("{what} 맡기는 중")],
-  [/^(webfetch|websearch|search_web|read_url)/i, "🌐", ""],
-  [/^(todowrite|update_plan|task)/i, "📝", t("{what} 계획 정리")],
-  [/^skill/i, "🎓", t("{what} 스킬")],
-  [/^advisor/i, "🧭", t("{what} 조언 구하는 중")],
+// 활동 줄 틀: {what} 자리에 대상이 들어간다(영어는 동사가 앞에 와서 문장째로 풀어야 한다). 빈 틀이면 대상만 쓴다.
+// 그림은 둘이다 — 월드의 말풍선은 이모지, 상태 창의 활동 로그는 다른 단추와 같은 선 아이콘.
+const VERBS: Array<[RegExp, string, IconName, string]> = [
+  [/^(bash|shell|exec|run_command|local_shell|command_status|send_command_input)/i, "⚡", "bolt", ""],
+  [/^(read|view_file|view_|list_dir|ls$|notebookread)/i, "📖", "file", t("{what} 읽는 중")],
+  [/^(edit|write|multiedit|notebookedit|apply_patch|write_to_file|replace_file_content|multi_replace)/i, "✏️", "pencil", t("{what} 고치는 중")],
+  [/^(grep|glob|grep_search|find|codebase_search|toolsearch)/i, "🔍", "search", t("{what} 찾는 중")],
+  [/^(agent|task$|taskcreate|browser_subagent|workflow)/i, "🤝", "people", t("{what} 맡기는 중")],
+  [/^(webfetch|websearch|search_web|read_url)/i, "🌐", "globe", ""],
+  [/^(todowrite|update_plan|task)/i, "📝", "list", t("{what} 계획 정리")],
+  [/^skill/i, "🎓", "spark", t("{what} 스킬")],
+  [/^advisor/i, "🧭", "compass", t("{what} 조언 구하는 중")],
 ];
 
 function toolName(name: string): string {
@@ -35,27 +37,33 @@ function toolName(name: string): string {
   return mcp ? `${mcp[1]} · ${mcp[2]}` : name;
 }
 
-/** 활동 하나를 한 줄로. 말풍선과 활동 로그에 쓴다. */
-export function activityLine(a: Activity): string {
+/** 활동 하나의 그림(이모지와 선 아이콘)과 글. 그림이 없는 활동도 있다. */
+export function activityParts(a: Activity): { emoji: string; icon?: IconName; text: string } {
   switch (a.kind) {
     case "thinking":
-      return t("💭 생각 중…");
+      return { emoji: "💭", icon: "dots", text: t("생각 중…") };
     case "text":
-      return `💬 ${plain(a.text)}`;
+      return { emoji: "💬", icon: "chat", text: plain(a.text) };
     case "user":
-      return `📨 ${plain(a.text)}`;
+      return { emoji: "📨", icon: "person", text: plain(a.text) };
     case "result":
-      return a.text;
+      return { emoji: "", text: a.text };
     case "tool": {
-      if (a.name.startsWith("mcp__")) return `🔌 ${toolName(a.name)}${a.text ? ` · ${a.text}` : ""}`;
-      for (const [re, icon, verb] of VERBS) {
+      if (a.name.startsWith("mcp__")) return { emoji: "🔌", icon: "plug", text: `${toolName(a.name)}${a.text ? ` · ${a.text}` : ""}` };
+      for (const [re, emoji, icon, verb] of VERBS) {
         if (!re.test(a.name)) continue;
         const what = a.text || a.name;
-        return `${icon} ${verb ? verb.replace("{what}", what) : what}`;
+        return { emoji, icon, text: verb ? verb.replace("{what}", what) : what };
       }
-      return `🔧 ${a.name}${a.text ? ` · ${a.text}` : ""}`;
+      return { emoji: "🔧", icon: "box", text: `${a.name}${a.text ? ` · ${a.text}` : ""}` };
     }
   }
+}
+
+/** 활동 하나를 한 줄로. 말풍선에 쓴다. */
+export function activityLine(a: Activity): string {
+  const { emoji, text } = activityParts(a);
+  return emoji ? `${emoji} ${text}` : text;
 }
 
 /** 마크다운 기호를 걷어낸 한 줄 — 링크는 글자만 남긴다. */
