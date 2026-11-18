@@ -2397,6 +2397,21 @@ dialog.dlg .warn {
   }
 }
 
+/* 휴대폰(세로·가로)의 크게 보기는 화면을 다 쓴다. 가로로 눕힌 휴대폰은 폭이 넓어도 높이가 400px 남짓이라, 데스크톱처럼
+   테두리를 띄우면 터미널에 남는 줄이 몇 안 된다. 노치가 옆으로 가는 것까지 안전 영역을 사방으로 비운다. */
+@media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
+  #term-overlay {
+    inset: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    border: 0;
+    border-radius: 0;
+  }
+
+  #term-overlay header {
+    padding: 6px 8px 6px 12px;
+  }
+}
+
 /* ── 좁은 화면(휴대폰) ───────────────────────────────────────────── */
 
 @media (max-width: 760px) {
@@ -2526,18 +2541,6 @@ dialog.dlg .warn {
     border-radius: 0;
     background: var(--panel-solid);
     z-index: 30;
-  }
-
-  #term-overlay {
-    inset: 0;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-    border: 0;
-    border-radius: 0;
-  }
-
-  #term-overlay header {
-    padding: 6px 8px 6px 12px;
   }
 
   #toasts {
