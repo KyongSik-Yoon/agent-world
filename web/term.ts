@@ -466,18 +466,22 @@ const USER_SCROLL_MS = 1000;
 const RIGHT_GAP = 8;
 const ANSI_TOKEN = /\x1b\[[0-9;:?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\s\S]/gu;
 
-/** 상태줄 머리의 로고가 차지하는 칸 수. 앞쪽 몇 칸이 공백과 블록 글자뿐이고 블록 글자가 둘 넘으면 로고로 본다. */
+/** 상태줄 로고를 그리는 글자: 블록 글자와 Powerline 삼각형(agy 로고 아랫줄의 양 끝 \uE0BA·\uE0B8). STATUS_STRONG 과 같은 범위. */
+const STATUS_LOGO_CHAR = /[\u2580-\u259F\u{1FB00}-\u{1FBFF}\uE0B0-\uE0D7]/u;
+const STATUS_LOGO_HEAD = /^[\s\u2580-\u259F\u{1FB00}-\u{1FBFF}\uE0B0-\uE0D7]*$/u;
+
+/** 상태줄 머리의 로고가 차지하는 칸 수. 앞쪽 몇 칸이 공백과 로고 글자뿐이고 로고 글자가 둘 넘으면 로고로 본다. */
 function logoCols(text: string): number {
   const head = [...text].slice(0, 16);
   let last = -1;
   let count = 0;
   head.forEach((ch, i) => {
-    if (/[\u2580-\u259F\u{1FB00}-\u{1FBFF}]/u.test(ch)) {
+    if (STATUS_LOGO_CHAR.test(ch)) {
       last = i;
       count += 1;
     }
   });
-  if (count < 2 || !/^[\s\u2580-\u259F\u{1FB00}-\u{1FBFF}]*$/u.test(head.slice(0, last + 1).join(""))) return 0;
+  if (count < 2 || !STATUS_LOGO_HEAD.test(head.slice(0, last + 1).join(""))) return 0;
   return last + 1;
 }
 
