@@ -1,7 +1,10 @@
-// Antigravity CLI: `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`.
+// Antigravity CLI: `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript_full.jsonl`.
 //
 // 대화의 정본은 `conversations/<id>.db`(protobuf 스텝)지만, AGY 가 같은 내용을 평문 jsonl 로도
 // 적어 둔다. 스텝 하나가 한 행이고 모델·토큰·도구 호출이 그대로 들어 있어 이쪽만 읽는다.
+// 곁의 `transcript.jsonl` 은 같은 행들을 줄여 적은 사본이다(도구 호출 인자와 긴 글이 잘리고 `truncated_fields` 가 붙는다).
+// 활동의 원문을 펼쳐 보려면 잘리지 않은 쪽을 읽어야 해서 `_full` 을 읽고, 없으면 줄인 쪽으로 물러난다.
+// 꼬리만 읽고 이어서 읽으므로 파일이 두 배 커도 읽는 비용은 거의 같다(갱신 한 번 0.16ms 안팎으로 같았다).
 // 제목은 로그에 없어서 `conversation_summaries.db` 에서 읽는다.
 import { Database } from "bun:sqlite";
 import { readdir, stat } from "node:fs/promises";
@@ -19,8 +22,20 @@ function root(): string {
   return process.env.AGY_HOME || join(homedir(), ".gemini", "antigravity-cli");
 }
 
-function logPath(sessionId: string): string {
-  return join(root(), "brain", sessionId, ".system_generated", "logs", "transcript.jsonl");
+const LOG_NAMES = ["transcript_full.jsonl", "transcript.jsonl"];
+
+/** 이 대화의 로그와 그 상태. 잘리지 않은 쪽이 있으면 그것을 고른다. */
+async function findLog(sessionId: string): Promise<{ path: string; mtimeMs: number } | null> {
+  const dir = join(root(), "brain", sessionId, ".system_generated", "logs");
+  for (const name of LOG_NAMES) {
+    const path = join(dir, name);
+    try {
+      return { path, mtimeMs: (await stat(path)).mtimeMs };
+    } catch {
+      // 이 이름은 없다 — 다음 것.
+    }
+  }
+  return null;
 }
 
 /** 도구 인자는 값마다 JSON 으로 한 번 더 싸여 있다(`"\"git status\""`). 풀 수 있으면 푼다. */
@@ -149,13 +164,7 @@ export const agy: Harness = {
   reader: agyReader,
   async resolve(sessionId) {
     if (!SESSION_ID.test(sessionId)) return null;
-    const path = logPath(sessionId);
-    try {
-      await stat(path);
-      return path;
-    } catch {
-      return null;
-    }
+    return (await findLog(sessionId))?.path ?? null;
   },
   async title(sessionId) {
     return SESSION_ID.test(sessionId) ? readTitle(sessionId) : undefined;
@@ -171,13 +180,9 @@ export const agy: Harness = {
     await Promise.all(
       ids.map(async (sessionId) => {
         if (!SESSION_ID.test(sessionId)) return;
-        const path = logPath(sessionId);
-        try {
-          const info = await stat(path);
-          if (info.mtimeMs >= sinceMs) found.push({ sessionId, path, mtimeMs: info.mtimeMs });
-        } catch {
-          // 로그가 아직 없는 대화.
-        }
+        // 로그가 아직 없는 대화는 null 이다.
+        const log = await findLog(sessionId);
+        if (log && log.mtimeMs >= sinceMs) found.push({ sessionId, ...log });
       }),
     );
     return found;
