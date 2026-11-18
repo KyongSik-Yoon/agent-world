@@ -57,6 +57,30 @@ const KINDS = new Set<Kind>(["workspace", "tab", "pane", "agent"]);
 /** 붙여넣은 경로를 하네스가 이미지로 바꿔 달 때까지 기다려 주는 시간. */
 const IMAGE_ATTACH_MS = 6000;
 const IMAGE_MARK = /\[Image #\d+\]/g;
+/** 지시가 입력창에 나타나고 제출되기까지 기다리는 시간. 막 뜬 Claude 는 시작 10초 안팎에야 입력창을 채우기도 한다. */
+const SUBMIT_CHECK_MS = 20_000;
+const SUBMIT_POLL_MS = 100;
+/** Enter 를 누른 뒤 보낸 글이 이만큼 입력창에 남아 있으면 그 Enter 는 버려진 것이다. */
+const SUBMIT_STUCK_MS = 1000;
+const SUBMIT_PRESSES = 3;
+/** 입력창에서 보낸 글을 알아볼 때 견주는 첫 줄의 길이(공백을 뺀 글자 수). */
+const SUBMIT_MARK_CHARS = 12;
+/** Claude Code 는 긴 붙여넣기를 입력창에 이 표시로 접어 둔다. */
+const PASTED_MARK = /\[Pasted text #\d+/;
+/** Claude Code 입력창의 위아래 가로줄. */
+const RULE = /^\s*─{20,}/;
+
+function squash(s: string): string {
+  return s.replace(/\s+/g, "");
+}
+
+/** Claude Code 화면에서 입력창(맨 아래 가로줄 두 개 사이)의 글. 아직 그리지 않았으면 undefined. */
+export function claudeComposer(screen: string): string | undefined {
+  const lines = screen.split("\n");
+  const rules = lines.flatMap((l, i) => (RULE.test(l) ? [i] : []));
+  if (rules.length < 2) return undefined;
+  return lines.slice(rules[rules.length - 2]! + 1, rules[rules.length - 1]).join("\n");
+}
 
 type Handler = (req: Request) => Response | Promise<Response>;
 type Body = Record<string, unknown>;
@@ -190,7 +214,9 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
   const deliver = async (paneId: string, prompt: string): Promise<void> => {
     await refuseIfAsking(paneId);
     try {
-      await herdrPrompt(paneId, prompt);
+      const pane = (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId);
+      if (pane?.agent === "claude") await submitToClaude(paneId, prompt, pane.agent_status);
+      else await herdrPrompt(paneId, prompt);
     } catch (e) {
       if (e instanceof HerdrError && e.code === "timeout") {
         throw new Reject(
@@ -203,6 +229,45 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         );
       }
       throw e;
+    }
+  };
+
+  /**
+   * Claude Code 에는 herdr 의 agent.prompt 를 쓰지 않는다. 그것은 글을 넣고 잠깐 뒤 Enter 를 누를 뿐이라, 막 뜬 Claude 가
+   * 아직 받을 준비가 안 됐으면(herdr 가 idle·interactive_ready 를 알린 뒤에도 몇 초) 글은 나중에 입력창에 채워지고 Enter 는
+   * 버려진다 — "ok" 를 받았는데 지시가 입력창에 멈춰 있다(2.1.327, 시작 4초 뒤에 보내면 다섯 번에 한두 번).
+   * 그래서 글을 넣고, 입력창에 그 글이 보인 뒤에 Enter 를 누르고, 글이 입력창을 떠났는지 본다. 입력창에 그 글이 보일 때만
+   * 누른다 — 다른 것이 떠 있을 때 누르면 그것을 고른다.
+   */
+  const submitToClaude = async (paneId: string, prompt: string, status: string | undefined): Promise<void> => {
+    // agent.prompt 가 해 주던 거절. 질문이 떠 있으면 글이 대화상자로 들어간다.
+    if (status === "blocked") throw new Reject(L("에이전트가 질문에 대한 답을 기다리는 중입니다.", "The agent is waiting for an answer to its question."), 409, "agent_blocked");
+    const mark = squash(prompt.split("\n").find((l) => l.trim()) ?? "").slice(0, SUBMIT_MARK_CHARS);
+    const holds = (box: string | undefined): boolean => box !== undefined && ((mark !== "" && squash(box).includes(mark)) || PASTED_MARK.test(box));
+    const composer = async () => claudeComposer(await herdrScreen(paneId));
+    const until = Date.now() + SUBMIT_CHECK_MS;
+    await herdrInput(paneId, prompt, undefined);
+    while (!holds(await composer())) {
+      if (Date.now() > until) {
+        throw new Reject(
+          L("지시가 에이전트의 입력창에 나타나지 않았습니다. 다시 보내기 전에 터미널 화면을 확인해 주세요.", "The prompt did not show up in the agent's input. Check the terminal before sending it again."),
+          504,
+          "prompt_unconfirmed",
+        );
+      }
+      await Bun.sleep(SUBMIT_POLL_MS);
+    }
+    for (let press = 1; ; press++) {
+      await herdrInput(paneId, undefined, ["enter"]);
+      // 입력창을 떠났거나 입력창 자리를 다른 것(명령이 연 선택 목록 등)이 차지했으면 제출된 것이다.
+      for (const wait = Date.now() + SUBMIT_STUCK_MS; Date.now() < wait; await Bun.sleep(SUBMIT_POLL_MS)) if (!holds(await composer())) return;
+      if (press >= SUBMIT_PRESSES || Date.now() > until) {
+        throw new Reject(
+          L("지시가 입력창에 들어갔지만 제출되지 않았습니다. 터미널 화면에서 확인해 주세요.", "The prompt is in the agent's input but was not submitted. Check the terminal."),
+          504,
+          "prompt_unconfirmed",
+        );
+      }
     }
   };
 
