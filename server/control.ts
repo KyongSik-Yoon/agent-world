@@ -445,6 +445,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       }
       // 지시를 보냈으면 그 전의 완료는 읽은 것이다.
       world.markSeen(paneId, false);
+      world.promptSent(paneId);
       poke(paneId);
     }),
     "/api/keys": mutate(

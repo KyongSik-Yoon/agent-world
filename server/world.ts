@@ -27,6 +27,12 @@ const EXTERNAL_WORKING_MS = 10 * 60_000;
 /** 턴이 닫힌 뒤 이만큼은 "방금 끝남"으로 보여 준다. */
 const EXTERNAL_DONE_MS = 10 * 60_000;
 
+/**
+ * 월드가 첫 지시를 보낸 Claude 가 첫 응답을 로그에 적을 때까지 쉬는 것으로 보지 않는 최대 시간(firstPrompt 참고).
+ * 모든 코어를 바쁘게 한 시험에서 턴이 시작하기까지 23초 걸렸다.
+ */
+const FIRST_PROMPT_HOLD_MS = 45_000;
+
 /** pane 이 닫히면서 로그에 마지막 몇 줄이 더 적히는 것을 "다시 움직였다"로 보지 않기 위한 여유. */
 const RETIRED_GRACE_MS = 15_000;
 
@@ -85,6 +91,8 @@ export class World {
   private doneSeq = new Map<string, number>();
   /** 마지막으로 쉬고 있을 때 확인하지 않은 완료가 있었는지(pane → 여부). 일하는 동안에는 그대로 둔다. */
   private unread = new Map<string, boolean>();
+  /** 월드가 첫 지시를 보낸 pane 과 보낸 시각. 첫 응답이 로그에 적히면 지운다. */
+  private readonly firstPrompt = new Map<string, number>();
 
   /** outside: herdr 에 붙어 있는 동안에도 herdr 밖 세션을 보여 준다. */
   constructor(
@@ -92,13 +100,14 @@ export class World {
     private readonly outside = false,
   ) {}
 
-  private async track(harness: Harness, sessionId: string, knownPath?: string): Promise<Tracked | undefined> {
+  /** eager: 못 찾은 로그를 기다리지 않고 지금 다시 찾는다 — 새 세션의 로그는 첫 지시가 적힐 때 생긴다. */
+  private async track(harness: Harness, sessionId: string, knownPath?: string, eager = false): Promise<Tracked | undefined> {
     const key = `${harness.vendor}:${sessionId}`;
     this.used.add(key);
     let entry = this.tracked.get(key);
     if (!entry) {
       const missedAt = this.unresolved.get(key);
-      if (!knownPath && missedAt !== undefined && Date.now() - missedAt < RESOLVE_RETRY_MS) return undefined;
+      if (!knownPath && !eager && missedAt !== undefined && Date.now() - missedAt < RESOLVE_RETRY_MS) return undefined;
       const path = knownPath ?? (await harness.resolve(sessionId));
       if (!path) {
         this.unresolved.set(key, Date.now());
@@ -137,8 +146,8 @@ export class World {
     return at;
   }
 
-  private async fromLog(view: AgentView, harness: Harness, sessionId: string, knownPath?: string): Promise<LogSummary | undefined> {
-    const entry = await this.track(harness, sessionId, knownPath);
+  private async fromLog(view: AgentView, harness: Harness, sessionId: string, knownPath?: string, eager = false): Promise<LogSummary | undefined> {
+    const entry = await this.track(harness, sessionId, knownPath, eager);
     if (!entry) return undefined;
     const s = entry.tail.state;
     view.hasLog = true;
@@ -193,7 +202,7 @@ export class World {
     let harnessTitle: string | undefined;
     if (harness && session?.kind === "id" && session.value) {
       view.sessionId = session.value;
-      summary = await this.fromLog(view, harness, session.value);
+      summary = await this.fromLog(view, harness, session.value, undefined, this.firstPrompt.has(pane.pane_id));
       harnessTitle = await harness.title?.(session.value);
     }
 
@@ -213,6 +222,19 @@ export class World {
     if (status === "working" && asking.has(pane.pane_id)) {
       status = "blocked";
       view.statusSource = "card";
+    }
+    // 갓 띄운 Claude 의 첫 턴은 PC 가 바쁘면 Enter 뒤 몇 초에서 수십 초가 지나서야 시작한다(SessionStart 훅 등). 그동안
+    // herdr 가 읽는 작업 표시(제목 스피너, esc to interrupt)가 빠지는 틈이 생겨 herdr 는 working → done(또는 idle) → working 으로
+    // 오간다 — 새 주민이 "다 했어요" 하고 뛰쳐나갔다가 돌아온다. desk-look 이 스피너 줄을 바꿔 그리면 그 틈이 넓어진다.
+    // 그래서 월드가 첫 지시를 보낸 Claude 는 첫 응답이 로그에 적힐 때까지 쉬는 것으로 보지 않는다. 지시가 훅에 막히는 등
+    // 응답이 끝내 오지 않을 때를 위해 상한을 둔다. 로그가 이미 응답을 담고 있으면(이어 쓰는 세션) 처음부터 건드리지 않는다.
+    const sentAt = this.firstPrompt.get(pane.pane_id);
+    if (sentAt !== undefined) {
+      if (vendor !== "claude" || summary?.sawAssistant || Date.now() - sentAt > FIRST_PROMPT_HOLD_MS) this.firstPrompt.delete(pane.pane_id);
+      else if (status === "done" || status === "idle") {
+        status = "working";
+        view.statusSource = "prompt";
+      }
     }
     // 로그의 대기 요청은 확인 필요 카드에 보탤 내용일 뿐, 상태를 바꾸지는 않는다.
     if (status !== "blocked") view.pending = undefined;
@@ -366,6 +388,7 @@ export class World {
       this.names.prune(alive);
       for (const id of this.doneSeq.keys()) if (!alive.has(id)) this.doneSeq.delete(id);
       for (const id of this.unread.keys()) if (!alive.has(id)) this.unread.delete(id);
+      for (const id of this.firstPrompt.keys()) if (!alive.has(id)) this.firstPrompt.delete(id);
     }
 
     // herdr 에 붙어 있으면 herdr 의 에이전트만 보여 준다 — 밖의 세션은 월드에서 말을 걸 수도, 확인 처리할 수도
@@ -426,6 +449,11 @@ export class World {
     if (seq === undefined) return false;
     this.seen.set(paneId, seq);
     return true;
+  }
+
+  /** 지시를 보냈다고 적는다. 그 세션의 첫 지시였으면 첫 응답까지 쉬는 것으로 보지 않는다(paneView 참고). */
+  promptSent(paneId: string): void {
+    this.firstPrompt.set(paneId, Date.now());
   }
 
   /**
