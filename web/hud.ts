@@ -19,6 +19,88 @@ function matches(a: AgentView, query: string): boolean {
     .every((word) => hay.includes(word));
 }
 
+/**
+ * 알림을 ms 뒤에 치우고, 그 전에도 옆으로 밀면 치운다. 누르고 있는 동안에는 시간을 세지 않는다 — 읽는 중에 사라지지 않게.
+ * 옆으로 조금이라도 끌었으면 손을 뗄 때의 누르기(click)는 버린다. 위아래로 끄는 것은 화면 스크롤에 맡긴다(touch-action: pan-y).
+ */
+function swipeAway(el: HTMLElement, ms: number): void {
+  let deadline = performance.now() + ms;
+  let timer = setTimeout(() => el.remove(), ms);
+  // 손을 뗀 뒤 남은 시간만큼 더 둔다. 다 썼더라도 읽을 틈은 준다.
+  const resume = (): void => {
+    deadline = Math.max(deadline, performance.now() + 2500);
+    timer = setTimeout(() => el.remove(), deadline - performance.now());
+  };
+  let start: { id: number; x: number; y: number } | null = null;
+  let dragging = false;
+  let swiped = false;
+  let samples: Array<{ x: number; t: number }> = [];
+
+  const settle = (dx: number, fly: boolean): void => {
+    el.style.transition = "translate 0.18s ease-out, opacity 0.18s ease-out";
+    if (fly) {
+      el.style.translate = `${Math.sign(dx) * (el.offsetWidth + 40)}px`;
+      el.style.opacity = "0";
+      el.addEventListener("transitionend", () => el.remove(), { once: true });
+      setTimeout(() => el.remove(), 300); // 움직임 줄이기 설정 등으로 transitionend 가 오지 않을 때
+      return;
+    }
+    el.style.translate = "";
+    el.style.opacity = "";
+    resume();
+  };
+
+  el.addEventListener("pointerdown", (e) => {
+    if (start || e.button !== 0) return;
+    clearTimeout(timer);
+    start = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    dragging = false;
+    swiped = false;
+    samples = [{ x: e.clientX, t: e.timeStamp }];
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!start || e.pointerId !== start.id) return;
+    const dx = e.clientX - start.x;
+    if (!dragging) {
+      if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(e.clientY - start.y)) return;
+      // 끌기로 정해진 뒤에야 잡는다. 처음부터 잡으면 안의 단추(되돌리기)가 누르기를 받지 못한다.
+      dragging = swiped = true;
+      el.setPointerCapture(e.pointerId);
+      el.style.transition = "none";
+    }
+    el.style.translate = `${dx}px`;
+    el.style.opacity = String(Math.max(0.2, 1 - Math.abs(dx) / el.offsetWidth));
+    samples.push({ x: e.clientX, t: e.timeStamp });
+    while (samples.length > 2 && e.timeStamp - samples[0]!.t > 80) samples.shift();
+  });
+  const release = (e: PointerEvent): void => {
+    if (!start || e.pointerId !== start.id) return;
+    const dx = e.clientX - start.x;
+    start = null;
+    if (!dragging) {
+      resume();
+      return;
+    }
+    dragging = false;
+    const first = samples[0]!;
+    const speed = (e.clientX - first.x) / Math.max(1, e.timeStamp - first.t); // px/ms, 마지막 80ms 동안
+    const flick = Math.abs(speed) > 0.5 && Math.sign(speed) === Math.sign(dx) && Math.abs(dx) > 24;
+    settle(dx, e.type === "pointerup" && (flick || Math.abs(dx) > el.offsetWidth * 0.35));
+  };
+  el.addEventListener("pointerup", release);
+  el.addEventListener("pointercancel", release);
+  el.addEventListener(
+    "click",
+    (e) => {
+      if (!swiped) return;
+      swiped = false;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    },
+    { capture: true },
+  );
+}
+
 export interface HudCallbacks {
   onSelect(id: string | null): void;
   onHover(id: string | null): void;
@@ -242,7 +324,7 @@ export class Hud {
     });
     this.toasts.append(el);
     while (this.toasts.childElementCount > 4) this.toasts.firstElementChild?.remove();
-    setTimeout(() => el.remove(), 7000);
+    swipeAway(el, 7000);
   }
 
   /** 되돌릴 수 있는 일을 알린다 — 단추를 누르면 undo 를 부른다. */
@@ -256,7 +338,7 @@ export class Hud {
     });
     this.toasts.append(el);
     while (this.toasts.childElementCount > 4) this.toasts.firstElementChild?.remove();
-    setTimeout(() => el.remove(), 6000);
+    swipeAway(el, 6000);
   }
 }
 

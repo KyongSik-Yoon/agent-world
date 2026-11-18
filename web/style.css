@@ -1480,11 +1480,17 @@ kbd {
 
 /* ── 알림과 도움말 ───────────────────────────────────────────────── */
 
+/*
+ * 칸은 화면 폭 그대로 펴고 가로로 넘치는 것을 자른다. 옆으로 밀어 낸 알림이 화면 밖으로 넘치면 휴대폰 브라우저는
+ * overflow: hidden 이어도 레이아웃 폭을 늘려 화면 전체를 다시 배치한다(390 → 581px 로 잰 적 있다).
+ */
 #toasts {
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: 52px;
-  transform: translateX(-50%);
+  padding: 0 8px;
+  overflow-x: clip;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1506,6 +1512,10 @@ kbd {
   background: var(--panel-solid);
   box-shadow: var(--shadow);
   cursor: pointer;
+  /* 옆으로 밀어 치운다(hud.ts swipeAway). 위아래 끌기는 브라우저에 남기고, 끄는 동안 글자가 잡히지 않게. */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
   animation: rise 0.25s ease-out;
 }
 
@@ -2948,7 +2958,6 @@ dialog.dlg .warn {
 
   #toasts {
     bottom: calc(12px + env(safe-area-inset-bottom));
-    width: calc(100vw - 16px);
   }
 
   /*
