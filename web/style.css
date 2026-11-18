@@ -154,8 +154,7 @@ input {
   display: none;
 }
 
-/* 말풍선·지금 하는 일·전달 확인 줄의 선 아이콘은 글줄 안에 글자처럼 선다. */
-.bubble .ico,
+/* 지금 하는 일·전달 확인 줄의 선 아이콘은 글줄 안에 글자처럼 선다. */
 .now .ico,
 .note .ico {
   display: inline-block;
@@ -164,6 +163,29 @@ input {
   margin-right: 0.35em;
   vertical-align: -0.24em;
   stroke-width: 2.2;
+}
+
+/* 말풍선의 아이콘은 상태 색 동그라미에 담아 멀리서도 상태가 먼저 읽히게 한다. */
+.bubble .ico {
+  display: inline-block;
+  width: 1.5em;
+  height: 1.5em;
+  margin: -0.15em 0.4em -0.15em -0.3em;
+  padding: 0.22em;
+  border-radius: 50%;
+  background: var(--badge, var(--working));
+  color: #fff;
+  vertical-align: -0.42em;
+  stroke-width: 2.6;
+}
+
+.tag[data-status="done"] .bubble {
+  --badge: var(--done);
+}
+
+.tag[data-status="blocked"] .bubble .ico {
+  background: #fff;
+  color: var(--blocked);
 }
 
 .tag[data-status="working"] .bubble {

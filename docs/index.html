@@ -170,7 +170,8 @@ p { margin: 0; }
 .actor .labels { position: absolute; left: 0; bottom: 9.6cqw; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0.5cqw; white-space: nowrap; font: 600 clamp(9px, 1.8cqw, 13.5px) var(--body); }
 .bubble { background: #fff; color: #1a2238; border: 0.15em solid var(--c); border-radius: 1.2em; padding: 0.28em 0.85em; box-shadow: 0 3px 10px rgba(20, 30, 60, 0.2); transition: opacity 0.3s, border-color 0.4s; }
 .actor[data-state="blocked"] .bubble { background: var(--blocked); color: #fff; }
-.bubble svg { display: inline-block; width: 1.2em; height: 1.2em; margin-right: 0.35em; vertical-align: -0.24em; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.bubble svg { display: inline-block; width: 1.5em; height: 1.5em; margin: -0.15em 0.4em -0.15em -0.3em; padding: 0.22em; border-radius: 50%; background: var(--c); color: #fff; vertical-align: -0.42em; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.actor[data-state="blocked"] .bubble svg { background: #fff; color: var(--blocked); }
 .actor.walk .bubble, .actor[data-state="idle"] .bubble { opacity: 0; }
 .tag { background: var(--plate); color: #fff; border-radius: 1em; padding: 0.22em 0.8em 0.22em 0.6em; display: flex; align-items: center; gap: 0.45em; }
 .tag i { width: 0.6em; height: 0.6em; border-radius: 50%; background: var(--c); transition: background 0.4s; }
