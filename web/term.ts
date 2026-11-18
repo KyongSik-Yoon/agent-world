@@ -579,10 +579,10 @@ const MIN_FONT_PX = 10;
 /** 휴대폰 세로의 크게 보기는 칸에 맞추지 않고 줄을 접는다 — 304칸 pane 을 10px 로 두면 줄마다 옆으로 네다섯 화면을 밀어야 한다. */
 const FLOW_MEDIA = "(max-width: 760px) and (orientation: portrait)";
 /**
- * 줄을 접을 때의 글자 크기(px). 칸에 맞출 일이 없으니 읽기 좋은 크기로 둔다. 12px 은 사용자가 크다고 했다 — 360px 폭에서
- * 한 줄이 46칸이고, 한글은 두 칸을 채우게 키워 더 커 보인다.
+ * 줄을 접을 때의 글자 크기(px). 작게 보기와 같은 하한으로 둔다 — 12px 은 360px 폭에서 한 줄이 46칸이고 한글을 두 칸에
+ * 맞춰 키우면 더 커 보여, 사용자가 크다며 10px 을 골랐다.
  */
-const FLOW_FONT_PX = 11;
+const FLOW_FONT_PX = MIN_FONT_PX;
 
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
 export class TermScreen {
