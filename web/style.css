@@ -525,6 +525,8 @@ body[data-beat-quick] .tag[data-status="blocked"] .dot {
 
 dialog.dlg.usage-dlg {
   width: min(380px, 92vw);
+  /* 단추 아래에서 시작하므로 그만큼 덜 쓴다 — 낮은 창(가로로 든 휴대폰)에서는 안에서 굴린다. */
+  max-height: calc(100dvh - var(--anchor-top) - 12px);
   margin: var(--anchor-top) var(--anchor-right) auto auto;
   padding: 14px 16px 12px;
 }
@@ -1752,8 +1754,15 @@ kbd {
   }
 }
 
-@media (max-width: 1040px) {
+@media (max-width: 1000px) {
   .chip-label {
+    display: none;
+  }
+}
+
+/* 사용량 단추가 있으면 그만큼 자리가 모자라 조금 일찍 접는다. */
+@media (max-width: 1040px) {
+  #topbar:has(#btn-usage:not([hidden])) .chip-label {
     display: none;
   }
 }
@@ -3060,6 +3069,7 @@ dialog.dlg .warn {
 
   dialog.dlg.usage-dlg {
     width: 100vw;
+    max-height: 100dvh;
     margin: auto 0 0;
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }

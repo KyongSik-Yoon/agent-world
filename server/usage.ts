@@ -41,13 +41,21 @@ function window(usedPct: number | undefined, resetsAt: number | undefined, minut
   return { usedPct: pct(usedPct), ...(resetsAt !== undefined && resetsAt > 0 ? { resetsAt: Math.round(resetsAt / 60_000) * 60_000 } : {}), ...(minutes ? { minutes } : {}), ...(group ? { group } : {}) };
 }
 
-/** 작은 JSON 파일. 일반 파일이 아니거나 크거나 깨졌으면 없는 것으로 본다. */
-async function smallJson(path: string): Promise<{ body: Record<string, unknown>; mtimeMs: number } | undefined> {
+type SmallJson = { body: Record<string, unknown>; mtimeMs: number; size: number };
+const smallRead = new Map<string, SmallJson>();
+
+/** 작은 JSON 파일. 일반 파일이 아니거나 크거나 깨졌으면 없는 것으로 본다. 시각과 크기가 그대로면 다시 읽지 않는다. */
+async function smallJson(path: string): Promise<SmallJson | undefined> {
   try {
     const st = await stat(path);
     if (!st.isFile() || st.size > SMALL_FILE_MAX) return undefined;
+    const kept = smallRead.get(path);
+    if (kept && kept.mtimeMs === st.mtimeMs && kept.size === st.size) return kept;
     const body: unknown = JSON.parse(await readFile(path, "utf8"));
-    return isRecord(body) ? { body, mtimeMs: st.mtimeMs } : undefined;
+    if (!isRecord(body)) return undefined;
+    const got = { body, mtimeMs: st.mtimeMs, size: st.size };
+    smallRead.set(path, got);
+    return got;
   } catch {
     return undefined;
   }

@@ -107,8 +107,12 @@ export class UsageChip {
     this.body = body;
     this.fill();
     close.addEventListener("click", () => dlg.close());
-    // 창 밖(뒤 배경)을 누르면 닫는다.
-    dlg.addEventListener("click", (e) => e.target === dlg && dlg.close());
+    // 창 밖(뒤 배경)을 누르면 닫는다. 배경을 누른 것도 대화상자가 받으므로 누른 자리로 가른다 — 창 안쪽 여백은 창이다.
+    dlg.addEventListener("click", (e) => {
+      if (e.target !== dlg) return;
+      const box = dlg.getBoundingClientRect();
+      if (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom) dlg.close();
+    });
     dlg.addEventListener("keydown", (e) => e.stopPropagation());
     dlg.addEventListener("close", () => {
       dlg.remove();
