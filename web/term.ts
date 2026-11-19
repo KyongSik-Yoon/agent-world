@@ -1513,8 +1513,10 @@ export class TermOverlay {
     this.backBtn.className = "btn";
     this.backBtn.addEventListener("click", () => this.toggleBack());
     this.planBtn.type = "button";
-    this.planBtn.className = "btn";
+    this.planBtn.className = "btn plan";
     this.planBtn.hidden = true;
+    this.planBtn.title = t("플랜 읽기");
+    this.planBtn.setAttribute("aria-label", t("플랜 읽기"));
     this.planBtn.append(icon("file"), Object.assign(document.createElement("span"), { textContent: t("플랜 읽기") }));
     this.planBtn.addEventListener("click", () => this.onPlan?.(this.screen.pane));
     const close = document.createElement("button");

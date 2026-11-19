@@ -3185,6 +3185,11 @@ dialog.dlg .warn {
   #term-overlay header {
     padding: 6px 8px 6px 12px;
   }
+
+  /* 좁은 머리줄에서는 플랜 읽기를 그림만 남긴다 — 글까지 두면 제목이 몇 글자로 잘린다. */
+  #term-overlay .btn.plan span {
+    display: none;
+  }
 }
 
 /* ── 좁은 화면(휴대폰) ───────────────────────────────────────────── */
