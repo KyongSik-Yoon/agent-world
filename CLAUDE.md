@@ -9,3 +9,12 @@
 - 화면 그림(`docs/img/`)은 실제 세션이 아니라 `dev/mock-herdr.ts` 에 가상의 프로젝트 시나리오를 물려 찍는다.
   로그 폴더(`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `AGY_HOME`)와 `XDG_STATE_HOME` 도 임시 폴더로 돌려, 실제 작업 내용과 사용량이 그림에 들어가지 않게 한다.
   위 막대의 사용량에 가상 값을 넣으려면 `AGENT_WORLD_CLAUDE_LIMITS`·`AGENT_WORLD_AGY_PAYLOAD` 와 가상 로그의 `rate_limits` 를 쓴다(README 의 개발).
+
+## 버전과 릴리스
+
+- `main` 에 올리는 묶음마다 버전을 올린다. `sh scripts/bump-version.sh`(patch, 큰 기능 묶음은 `minor`)로
+  `herdr-plugin.toml` 과 `package.json` 을 함께 고쳐 그 묶음의 커밋에 넣는다.
+- 태그와 릴리스 페이지는 `.github/workflows/release.yml` 이 만든다. 변경 내역은 앞 릴리스 뒤의 커밋 제목이
+  그대로 실리므로, 제목은 설치한 사람이 읽을 문장으로 쓴다. 태그를 손으로 달지 않는다.
+- 올리지 않은 묶음은 `.githooks/pre-push` 가 거절하고, 훅을 건너뛴 것은 같은 검사가 Actions 에서 실패한다.
+  `docs/`, `*.md`, `LICENSE`, `.gitignore`, `.github/`, `.githooks/`, `.claude/` 만 바뀐 묶음은 올리지 않아도 된다.

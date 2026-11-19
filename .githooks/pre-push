@@ -1,0 +1,12 @@
+#!/bin/sh
+# main 으로 올리는 묶음이 버전을 올렸는지 본다(scripts/check-version-bump.sh). 다른 브랜치와 태그는 보지 않는다.
+# 켜기: git config core.hooksPath .githooks  (.claude/settings.json 이 세션을 열 때마다 맞춰 둔다)
+zero=0000000000000000000000000000000000000000
+while read -r _local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = refs/heads/main ] || continue
+  [ "$local_sha" != "$zero" ] || continue
+  # 원격의 끝을 모르면(새 브랜치이거나 아직 받지 않았으면) 넘긴다. 뒤처진 push 는 git 이 스스로 거절한다.
+  [ "$remote_sha" != "$zero" ] && git cat-file -e "$remote_sha^{commit}" 2>/dev/null || continue
+  sh "$(git rev-parse --show-toplevel)/scripts/check-version-bump.sh" "$remote_sha" "$local_sha" || exit 1
+done
+exit 0

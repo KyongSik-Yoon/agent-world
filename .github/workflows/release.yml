@@ -1,0 +1,48 @@
+# main 에 새 버전이 올라오면 그 번호로 태그와 릴리스를 만든다. 변경 내역은 앞 릴리스 뒤의 커밋 제목이다.
+# 버전은 올리는 쪽이 올린다(scripts/bump-version.sh). 여기서는 올리지 않는다 — 봇이 main 에 커밋을 되밀면
+# 작업 중인 쪽의 push 가 매번 거절된다.
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 새 버전이면 릴리스를 만든다
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' herdr-plugin.toml | head -n 1)
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "$tag 는 이미 있다."
+            exit 0
+          fi
+          prev=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)
+          {
+            git log --reverse --format='- %s' "${prev:+$prev..}HEAD" | grep -v '^- 버전을 ' || true
+            if [ -n "$prev" ]; then
+              echo
+              echo "**Full changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$prev...$tag"
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"
+
+      # 훅을 건너뛴 push 도 여기서 걸린다(--no-verify, 훅이 없는 옛 worktree, 웹에서 고친 것).
+      - name: 이 묶음이 버전을 올렸는지 본다
+        if: github.event.before != '0000000000000000000000000000000000000000'
+        run: sh scripts/check-version-bump.sh "${{ github.event.before }}" "$GITHUB_SHA"
