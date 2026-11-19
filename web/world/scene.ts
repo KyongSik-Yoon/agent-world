@@ -86,6 +86,8 @@ export class WorldScene {
   /** 고른 캐릭터까지 시야가 트였는지 보는 광선. */
   private readonly sight = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
+  /** 지금 곁눈질 화면(초당 3장)으로 그리는 중이다. */
+  private ambient = false;
   private readonly probe = new THREE.Vector3();
   private readonly clock = new THREE.Clock();
   private layout: Layout = buildLayout([]);
@@ -730,6 +732,12 @@ export class WorldScene {
     this.frame();
     const now = performance.now();
     const pace = this.pace(now);
+    // 곁눈질 화면에서는 이름표가 비켜 서는 transition 을 끈다(스타일시트의 body[data-ambient]). 장면은 초당 3장으로 끊어
+    // 그리는데 transition 은 0.18초 동안 화면 박자마다 한 장씩 내보내, 걷는 캐릭터의 이름표가 한 번 비켜 설 때마다 11장이 더 나갔다.
+    if ((pace === AMBIENT_FRAME_MS) !== this.ambient) {
+      this.ambient = !this.ambient;
+      document.body.toggleAttribute("data-ambient", this.ambient);
+    }
     if (pace === 0) {
       // 연달아 온 프레임 사이의 간격이 화면이 바뀌는 간격이다. 창을 다른 모니터로 옮기면 따라 바뀐다.
       if (chained && stamp !== undefined && this.lastStamp > 0) this.sampleRefresh(stamp - this.lastStamp);

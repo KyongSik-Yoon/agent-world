@@ -353,6 +353,14 @@ body[data-beat-quick] .tag[data-status="blocked"] .dot {
   box-shadow: 0 2px 8px rgba(10, 20, 50, 0.18);
 }
 
+/*
+ * 곁눈질 화면(초당 3장, scene.ts 가 body 에 표시한다)에서는 비켜 서는 것을 미끄러뜨리지 않는다. transition 은 도는 동안
+ * 화면 박자마다 한 장씩 내보내, 장면이 쉬는 사이에 출력이 튄다.
+ */
+body[data-ambient] :is(.tag, .plot-sign) {
+  transition: none;
+}
+
 /* 이름표를 덜 가리는 쪽으로 기둥 옆에 내어 걸린 문패: 그만큼 부드럽게 옮겨 간다. */
 .plot-sign {
   translate: var(--shift, 0%) var(--lift, 0px);
