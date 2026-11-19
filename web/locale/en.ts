@@ -248,6 +248,7 @@ export const en: Record<string, string> = {
   "끌어서 폭 조절 · 두 번 눌러 처음 폭으로": "Drag to resize · double-click to reset",
   "Enter 전송 · Shift+Enter 줄바꿈": "Enter to send · Shift+Enter for a new line",
   "Enter 실행": "Enter to run",
+  "Enter 줄바꿈 · 보내기 단추로 전송": "Enter for a new line · tap Send to send",
   "실행": "Run",
   "이미지는 한 번에 {n}장까지 붙일 수 있습니다.": "You can attach up to {n} images at a time.",
   "이미지 빼기": "Remove image",

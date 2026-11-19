@@ -60,6 +60,8 @@ const QUICK_KEYS: Array<{ label: string; title: string; icon?: IconName; caption
  * 때) 상자 높이가 줄이 접힌 수를 따라가, 스피너 옆 글이나 상태줄의 숫자가 바뀔 때마다 상자 아래 끝과 그 밑의 것이 위아래로
  * 흔들린다(휴대폰 폭에서 0.4초마다 302↔320px). 넘치면 상자는 상한에 머물고 아래에 붙은 채 위쪽만 밀린다.
  */
+/** 주 포인터가 손가락인 기기(휴대폰·태블릿). 화면 자판으로 쓰므로 Shift+Enter 를 칠 수 없다. */
+const touchFirst = matchMedia("(pointer: coarse)");
 const PREVIEW_LINES = 32;
 /** 받아 둔 스킬 목록을 다시 쓰는 시간. 세션이 플러그인을 다시 읽으면 목록이 바뀐다. */
 const SKILLS_TTL_MS = 30_000;
@@ -238,6 +240,8 @@ export class DetailPanel {
       if (this.skillKey(e)) return;
       // 한글을 조합하는 중의 Enter 는 글자를 확정하는 키다.
       if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+      // 화면 자판에는 Shift+Enter 가 없어, 터치 기기에서 지시를 쓸 때는 Enter 가 줄을 바꾸고 보내기는 단추로 한다.
+      if (this.docked?.agent && touchFirst.matches) return;
       e.preventDefault();
       void this.submit();
     });
@@ -519,7 +523,9 @@ export class DetailPanel {
     this.closeSkills();
     this.setInput("");
     this.clearShots();
-    this.input.placeholder = target.agent ? t("Enter 전송 · Shift+Enter 줄바꿈") : t("Enter 실행");
+    const touch = target.agent && touchFirst.matches;
+    this.input.placeholder = !target.agent ? t("Enter 실행") : touch ? t("Enter 줄바꿈 · 보내기 단추로 전송") : t("Enter 전송 · Shift+Enter 줄바꿈");
+    this.input.enterKeyHint = touch ? "enter" : target.agent ? "send" : "go";
     this.sendBtn.textContent = target.agent ? t("보내기") : t("실행");
     this.setNote("", "");
   }
