@@ -19,7 +19,7 @@ Click a character to open its status window: model, effort, context, last prompt
 terminal screen. `Copy` next to the last prompt and the last reply takes the original text (Markdown as written). The activity log shows one-line summaries; tap a line to expand that activity in full (the whole reply, the exact command it ran). The camera frames the house that character lives in (the plaza for one that is done) and stays put when you pick a housemate; closing the window (✕ or Esc) returns to where you were. On a wide screen the character's terminal runs in the space between the roster and the status window: click it to open the full terminal, or fold it with ✕ to read it inside the status window instead.
 `Open in herdr` (Enter) switches herdr to that pane and, on Hyprland, brings the terminal window to the front.
 
-<img src="docs/img/detail.webp" alt="The status window of a working character: model, effort, context, branch, last prompt and reply, with the quick-key row and input below" width="960">
+<img src="docs/img/detail.webp" alt="The status window of a working character: model, effort, context, branch, last prompt and reply, with the quick-key row and input below. The camera frames the house it lives in, and its terminal runs in the centre below" width="960">
 
 The screenshots come from a test session that imitates a made-up project (`dev/mock-herdr.ts`), shown in the default Korean UI.
 
