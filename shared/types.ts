@@ -157,8 +157,11 @@ export interface WorkspaceView {
   focused: boolean;
   /** herdr 에 실제로 있는 스페이스인지. false 면 로그만으로 묶은 자리라 조작할 수 없다. */
   managed: boolean;
-  /** 워크트리 스페이스면 그 브랜치 체크아웃 경로. */
-  worktree?: { path?: string; linked: boolean };
+  /**
+   * git 저장소 안에 열린 스페이스면 그 체크아웃. herdr 가 본체(linked: false)에도 붙인다.
+   * repoKey 가 같은 스페이스들은 한 저장소다 — 월드는 이것들을 한 집터의 본채와 별채로 묶는다.
+   */
+  worktree?: { path?: string; linked: boolean; repoKey?: string; repoRoot?: string };
 }
 
 export interface TabView {

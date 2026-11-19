@@ -582,7 +582,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
           const seen = new Set<string>();
           try {
             const snap = await herdrSnapshot();
-            for (const ws of snap.workspaces) if (ws.worktree) seen.add((ws.worktree as { repo_root?: string }).repo_root ?? "");
+            for (const ws of snap.workspaces) if (ws.worktree) seen.add(ws.worktree.repo_root ?? "");
             for (const pane of snap.panes) if (pane.cwd) seen.add(pane.cwd);
           } catch {
             // herdr 가 없으면 권할 것이 없다.

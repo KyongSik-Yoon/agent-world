@@ -147,8 +147,18 @@ async function handle(method: string, p: Record<string, unknown>): Promise<unkno
     case "workspace.create":
     case "worktree.create": {
       const id = `w${(counter += 1)}`;
-      const label = typeof p.label === "string" ? p.label : String(p.cwd ?? id).split("/").pop()!;
-      const workspace = { workspace_id: id, number: s.workspaces.length + 1, label };
+      const workspace: State["workspaces"][number] = { workspace_id: id, number: s.workspaces.length + 1, label: "" };
+      if (method === "worktree.create") {
+        // 진짜 herdr 처럼 원본 스페이스(또는 cwd)의 저장소에 묶인 워크트리를 만든다.
+        const from = s.workspaces.find((w) => w.workspace_id === p.workspace_id)?.worktree as { repo_root?: string; repo_name?: string; repo_key?: string } | undefined;
+        const root = from?.repo_root ?? String(p.cwd ?? `/mock/${id}`);
+        const name = from?.repo_name ?? root.split("/").pop()!;
+        const branch = typeof p.branch === "string" ? p.branch : `worktree-${id}`;
+        const checkout = `/home/mock/.herdr/worktrees/${name}/${branch}`;
+        workspace.worktree = { repo_name: name, repo_root: root, repo_key: from?.repo_key ?? `${root}/.git`, checkout_path: checkout, is_linked_worktree: true };
+        workspace.label = typeof p.label === "string" ? p.label : branch;
+        p.cwd = checkout;
+      } else workspace.label = typeof p.label === "string" ? p.label : String(p.cwd ?? id).split("/").pop()!;
       s.workspaces.push(workspace);
       const tab = addTab(s, id);
       return { type: "workspace_created", workspace, tab, root_pane: addPane(s, id, tab.tab_id, typeof p.cwd === "string" ? p.cwd : undefined) };

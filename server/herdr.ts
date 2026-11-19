@@ -131,7 +131,7 @@ export interface HerdrWorkspace {
   label: string;
   focused?: boolean;
   tokens?: { topic?: string };
-  worktree?: { repo_name?: string; checkout_path?: string; is_linked_worktree?: boolean };
+  worktree?: { repo_name?: string; repo_key?: string; repo_root?: string; checkout_path?: string; is_linked_worktree?: boolean };
 }
 
 export interface HerdrTab {

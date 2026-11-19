@@ -430,7 +430,9 @@ export class World {
           repo: ws.worktree?.repo_name,
           focused: ws.focused === true,
           managed: true,
-          worktree: ws.worktree ? { path: ws.worktree.checkout_path, linked: ws.worktree.is_linked_worktree === true } : undefined,
+          worktree: ws.worktree
+            ? { path: ws.worktree.checkout_path, linked: ws.worktree.is_linked_worktree === true, repoKey: ws.worktree.repo_key, repoRoot: ws.worktree.repo_root }
+            : undefined,
         });
       }
       for (const tab of snap.tabs) tabs.push({ id: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? "", number: tab.number ?? 0 });
