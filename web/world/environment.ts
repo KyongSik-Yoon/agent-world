@@ -142,8 +142,8 @@ export class Environment {
         const ws = byId.get(plot.id);
         if (ws) this.buildPlot(plot, ws);
         else if (lot.empty && plot === lot.main) {
-          // 본체 체크아웃이 닫힌 저장소: 본채는 비어 있고 문패는 저장소 이름이다. 누르면 첫 별채를 연다.
-          const first = lot.houses.find((h) => h !== plot);
+          // 본체 체크아웃이 닫힌 저장소: 본채는 비어 있고 문패는 저장소 이름이다. 누르면 herdr 목록에서 가장 앞선 별채를 연다.
+          const first = workspaces.find((w) => lot.houses.some((h) => h.id === w.id));
           this.buildPlot(plot, { id: plot.id, label: lot.empty.name, number: 0, focused: false, managed: false }, first?.id);
         }
       }
