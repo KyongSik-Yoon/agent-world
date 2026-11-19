@@ -356,8 +356,9 @@ const HERDR_CHECK_MS = 10_000;
 
 /**
  * 플러그인으로 띄운 서버는 제 herdr 세션과 함께 끝난다. 떼어 띄운 서버라 herdr 가 내려가도 신호를 받지 못하고,
- * 그대로 두면 사라진 세션의 서버가 포트와 옛 플러그인 코드를 쥔 채 남는다. 직접 띄운 서버(`bun start`)는 herdr 가
- * 꺼져 있어도 로그로 찾은 세션을 보여 주는 쓸모가 있어 이 일을 하지 않는다. 사라진 것을 1분 동안 거푸 볼 때만 끝내므로,
+ * 그대로 두면 사라진 세션의 서버가 포트와 옛 플러그인 코드를 쥔 채 남는다. HERDR_SOCKET_PATH 를 주어 띄운 서버(시험용
+ * aw-test 세션·가상 herdr 에 붙인 것)도 그렇다 — 시험 세션이 끄는 것을 잊으면 포트를 쥔 채 남아 고아가 쌓였다. 소켓을
+ * 주지 않고 직접 띄운 서버(`bun start`)는 herdr 가 꺼져 있어도 로그로 찾은 세션을 보여 주는 쓸모가 있어 이 일을 하지 않는다. 사라진 것을 1분 동안 거푸 볼 때만 끝내므로,
  * 그 안에 herdr 가 다시 뜨면 서버는 남고 herdr 의 시작 명령은 이 서버를 그대로 쓴다.
  */
 function followHerdr(): void {
@@ -576,7 +577,7 @@ console.log(
   `Agent World → ${keyedUrl(`http://127.0.0.1:${server.port}`, KEY)}${READONLY ? say(L(" (보기 전용)", " (read-only)")) : ""}${session ? say(L(` · herdr 세션 ${session}`, ` · herdr session ${session}`)) : ""}`,
 );
 void announce(server.port ?? port);
-if (process.env.AGENT_WORLD_FOLLOW_HERDR === "1") followHerdr();
+if (process.env.AGENT_WORLD_FOLLOW_HERDR === "1" || process.env.HERDR_SOCKET_PATH) followHerdr();
 for (const host of TAILNET_HOSTS) {
   console.log(say(L(`  tailnet 에서도 받음(이 PC 의 계정만) → ${keyedUrl(`https://${host}`, KEY)}`, `  also served on the tailnet (this machine's account only) → ${keyedUrl(`https://${host}`, KEY)}`)));
 }
