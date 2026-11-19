@@ -226,7 +226,8 @@ web/      three.js scene and HUD
   i18n.ts     t() and the language switch; locale/en.ts holds the English strings
 shared/   snapshot types used by both sides
 scripts/  plugin.ts — start/stop/open when run as a herdr plugin
-dev/      mock-herdr.ts — a fake herdr socket for testing the UI; i18n-check.ts
+dev/      mock-herdr.ts — a fake herdr socket for testing the UI; i18n-check.ts;
+          reap-orphan-bun.sh — on session start, stops bun processes that ended Claude Code sessions left in this repo
 docs/     the homepage (index.html) and screenshots
 ```
 

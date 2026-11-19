@@ -8,6 +8,16 @@
             "command": "git -C \"$CLAUDE_PROJECT_DIR\" config core.hooksPath .githooks 2>/dev/null || true"
           }
         ]
+      },
+      {
+        "matcher": "^(startup|resume)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/dev/reap-orphan-bun.sh\" >/dev/null 2>&1 || true",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

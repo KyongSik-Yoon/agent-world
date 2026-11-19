@@ -217,7 +217,8 @@ web/      three.js 장면과 HUD
   i18n.ts     t() 와 언어 전환. 영어 번역은 locale/en.ts
 shared/   서버와 화면이 함께 쓰는 스냅샷 타입
 scripts/  plugin.ts. herdr 플러그인으로 실행될 때의 시작·정지·열기
-dev/      mock-herdr.ts(실제 herdr 없이 화면을 시험하는 가짜 소켓), i18n-check.ts
+dev/      mock-herdr.ts(실제 herdr 없이 화면을 시험하는 가짜 소켓), i18n-check.ts,
+          reap-orphan-bun.sh(끝난 Claude Code 세션이 이 저장소에 남긴 bun 을 다음 세션을 열 때 거둔다)
 docs/     홈페이지(index.html)와 스크린샷
 ```
 
