@@ -40,6 +40,7 @@ opening `?lang=en`, or by setting `AGENT_WORLD_LANG=en`.
 | Widen the status window | Drag its left edge. The width is remembered; double-click to reset. |
 | Build a house | `＋ New house` (`B`) — folder, name, worktree or not, the agent to add with its model and effort, and its first prompt, in one go. The model and effort go in as launch flags (`--model`, `-m` …), so they apply to that session only. |
 | Add residents and tabs | Click a house sign for the house panel — `New resident`, `New tab`, rename, demolish. Shell panes stand in front of the house as small terminals. |
+| Work on several branches of one repository | Worktrees of the same repository share one lot: the main checkout is the main house and each worktree workspace is a smaller annex beside it. `Add worktree` in the house panel builds a new annex on a new branch without picking the folder again; the panel also lists the other houses of that repository. |
 | Close things | Closing a pane, tab or house lists the agents that will stop with it and asks first. |
 
 <img src="docs/img/blocked.webp" alt="Needs input: the character stands at its gate inside a red ring, and the agent's own permission dialog is shown at the top of the status window" width="960">
