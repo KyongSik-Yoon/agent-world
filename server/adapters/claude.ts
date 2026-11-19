@@ -22,6 +22,7 @@ import {
   summarizeToolInput,
   type LogSummary,
 } from "../summary.ts";
+import { REVIEW_FIX_PROMPT } from "../../shared/types.ts";
 import { REVIEW_TOOL } from "../review.ts";
 import type { Harness, LogFile } from "./types.ts";
 
@@ -133,6 +134,12 @@ function feedAssistant(s: LogSummary, row: Record<string, unknown>, at: string):
   }
 }
 
+/** 사람이 보낸 지시가 월드 리뷰 창의 '고치게 하기'면 그 보고에 답한 것으로 적는다. 보고 자체는 남긴다. */
+function noteReviewReply(s: LogSummary, text: string): void {
+  s.reviewCall = undefined;
+  if (s.review && REVIEW_FIX_PROMPT.test(text)) s.review = { ...s.review, sent: true };
+}
+
 function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void {
   if (row.isMeta === true) return;
   // 컴팩션이 남긴 요약문은 사용자 행 모양이지만 사람이 보낸 지시가 아니다.
@@ -148,7 +155,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
     const text = userText(content);
     if (text) {
       setPrompt(s, text);
-      s.review = s.reviewCall = undefined;
+      noteReviewReply(s, text);
       s.sawPromptRow = true;
       pushActivity(s, "user", "", text, at);
       s.compacted = false;
@@ -185,7 +192,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
   if (texts.length > 0) {
     const text = texts.join("\n\n");
     setPrompt(s, text);
-    s.review = s.reviewCall = undefined;
+    noteReviewReply(s, text);
     s.sawPromptRow = true;
     pushActivity(s, "user", "", text, at);
     s.compacted = false;

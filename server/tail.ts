@@ -72,6 +72,9 @@ export class TailedLog<S> {
   mtimeMs = 0;
   /** 마지막으로 다 읽은 줄의 끝(바이트). */
   private offset = 0;
+  /** 처음부터 새로 읽은 횟수와, 그때 꼬리 창이 시작한 자리. 창 앞에 있던 것을 따로 찾아 보탤 때 쓴다. */
+  loads = 0;
+  start = 0;
   private loaded = false;
 
   constructor(
@@ -129,6 +132,8 @@ export class TailedLog<S> {
         this.feedBytes(state, complete, base);
         if (this.reader.ready(state) || start === 0 || window >= MAX_WINDOW) {
           this.state = state;
+          this.start = base;
+          this.loads += 1;
           this.offset = info.size - (bytes.length - complete.length);
           break;
         }

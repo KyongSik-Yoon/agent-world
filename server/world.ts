@@ -13,7 +13,7 @@ import { AskingPanes, type Card } from "./asking.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Text } from "./text.ts";
 import { planMtime, planPathIn, readPlan, type PlanText } from "./plan.ts";
-import { readReview } from "./review.ts";
+import { findReview, readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
 import { activityText, currentPending, oneLine, refOf, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
@@ -75,6 +75,8 @@ interface Tracked {
   harness: Harness;
   path: string;
   tail: TailedLog<LogSummary>;
+  /** 꼬리 창 앞의 리뷰 보고를 찾아본 로드(TailedLog.loads). 로그를 새로 읽을 때마다 한 번만 찾는다. */
+  reviewScan?: number;
 }
 
 export class World {
@@ -140,6 +142,16 @@ export class World {
     }
     try {
       await entry.tail.refresh();
+      // 다시 띄운 서버의 꼬리 창은 마지막 지시까지만 읽는다 — 그 앞에 남은 리뷰 보고를 한 번 찾아 이어 붙인다.
+      const tail = entry.tail;
+      if (harness.vendor === "claude" && entry.reviewScan !== tail.loads) {
+        entry.reviewScan = tail.loads;
+        if (!tail.state.review && tail.start > 0) {
+          const found = await findReview(entry.path, tail.start, harness.reader);
+          // 찾는 사이에 꼬리 창에 새 보고가 들어왔으면 그것이 더 새것이다.
+          if (found && !tail.state.review) tail.state.review = found;
+        }
+      }
     } catch {
       // 열 수 없는 로그(권한이 다르거나, 확인한 사이에 지워졌다) 하나가 스냅샷 전체를 깨뜨리지 않게 한다.
       // 그 에이전트는 로그 없이 herdr 가 알려 주는 것만으로 선다.
@@ -185,7 +197,10 @@ export class World {
     view.lastPrompt = s.lastPrompt;
     view.lastReply = s.lastReply;
     const reviewAt = s.review ? Date.parse(s.review.at) : NaN;
-    if (Number.isFinite(reviewAt)) view.review = reviewAt;
+    if (Number.isFinite(reviewAt)) {
+      view.review = reviewAt;
+      if (s.review?.sent) view.reviewSent = true;
+    }
     view.pending = currentPending(s);
     view.logUpdatedAt = entry.tail.mtimeMs;
     if (harness.subagents) view.subagents = await harness.subagents(entry.path);

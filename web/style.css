@@ -3708,3 +3708,9 @@ dialog.dlg .warn {
 .rv-foot .rv-error[hidden] {
   display: none;
 }
+
+/* 고칠 항목을 보낸 보고: 답은 했으니 테두리·바탕을 걷어 눈에 덜 띄게 둔다. */
+.review-card.sent {
+  border-color: var(--line);
+  background: none;
+}

@@ -625,10 +625,15 @@ export class DetailPanel {
     return a.paneId && (blocked || this.open.screen) ? a.paneId : null;
   }
 
-  /** 마지막 턴에 desk-review 가 남긴 리뷰 보고 — 터미널 옆 패널 대신 따로 띄워 읽고, 고칠 항목을 골라 보낸다. */
+  /**
+   * 이 세션의 마지막 리뷰 보고 — 터미널 옆 패널 대신 따로 띄워 읽고, 고칠 항목을 골라 보낸다. 되묻기("한글로 요약")를 해도
+   * 남는다. 월드에서 고칠 항목을 보냈으면 답한 것이라 눈에 덜 띄게 접고, 다시 열어 볼 수만 있게 둔다.
+   */
   private reviewCard(a: AgentView): HTMLElement {
-    const read = this.button(t("리뷰 읽기"), () => this.callbacks.act({ type: "review", agent: a }), { cls: "btn", icon: "search", title: t("리뷰 보고를 열어 고칠 항목을 고릅니다 (R)") });
-    return h("section", { class: "review-card" }, h("div", { class: "rv-card-text" }, h("b", {}, t("리뷰 보고가 있어요")), h("span", {}, this.snapshot?.control ? t("남은 결함을 읽고 고칠 것을 골라 보냅니다.") : t("남은 결함과 고친 것을 읽습니다."))), read);
+    const sent = a.reviewSent === true;
+    const read = this.button(sent ? t("리뷰 다시 보기") : t("리뷰 읽기"), () => this.callbacks.act({ type: "review", agent: a }), { cls: "btn", icon: "search", title: t("리뷰 보고를 열어 고칠 항목을 고릅니다 (R)") });
+    const note = sent ? t("고칠 항목을 보냈어요. 다음 리뷰가 오면 바뀝니다.") : this.snapshot?.control ? t("남은 결함을 읽고 고칠 것을 골라 보냅니다.") : t("남은 결함과 고친 것을 읽습니다.");
+    return h("section", { class: sent ? "review-card sent" : "review-card" }, h("div", { class: "rv-card-text" }, h("b", {}, sent ? t("리뷰 보고") : t("리뷰 보고가 있어요")), h("span", {}, note)), read);
   }
 
   /** 확인 필요: 무엇을 묻는지 — 로그에 남은 요청과, 화면에 떠 있는 대화상자를 함께 보여 준다. */

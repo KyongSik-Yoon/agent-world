@@ -106,8 +106,8 @@ Worth knowing:
   and shows it on its own: open findings first, then what the review fixed, skipped cleanups, cleanups applied,
   dismissed findings, what was not verified and what to decide next. Each item has its file, line and reason, and how
   it was fixed or why it was left. Pick open findings and skipped cleanups, add a note if you like, and `Fix` sends
-  them to the agent; all open findings start picked. The report belongs to that turn, so the button goes away once you
-  send the next prompt.
+  them to the agent; all open findings start picked. The card stays through follow-up questions; once you send fixes it
+  shrinks to `Open review` and stays until the next review, also across a restart of Agent World.
 - **Another PWA on the same host's default port can take the notifications.** Seen on Android Chrome: with another
   app installed from the same tailnet address on port 443, notifications appeared under that app's name. Moving that
   app to another port, removing it from the phone and turning the bell on again fixed it.

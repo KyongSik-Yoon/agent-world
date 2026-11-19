@@ -59,8 +59,10 @@ export interface AgentView {
   pending?: PendingRequest;
   /** 승인을 기다리는 플랜 파일이 마지막으로 고쳐진 시각(ms). 있으면 `/api/plan` 으로 그 글을 읽을 수 있다. */
   plan?: number;
-  /** 마지막 턴에 desk-review 가 남긴 리뷰 보고의 시각(ms). 있으면 `/api/review` 로 그 보고를 읽을 수 있다. */
+  /** 이 세션에서 desk-review 가 마지막으로 남긴 리뷰 보고의 시각(ms). 있으면 `/api/review` 로 그 보고를 읽을 수 있다. */
   review?: number;
+  /** 그 보고를 두고 월드의 '고치게 하기'로 지시를 보냈다. */
+  reviewSent?: boolean;
   focused: boolean;
   cwd: string;
   sessionId?: string;
@@ -102,6 +104,14 @@ export interface ReviewItem {
   /** 리뷰에서 찾은 결함(fixed·found)만: 어떻게 고쳤는지, 왜 남겼는지. */
   resolution?: string;
 }
+
+/**
+ * 월드의 리뷰 창이 보내는 '고치게 하기' 지시의 첫 줄(web/review.ts 의 t() 문장, 한국어·영어). 서버는 로그에서 이 줄로
+ * 시작하는 지시를 보면 그 보고에 답한 것으로 친다. 문장을 바꾸면 여기도 함께 바꾼다.
+ */
+export const REVIEW_FIX_PROMPT = /^(?:방금 리뷰 보고에서 아래 \d+건을 고쳐 줘\.|Fix these \d+ items from the review report you just gave\.)/;
+/** 같은 지시를 로그의 바이트에서 찾을 때 쓰는 조각(풀기 전에 걸러 낸다). */
+export const REVIEW_FIX_MARKS = ["방금 리뷰 보고에서 아래 ", "items from the review report you just gave."];
 
 /** `/api/review` 의 답 — desk-review 의 review_report 입력을 화면이 그릴 모양으로 다듬은 것. */
 export interface ReviewReport {

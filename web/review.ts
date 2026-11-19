@@ -92,7 +92,7 @@ export class ReviewReader {
     this.load(a.review);
   }
 
-  /** 새 스냅샷에 맞춘다: 보고가 없어졌으면(새 지시가 갔다) 닫고, 새 보고면 다시 읽는다. */
+  /** 새 스냅샷에 맞춘다: 보고가 없어졌으면(세션이 바뀌었다) 닫고, 새 보고면 다시 읽는다. */
   sync(agents: readonly AgentView[]): void {
     if (!this.dlg || !this.agent) return;
     const a = agents.find((x) => x.id === this.agent!.id);
@@ -235,7 +235,7 @@ export class ReviewReader {
     this.updateSend();
     try {
       await this.onSend(agent, this.compose(report));
-      // 지시가 가면 로그에 새 지시가 적히고 보고는 내려간다 — 기다리지 않고 닫는다.
+      // 할 일을 보냈으니 닫는다. 보고는 남아 상태 창에서 다시 열 수 있다.
       dlg.close();
     } catch (e) {
       // 알림(토스트)은 모달 창 뒤에 깔려 보이지 않는다 — 창 안에 적고, 창은 열어 두어 다시 보낼 수 있게 한다.
