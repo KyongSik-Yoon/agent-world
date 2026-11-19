@@ -65,7 +65,10 @@ async function start(): Promise<Address | null> {
   chmodSync(LOG, 0o600);
   // 제 세션을 갖는 프로세스로 떼어 띄운다 — 이 명령이 끝나도, herdr 가 이 명령의 무리를 정리해도 서버는 남는다.
   // 대신 서버가 herdr 세션을 지켜보다가 그 세션이 사라지면 스스로 끝난다(AGENT_WORLD_FOLLOW_HERDR, server/index.ts).
-  const env = { ...process.env, AGENT_WORLD_FOLLOW_HERDR: "1" };
+  // Claude Code 세션에서 이 명령을 돌렸다면 그 세션의 표식(CLAUDE_PID)을 떼고 띄운다. 표식이 남으면 끝난 세션이 남긴 bun 을
+  // 거두는 장치(세션 시작 훅)가 그 세션이 끝난 뒤 이 서버를 시험용 고아로 보고 끈다. 서버의 수명은 herdr 세션이 정한다.
+  const { CLAUDE_PID: _session, ...inherited } = process.env;
+  const env = { ...inherited, AGENT_WORLD_FOLLOW_HERDR: "1" };
   const child = spawn(process.execPath, [join(ROOT, "server", "index.ts")], { cwd: ROOT, detached: true, stdio: ["ignore", out, out], env });
   child.unref();
   closeSync(out);
