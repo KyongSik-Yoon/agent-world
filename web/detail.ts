@@ -125,7 +125,9 @@ export class DetailPanel {
   private skillLoading: string | null = null;
   /** 지금 목록에 보이는 스킬과 고른 줄. */
   private skillShown: SkillView[] = [];
-  private skillActive = 0;
+  private skillActive = -1;
+  /** 목록을 거른 글자(빗금 뒤, 소문자). */
+  private skillQuery = "";
   /** 쓰던 글이 있을 때 단추로 연 목록 — 거르지 않고 다 보이며, 고른 스킬을 그 글 앞에 붙인다. */
   private skillAll = false;
   private readonly note = h("div", { class: "dock-note" });
@@ -537,17 +539,21 @@ export class DetailPanel {
     const query = (typed ?? "").toLowerCase();
     const rank = (s: SkillView): number => {
       const name = s.name.toLowerCase();
-      if (!query || name.startsWith(query)) return 0;
-      if (name.slice(name.indexOf(":") + 1).startsWith(query)) return 1;
-      if (name.includes(query)) return 2;
-      return s.description.toLowerCase().includes(query) ? 3 : -1;
+      if (name === query) return 0;
+      if (!query || name.startsWith(query)) return 1;
+      if (name.slice(name.indexOf(":") + 1).startsWith(query)) return 2;
+      if (name.includes(query)) return 3;
+      return s.description.toLowerCase().includes(query) ? 4 : -1;
     };
-    this.skillShown = (cached?.skills ?? [])
+    const ranked = (cached?.skills ?? [])
       .map((s, i) => ({ s, r: rank(s), i }))
       .filter((x) => x.r >= 0)
-      .sort((a, b) => a.r - b.r || a.i - b.i)
-      .map((x) => x.s);
-    this.skillActive = 0;
+      .sort((a, b) => a.r - b.r || a.i - b.i);
+    this.skillShown = ranked.map((x) => x.s);
+    this.skillQuery = query;
+    // 첫 줄은 친 글자로 시작하는 이름일 때만 잡아 둔다. 그 밖에는(`/model` 이 agy:models 에 걸리는 등) 잡지 않아, Enter 가
+    // 친 그대로 보낸다 — 목록에 없는 내장 명령도 쳐서 보낼 수 있다.
+    this.skillActive = ranked.length > 0 && ranked[0]!.r <= 1 ? 0 : -1;
     const empty = !cached ? t("스킬 목록을 읽는 중…") : cached.skills.length === 0 ? t("이 세션에서 찾은 스킬이 없습니다.") : t("맞는 스킬이 없습니다.");
     this.renderSkills(this.skillShown.length > 0 ? null : empty);
   }
@@ -619,15 +625,26 @@ export class DetailPanel {
     this.input.setSelectionRange(this.input.value.length, this.input.value.length);
   }
 
-  /** 목록이 떠 있을 때의 키. 처리했으면 true. */
+  /**
+   * 목록이 떠 있을 때의 키. 처리했으면 true. ↑↓ 로 옮기고 Tab 으로 채운다. Enter 는 잡힌 줄이 있으면 그것을 채우고, 없거나
+   * 이름을 끝까지 다 쳤으면 목록을 닫고 입력창의 Enter(보내기)로 넘긴다.
+   */
   private skillKey(e: KeyboardEvent): boolean {
     if (this.skillPop.hidden || e.isComposing) return false;
     const n = this.skillShown.length;
+    const active = this.skillShown[this.skillActive];
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && n > 0) {
-      this.skillActive = (this.skillActive + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      this.skillActive = this.skillActive < 0 ? (step > 0 ? 0 : n - 1) : (this.skillActive + step + n) % n;
       this.markSkill();
-    } else if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey && n > 0) {
-      this.chooseSkill(this.skillShown[this.skillActive]!);
+    } else if (e.key === "Tab" && !e.shiftKey && n > 0) {
+      this.chooseSkill(active ?? this.skillShown[0]!);
+    } else if (e.key === "Enter" && !e.shiftKey) {
+      if (!active || active.name.toLowerCase() === this.skillQuery) {
+        this.closeSkills();
+        return false;
+      }
+      this.chooseSkill(active);
     } else if (e.key === "Escape") {
       // 목록만 닫는다 — 상태 창의 Esc(입력창 떠나기·창 닫기)로 번지지 않게.
       e.stopPropagation();
@@ -737,7 +754,9 @@ export class DetailPanel {
     // 이미지를 붙여 보내면 로그의 사용자 턴 앞에 [Image #N] 표시가 붙는다. 글 없이 이미지만 보냈으면 턴이 바뀐 것으로 안다.
     const logged = a.lastPrompt ? norm(a.lastPrompt.replace(/^(\[Image #\d+\]\s*)+/, "")) : undefined;
     const want = norm(sent.text).slice(0, 32);
-    if (logged !== undefined && (want ? logged.startsWith(want) : a.lastPrompt !== sent.before)) {
+    // 일하는 중에 보낸 지시는 줄에 섰다가 나중에 들어간다 — 줄에 선 것도 받은 것이다.
+    const queued = want !== "" && a.queued?.some((q) => norm(q).startsWith(want)) === true;
+    if (queued || (logged !== undefined && (want ? logged.startsWith(want) : a.lastPrompt !== sent.before))) {
       sent.confirmed = true;
       this.setNote("", "");
       this.callbacks.toast(t("에이전트가 받았습니다"), a.title, "var(--done)");

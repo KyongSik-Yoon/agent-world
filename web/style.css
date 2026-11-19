@@ -2862,6 +2862,10 @@ dialog.dlg input[type="checkbox"] {
   place-items: center;
 }
 
+.compose .attach[hidden] {
+  display: none;
+}
+
 .compose .attach:hover {
   background: var(--soft-2);
 }

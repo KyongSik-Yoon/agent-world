@@ -36,7 +36,7 @@ function root(): string {
 // `{"type":"…"` 로 시작하는 행은 대화가 아니라 부기 행이다. 그중 쓸 것만 파싱한다 —
 // api-request-blob 같은 행은 수십~수백 KB 라서 JSON 으로 푸는 것 자체가 낭비다.
 const BOOKKEEPING = '{"type":"';
-const WANTED_BOOKKEEPING = ['{"type":"ai-title"', '{"type":"last-prompt"', '{"type":"permission-mode"', '{"type":"queue-operation","operation":"enqueue"'];
+const WANTED_BOOKKEEPING = ['{"type":"ai-title"', '{"type":"last-prompt"', '{"type":"permission-mode"', '{"type":"queue-operation"'];
 
 /** 사용자 행의 텍스트에서 하네스가 끼워 넣은 꼬리표를 걷어낸다. 사람이 친 말이 아니면 빈 문자열. */
 function userText(raw: string): string {
@@ -168,9 +168,14 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
   }
   const message = row.message;
   if (!isRecord(message)) return;
+  // 백그라운드 일의 알림처럼 Claude 가 넣은 사용자 행에는 출처가 붙는다(origin.kind: task-notification·plugin·auto-continuation).
+  // 지시로 치는 것은 사람(human)과 다른 세션이 보낸 것(peer)뿐이다.
+  const kind = isRecord(row.origin) ? row.origin.kind : undefined;
+  const human = kind === undefined || kind === "human" || kind === "peer";
   const content = message.content;
   if (typeof content === "string") {
     feedCommandOutput(s, content);
+    if (!human) return;
     const text = userText(content);
     if (text) {
       setPrompt(s, text);
@@ -209,7 +214,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
       }
     }
   }
-  if (texts.length > 0) {
+  if (texts.length > 0 && human) {
     const text = texts.join("\n\n");
     setPrompt(s, text);
     s.promptQueued = false;
@@ -247,14 +252,19 @@ export const claudeReader: LogReader<LogSummary> = {
         break;
       case "queue-operation": {
         // 일하는 중에 보낸 지시는 줄에 선다. 받은 그 순간 남는 것은 이 행뿐이다 — 턴 사이에 끼워 넣어지면(absorbed_mid_turn)
-        // 사용자 행 없이 첨부(queued_command)로만, 턴이 끝난 뒤에 나가면 그때 사용자 행으로 남는다. 그래서 받은 지시는 여기서
-        // 마지막 지시로 삼고, 활동 줄은 실제로 들어간 때(첨부나 사용자 행)에 적는다. 끝난 백그라운드 일의 알림도 같은 줄에
-        // 서지만 꼬리표가 붙어 userText 가 걸러 낸다.
-        const text = userText(str(row.content) ?? "");
-        if (row.operation === "enqueue" && text) {
-          setPrompt(s, text);
-          s.promptQueued = true;
+        // 사용자 행 없이 첨부(queued_command)로만, 턴이 끝나거나 끊긴 뒤에 나가면(dequeue) 그때 사용자 행으로 남는다.
+        // 줄 행에는 보낸 이가 없어(백그라운드 일의 알림도 같은 줄에 선다) 마지막 지시로 삼지 않고 줄로만 들고 있는다.
+        const q = (s.queued ??= []);
+        const content = str(row.content) ?? "";
+        if (row.operation === "enqueue") q.push(content);
+        else if (row.operation === "dequeue") q.shift();
+        else if (row.operation === "popAll") q.length = 0;
+        else if (row.operation === "remove") {
+          const i = q.indexOf(content);
+          if (i >= 0) q.splice(i, 1);
         }
+        // 줄이 끝없이 늘지 않게 — 실제로는 몇 개를 넘지 않는다.
+        if (q.length > 20) q.splice(0, q.length - 20);
         break;
       }
       case "attachment": {

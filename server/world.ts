@@ -205,6 +205,9 @@ export class World {
     view.recent = s.recent;
     view.activity = currentActivity(s);
     view.lastPrompt = s.lastPrompt;
+    // 줄에는 꼬리표 달린 알림(<task-notification> 등)도 선다 — 사람이 친 것만 싣는다.
+    const queued = s.queued?.filter((q) => q.trim() && !q.trimStart().startsWith("<"));
+    view.queued = queued?.length ? queued : undefined;
     view.lastReply = s.lastReply;
     const reviewAt = s.review ? Date.parse(s.review.at) : NaN;
     if (Number.isFinite(reviewAt)) {
@@ -600,6 +603,11 @@ export class World {
   stopRequested(paneId: string, seq: number, working: boolean): void {
     this.stopped.set(paneId, { seq: working ? seq : seq - 1, at: Date.now() });
     this.firstPrompt.delete(paneId);
+  }
+
+  /** 멈추지 못했다 — 그 뒤의 완료는 진짜 결과일 수 있으니 알리게 둔다. */
+  stopCancelled(paneId: string): void {
+    this.stopped.delete(paneId);
   }
 
   /**

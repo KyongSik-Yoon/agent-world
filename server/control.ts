@@ -484,8 +484,11 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       },
     ),
     // 하던 일 멈추기. 키 단추의 Esc 와 달리 지금 일하는 중일 때만 보낸다 — 질문이 떠 있으면 Esc 는 그 질문을 거절한다.
-    // Esc 는 세 하네스(Claude·Codex·agy) 모두 지금 턴을 끊는다. Claude 는 백그라운드 에이전트가 돌면 턴이 끝나도 일하는
-    // 중으로 남아(제목 스피너), 그때는 그 에이전트들도 끈다. 사람이 멈춘 것이라 그 뒤의 완료는 알리지 않는다(stopRequested).
+    // Esc 는 세 하네스(Claude·Codex·agy) 모두 지금 턴을 끊는다. 그래도 일하는 중으로 남는 경우가 둘 있다(Claude 2.1.328 실측):
+    //   - 일하는 중에 보내 줄 선 지시가 있으면, 끊는 즉시 그 지시로 새 턴을 시작한다 → Esc 를 한 번 더 눌러 그것도 끊는다.
+    //     일하는 중의 Esc 라 두 번 눌러도 되감기 창이 뜨지 않는다(쉬고 있을 때의 Esc 두 번이 되감기다).
+    //   - 백그라운드 에이전트가 돌면 턴이 끝나도 제목 스피너가 남는다 → 그 에이전트들을 끈다.
+    // 사람이 멈춘 것이라 그 뒤의 완료는 알리지 않는다(stopRequested). 멈추지 못했으면 그 표시를 거둔다.
     "/api/stop": mutate(async (body) => {
       const paneId = await need("agent", text(body, "paneId"));
       await refuseIfAsking(paneId);
@@ -501,14 +504,13 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
           if (Date.now() > until) return false;
         }
       };
-      await herdrInput(paneId, undefined, ["esc"]);
-      poke(paneId);
-      if (await settled(STOP_SETTLE_MS)) return;
-      if (now?.agent === "claude") {
-        await herdrInput(paneId, undefined, KILL_AGENTS);
+      const steps: string[][] = [["esc"], ["esc"], ...(now?.agent === "claude" ? [KILL_AGENTS] : [])];
+      for (const keys of steps) {
+        await herdrInput(paneId, undefined, keys);
         poke(paneId);
-        if (await settled(STOP_AGENTS_MS)) return;
+        if (await settled(keys === KILL_AGENTS ? STOP_AGENTS_MS : STOP_SETTLE_MS)) return;
       }
+      world.stopCancelled(paneId);
       throw new Reject(L("멈춤 키를 보냈지만 아직 일하는 중으로 보입니다. 터미널 화면을 확인해 주세요.", "The stop key was sent but it still looks busy. Check the terminal."), 504, "stop_unconfirmed");
     }),
     // 플랜 승인 카드의 "Approve and start"(desk-plan 의 1 키). 키 단추로 1 을 보내는 것과 달리, 카드가 아직 떠 있을 때만

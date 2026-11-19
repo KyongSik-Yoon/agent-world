@@ -91,6 +91,8 @@ export interface AgentView {
   /** 최근 활동, 오래된 것부터. */
   recent: Activity[];
   lastPrompt?: string;
+  /** 일하는 중에 보내 줄에 선 것들(Claude Code). 아직 들어가지 않아 마지막 지시가 아니지만, 보낸 지시가 닿았다는 표시다. */
+  queued?: string[];
   lastReply?: string;
   /** 로그 파일이 마지막으로 바뀐 시각(ms). */
   logUpdatedAt?: number;
