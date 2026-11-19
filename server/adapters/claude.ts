@@ -146,6 +146,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
     const text = userText(content);
     if (text) {
       setPrompt(s, text);
+      s.sawPromptRow = true;
       pushActivity(s, "user", "", text, at);
       s.compacted = false;
       s.turnOpen = true;
@@ -177,6 +178,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
   if (texts.length > 0) {
     const text = texts.join("\n\n");
     setPrompt(s, text);
+    s.sawPromptRow = true;
     pushActivity(s, "user", "", text, at);
     s.compacted = false;
     s.turnOpen = true;
@@ -220,7 +222,9 @@ export const claudeReader: LogReader<LogSummary> = {
       }
     }
   },
-  ready: (s) => s.sawAssistant,
+  // last-prompt 는 줄바꿈을 지우고 잘라 둔 한 줄이라, 지시 원문이 담긴 사용자 행까지 닿아야 준비된 것으로 본다. 로그가
+  // 길면 몇 MB 를 더 읽지만 세션마다 처음 한 번뿐이다(그 뒤로는 덧붙은 바이트만 읽는다).
+  ready: (s) => s.sawAssistant && s.sawPromptRow === true,
 };
 
 const pathCache = new Map<string, string>();

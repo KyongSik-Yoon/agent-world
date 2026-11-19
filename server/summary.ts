@@ -28,6 +28,8 @@ export interface LogSummary {
   turnOpen: boolean;
   /** 모델 응답 행을 하나라도 봤는지 — 꼬리 창을 더 키울지 판단한다. */
   sawAssistant: boolean;
+  /** 사용자 행에서 지시 원문을 읽었는지. 하네스가 따로 적어 두는 한 줄 요약(Claude 의 last-prompt)만 봤으면 꼬리 창을 키운다. */
+  sawPromptRow?: boolean;
   /** 결과를 기다리는 도구 호출들(호출 id → 요청). 결과 행이 오면 지운다. */
   open: Map<string, PendingRequest>;
   /** 로그의 마지막 사건이 컴팩션(대화 요약)이다 — 그 뒤로 지시도 응답도 없었다. */
