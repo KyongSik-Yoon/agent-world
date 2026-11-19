@@ -97,7 +97,7 @@ const builder = new Builder({
 });
 
 function select(id: string | null): void {
-  // 이미 고른 캐릭터를 다시 고르면, 카메라가 놓아 준 뒤라면 다시 다가간다(장면이 판단한다).
+  // 이미 고른 캐릭터를 다시 고르면, 다른 데를 보고 있었을 때 그 자리를 다시 비춘다(장면이 판단한다).
   // 좁은 화면에서는 목록이 마을이나 상태 창을 덮고 있으므로, 고르면 접는다. 지금 보던 것을 다시 골라도 접는다.
   if (id) setRoster(false);
   if (id === selectedId) {

@@ -53,6 +53,10 @@ const VIEW_TURNS = [0, 25, -25, 50, -50, 80, -80, 115, -115, 150, -150, 180];
 /** 캐릭터가 보이는지 확인하는 높이들 — 발치, 몸통, 머리. */
 const VIEW_HEIGHTS = [0.35, 0.9, 1.4];
 const UP = new THREE.Vector3(0, 1, 0);
+/** 카메라가 옮겨 가는 데 쓰는 시간의 상한. 시정수 약 240ms 라 2초면 남은 거리가 천분의 일 아래다. */
+const FLIGHT_MAX_MS = 5000;
+/** 고른 뒤 이 안에 창이 열려 빈 자리가 달라지면 비추는 거리를 다시 잡는다. */
+const RESTAGE_MS = 1200;
 /** 집터 중심에서 마당 끝(대문 앞, 쉼터)까지의 거리 — 본채 기준. 별채는 Plot.scale 만큼 줄어든다. */
 const YARD_REACH = 5;
 /** 광장 한가운데에서 완료한 캐릭터들이 서는 바깥 고리까지. */
@@ -97,18 +101,9 @@ export class WorldScene {
    * position 이 있으면 바라보는 방향까지 그 자리로 되돌린다(고르기 전 시점으로 돌아갈 때).
    * at 은 떠난 시각(performance.now). 옮겨 가는 양은 그 뒤에 흐른 시간만큼만 센다 — 아래 frame() 참고.
    */
-  private flight: { target: THREE.Vector3; distance: number; position?: THREE.Vector3; at: number; fixed?: boolean } | null = null;
+  private flight: { target: THREE.Vector3; distance: number; position?: THREE.Vector3; at: number } | null = null;
   /** 무언가를 고르기 직전의 시점 — 고르기를 풀면 여기로 돌아간다. */
   private home: { target: THREE.Vector3; position: THREE.Vector3 } | null = null;
-  /**
-   * 고른 캐릭터를 카메라가 놓아 줬다. 쉬던 에이전트(완료·확인 필요·대기)가 다시 일하러 가면, 그 일은 이미
-   * 시켰으니 집까지 가는 길을 확대한 채 따라갈 까닭이 없다 — 고르기 전에 보던 자리로 물러나 넓게 보여 준다.
-   * 대기도 넣는다: 확인을 마친 완료는 서버가 대기로 내려보내므로, 완료·확인 필요만 보면 그런 에이전트에 시킬 때 따라간다.
-   * 광장의 완료가 대기로 내려가는 것도 넣는다: 지시를 보내면 서버가 바로 확인한 것으로 적어 완료 → 대기 → (herdr 가
-   * 알아챈 뒤) 작업 중으로 두 번 바뀐다. 작업 중만 기다리면 집으로 걸어가는 첫머리를 확대한 채 따라가다 뒤늦게 물러난다.
-   * 고르기와 상태 창은 그대로 둔다. 같은 캐릭터를 다시 고르면 다시 다가간다.
-   */
-  private released = false;
   private downAt: { x: number; y: number } | null = null;
   private lastFrameAt = 0;
   /** 쉬는 동안 다음 프레임을 그리려는 때. 0 이면 시각표가 없다(조작 중이거나 방금 깨어났다). */
@@ -134,8 +129,6 @@ export class WorldScene {
   private chained = false;
   /** 이름표 층을 다시 놓아야 하는 프레임 수(스냅샷·크기·고르기가 바뀐 직후). */
   private labelsDirty = 3;
-  /** 고른 캐릭터가 다른 자리로 가는 중이라 카메라가 따라 움직이고 있다. */
-  private following = false;
   private readonly lastCamera = new THREE.Matrix4();
   /** 직전 프레임에 걸어가는 캐릭터가 있었는지. */
   private walking = false;
@@ -245,6 +238,9 @@ export class WorldScene {
     // 옮겨 가는 동안은 화면 전체가 움직인다 — 주사율 그대로 그린다.
     this.lastInputAt = performance.now();
     this.wake();
+    // 고르면 상태 창과 무대가 한두 프레임 뒤에 열린다. 그 전의 빈 자리로 잰 거리로 떠났으면 열린 뒤의 자리로 고쳐 잡는다 —
+    // 안 그러면 같은 집이 처음 고를 때와 다른 주민에서 옮겨 올 때 다른 크기로 보인다.
+    if (this.selectedId && this.flight && performance.now() - this.flight.at < RESTAGE_MS && !this.selectedId.startsWith("ws:")) this.restage();
   }
 
   /** 패널에 덮이지 않은 자리의 가로세로 비. 처음 화면의 거리를 여기에 맞춘다. */
@@ -314,8 +310,19 @@ export class WorldScene {
       const actor = this.actors.get(view.id);
       if (actor && actor.view.vendor === view.vendor) {
         const was = actor.view.status;
-        if (view.id === this.selectedId && view.status !== was && (view.status === "working" || was === "done")) this.release();
+        const stage = view.id === this.selectedId && view.status !== was ? this.stageOf(actor) : null;
         actor.apply(view);
+        // 고른 캐릭터가 다른 자리로 간다(광장의 완료가 일하러 집으로, 일을 마치고 광장으로). 떠나는 자리를 보고 있었으면
+        // 가는 자리를 비춘다 — 따라가지 않아도 그리로 걸어 들어온다. 다른 데를 보고 있었으면 그대로 둔다.
+        if (stage) {
+          const next = this.stageOf(actor);
+          const aim = this.flight?.target ?? this.controls.target;
+          if (next.target.distanceTo(stage.target) > 0.5 && aim.distanceTo(stage.target) < stage.reach) {
+            this.flight = { target: next.target, distance: next.distance, at: performance.now() };
+            this.lastInputAt = performance.now();
+            this.wake();
+          }
+        }
         continue;
       }
       if (actor) this.removeActor(view.id);
@@ -422,12 +429,10 @@ export class WorldScene {
     if (this.hoveredId === id) this.hoveredId = null;
   }
 
-  /** 고른 에이전트를 표시하고, fly 면 카메라가 따라간다. 놓아 준 캐릭터를 다시 고르면 다시 다가간다. */
+  /** 고른 에이전트를 표시하고, fly 면 카메라가 그 자리를 비춘다. 고른 것을 다시 고르면(다른 데를 보다가) 다시 비춘다. */
   select(id: string | null, fly = true): void {
     const before = this.selectedId;
-    if (id === before && !this.released) return;
-    const released = this.released;
-    this.released = false;
+    if (id === before && !(id && fly)) return;
     this.labelsDirty = 3;
     // 고르는 것은 어떻게 골랐든(목록에서 키보드로, 알림을 눌러서) 조작이다 — 다가가는 동안은 주사율 그대로 그린다.
     // 포인터나 키 입력만 조작으로 치면 그 밖의 길로 고른 때는 카메라가 초당 30장으로 끊겨 움직인다.
@@ -435,7 +440,7 @@ export class WorldScene {
       this.lastInputAt = performance.now();
       this.wake();
     } else if (id !== before) this.ease();
-    if (id && (!before || released) && fly) {
+    if (id && !before && fly) {
       // 돌아오는 중에 다시 골랐으면, 가던 곳이 돌아갈 자리다.
       const returning = this.flight?.position ? this.flight : null;
       this.home = { target: (returning?.target ?? this.controls.target).clone(), position: (returning?.position ?? this.camera.position).clone() };
@@ -450,13 +455,18 @@ export class WorldScene {
     }
     for (const [actorId, actor] of this.actors) actor.selected = actorId === id;
     const actor = id ? this.actors.get(id) : undefined;
-    if (actor && fly) {
-      this.showStage(this.stageOf(actor), actor);
-    } else if (id && fly) {
-      const shell = this.shells.get(id);
-      if (shell) this.showStage(this.stageAt(this.plotNear(shell.position)), undefined, shell.position);
-      else if (id.startsWith("ws:")) this.flyToPlot(id.slice(3));
-    }
+    if (id && fly) this.restage();
+  }
+
+  /** 고른 것이 있는 자리를 비춘다. */
+  private restage(): void {
+    const id = this.selectedId;
+    if (!id) return;
+    const actor = this.actors.get(id);
+    const shell = this.shells.get(id);
+    if (actor) this.showStage(this.stageOf(actor), actor);
+    else if (shell) this.showStage(this.stageAt(this.plotNear(shell.position)), undefined, shell.position);
+    else if (id.startsWith("ws:")) this.flyToPlot(id.slice(3));
   }
 
   /**
@@ -514,10 +524,11 @@ export class WorldScene {
    * 무대(터미널 화면)가 열리며 시야가 위로 올라가는 중이면 그 뒤의 자리로 따진다 — 지금은 보여도 곧 무대 밑으로 들어간다.
    */
   private showStage(stage: { target: THREE.Vector3; distance: number; reach: number }, actor?: Actor, at: THREE.Vector3 = actor!.group.position): void {
-    const heading = this.flight?.fixed ? this.flight : null;
     const now = performance.now();
-    if (heading && heading.target.distanceTo(stage.target) < 0.5) {
-      // 같은 자리로 가는 중이다 — 가던 길을 그대로 간다.
+    // 같은 자리로 가는 중이면 가던 길을 그대로 간다. 그새 창이 열려 빈 자리가 달라졌으면 거리만 고친다.
+    if (this.flight && this.flight.target.distanceTo(stage.target) < 0.5) {
+      this.flight.position?.sub(this.flight.target).setLength(stage.distance).add(this.flight.target);
+      this.flight.distance = stage.distance;
       return;
     }
     const distance = this.distance();
@@ -525,10 +536,10 @@ export class WorldScene {
     const here = !this.flight && settled && this.controls.target.distanceTo(stage.target) < stage.reach && distance <= stage.distance * 1.35 && this.inFreeView(at);
     if (here) {
       const position = actor ? this.clearView(actor, this.controls.target, distance) : undefined;
-      if (position) this.flight = { target: this.controls.target.clone(), distance, position, at: now, fixed: true };
+      if (position) this.flight = { target: this.controls.target.clone(), distance, position, at: now };
       return;
     }
-    this.flight = { target: stage.target, distance: stage.distance, position: actor ? this.clearView(actor, stage.target, stage.distance) : undefined, at: now, fixed: true };
+    this.flight = { target: stage.target, distance: stage.distance, position: actor ? this.clearView(actor, stage.target, stage.distance) : undefined, at: now };
   }
 
   /**
@@ -632,15 +643,6 @@ export class WorldScene {
     return this.camera.position.distanceTo(this.controls.target);
   }
 
-  /** 고른 캐릭터를 따라가던 카메라를 고르기 전에 보던 자리로 물린다. 고르기는 그대로 둔다. */
-  private release(): void {
-    if (this.released) return;
-    this.released = true;
-    this.flight = this.home ? { target: this.home.target, position: this.home.position, distance: this.home.position.distanceTo(this.home.target), at: performance.now() } : null;
-    this.home = null;
-    this.wake();
-  }
-
   /** 처음 화면으로 돌아간다: 마을 전체가 보이는 자리·배율·각도. */
   overview(animate = true): void {
     this.home = null;
@@ -661,7 +663,7 @@ export class WorldScene {
 
   private flyToPlot(workspaceId: string): void {
     const plot = this.layout.plots.get(workspaceId);
-    if (plot) this.flight = { target: plot.center.clone().setY(0.8), distance: 21, at: performance.now(), fixed: true };
+    if (plot) this.flight = { target: plot.center.clone().setY(0.8), distance: 21, at: performance.now() };
   }
 
   private pick(e: PointerEvent): string | null {
@@ -699,14 +701,10 @@ export class WorldScene {
 
   /**
    * 지금 몇 ms 간격으로 그릴지: 조작 중 0(주사율 그대로), 가만히 두면 30장쯤, 곁눈질 화면이면 3장.
-   *
-   * 고른 캐릭터를 따라가는 flight 는 고르기를 풀 때까지 남아 있으므로, flight 가 있다는 것만으로 조작 중이라고
-   * 치지 않는다(그러면 캐릭터를 고른 내내 주사율대로 그린다). 다가가는 동안은 고른 입력에서 ACTIVE_MS 가 덮고,
-   * 그 뒤로는 화면이 크게 움직일 때만 — 제자리로 돌아가는 중이거나, 고른 캐릭터가 먼 길을 가는 중일 때만 — 조작 중이다.
+   * 카메라가 옮겨 가는 중(flight)이면 조작 중이다 — 닿으면 flight 는 지워진다.
    */
   private pace(now: number): number {
-    const sweeping = this.flight?.position !== undefined || (this.flight !== null && this.following);
-    if (sweeping || now - this.lastInputAt < ACTIVE_MS || now < this.easeUntil) return 0;
+    if (this.flight !== null || now - this.lastInputAt < ACTIVE_MS || now < this.easeUntil) return 0;
     const quiet = now - Math.max(this.lastInputAt, this.lastSeenAt);
     return quiet > AMBIENT_AFTER_MS || !document.hasFocus() ? AMBIENT_FRAME_MS : IDLE_FRAME_MS;
   }
@@ -803,29 +801,24 @@ export class WorldScene {
       }
     }
 
-    // 고른 에이전트가 걸어가면 카메라의 목표도 같이 간다.
-    // 집터나 광장을 비추러 가는 길(fixed)은 캐릭터를 따라가지 않고, 닿으면 끝난다.
-    const selected = this.selectedId && !this.released && !this.flight?.fixed ? this.actors.get(this.selectedId) : undefined;
-    if (selected && this.flight) this.flight.target.copy(selected.group.position).setY(0.9);
-    this.following = selected?.transit ?? false;
+    // 카메라는 고른 캐릭터를 따라다니지 않는다 — 그 캐릭터가 사는 자리를 비추고(showStage) 닿으면 멈춘다.
     // 카메라가 옮겨 가는 양은 떠난 뒤에 흐른 시간으로만 센다. 곁눈질 화면(초당 3장)에서 상태가 바뀌어 떠나면 첫 장의
     // dt 는 쉬던 동안(최대 MAX_STEP_S)이라, 그대로 쓰면 한 장에 80% 를 건너뛰어 화면이 번쩍 바뀐다. 캐릭터는 dt 그대로 걷는다.
+    // 닿지 못하는 목표(조작 한계에 걸린 거리 등)를 붙들고 주사율대로 그리기를 이어 가지 않는다.
+    if (this.flight && now - this.flight.at > FLIGHT_MAX_MS) this.flight = null;
     const flown = this.flight ? Math.min(dt, Math.max(0, now - this.flight.at) / 1000) : 0;
     if (this.flight?.position) {
       const k = 1 - Math.exp(-flown * 4.2);
       this.controls.target.lerp(this.flight.target, k);
       this.camera.position.lerp(this.flight.position, k);
-      if (this.camera.position.distanceTo(this.flight.position) < 0.03) {
-        // 고른 캐릭터에게 돌아 들어간 것이면, 닿은 뒤로는 그 캐릭터를 따라간다.
-        this.flight = selected ? { target: this.flight.target, distance: this.flight.distance, at: this.flight.at } : null;
-      }
+      if (this.camera.position.distanceTo(this.flight.position) < 0.03) this.flight = null;
     } else if (this.flight) {
       const k = 1 - Math.exp(-flown * 4.2);
       const offset = this.camera.position.clone().sub(this.controls.target);
       const distance = offset.length() + (this.flight.distance - offset.length()) * k;
       this.controls.target.lerp(this.flight.target, k);
       this.camera.position.copy(this.controls.target).addScaledVector(offset.normalize(), distance);
-      if (!selected && this.controls.target.distanceTo(this.flight.target) < 0.02 && Math.abs(distance - this.flight.distance) < 0.05) this.flight = null;
+      if (this.controls.target.distanceTo(this.flight.target) < 0.02 && Math.abs(distance - this.flight.distance) < 0.05) this.flight = null;
     }
 
     // 패널이 열리고 닫히면 시야의 한가운데를 빈 자리 쪽으로 부드럽게 옮긴다.

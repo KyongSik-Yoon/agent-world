@@ -6,6 +6,7 @@
 //   10분 동안 요청이 없거나, 띄운 지 3시간이 지나거나, 소켓 파일이 없어지거나 같은 경로로 새 흉내가 뜨면 스스로 끝난다
 //   (MOCK_IDLE_MS, MOCK_TTL_MS).
 //
+// pane 의 screen(줄 배열)에 {t} 를 적으면 읽을 때마다 흐른 초로 바뀐다(흐르는 화면의 비용을 잴 때).
 // 시나리오 파일이 바뀌면 다시 읽으므로, 파일의 agent_status 를 고치면 화면의 캐릭터가 따라 움직인다.
 // 조작 요청(지시·키 입력·만들기·닫기)은 메모리 안의 상태만 바꾸고, 받은 요청을 표준 출력에 적는다.
 // 실제 herdr 의 동작(붙여넣기 모드, 질문 감지, 시작 대기)까지 확인하려면 이름 붙은 테스트 세션을 쓴다:
@@ -118,7 +119,8 @@ async function handle(method: string, p: Record<string, unknown>): Promise<unkno
       return { type: "pane_info" };
     case "pane.read":
       paneOf(s, p.pane_id);
-      return { type: "pane_read", read: { text: screen(String(p.pane_id)).join("\r\n") } };
+      // 화면에 {t} 를 적어 두면 읽을 때마다 흐른 초로 바뀐다 — 스피너 줄처럼 쉬지 않고 바뀌는 화면을 흉내 낸다.
+      return { type: "pane_read", read: { text: screen(String(p.pane_id)).join("\r\n").replaceAll("{t}", (performance.now() / 1000).toFixed(1)) } };
     case "pane.send_input":
     case "pane.send_text": {
       paneOf(s, p.pane_id);

@@ -2097,9 +2097,24 @@ kbd {
 }
 
 #stage .body {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
+}
+
+/*
+ * 아래에 붙어 흐르므로 맨 윗줄은 늘 반쯤 잘린다 — 잘린 줄이 머리줄에 맞닿지 않게 위쪽을 바탕색으로 덮는다.
+ * 화면 자체에 mask 를 걸지 않는다: 줄이 바뀔 때마다 가림 면을 다시 만든다.
+ */
+#stage .body::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 20px;
+  z-index: 1;
+  background: linear-gradient(var(--term-bg), transparent);
+  pointer-events: none;
 }
 
 #stage .term.preview {
