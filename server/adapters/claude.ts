@@ -65,6 +65,16 @@ function skillCommand(raw: string): string | undefined {
   return args ? `${name} ${args}` : name;
 }
 
+/** 내장 명령(`/clear`, `/model sonnet`)의 사용자 행 — `<command-name>` 이 앞이다. 친 그대로 되살린다. 스킬 꼬리표는 skillCommand. */
+function builtinCommand(raw: string): string | undefined {
+  const text = raw.trimStart();
+  if (!text.startsWith("<command-name>")) return undefined;
+  const name = /^<command-name>(\/[^<\s]+)<\/command-name>/.exec(text)?.[1];
+  if (!name) return undefined;
+  const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim();
+  return args ? `${name} ${args}` : name;
+}
+
 /**
  * 여는 꼬리표와 닫는 꼬리표 사이를 걷어낸다. 닫는 꼬리표가 없으면 그대로 둔다.
  * 정규식의 게으른 되짚기로 하면 닫히지 않은 꼬리표가 많은 긴 글에서 걸리는 시간이 길이의 제곱으로 는다.
@@ -176,6 +186,11 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
   if (typeof content === "string") {
     feedCommandOutput(s, content);
     if (!human) return;
+    const command = builtinCommand(content);
+    if (command) {
+      s.lastCommand = { text: command, at };
+      return;
+    }
     const text = userText(content);
     if (text) {
       setPrompt(s, text);

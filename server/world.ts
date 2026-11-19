@@ -205,6 +205,8 @@ export class World {
     view.recent = s.recent;
     view.activity = currentActivity(s);
     view.lastPrompt = s.lastPrompt;
+    view.lastCommand = s.lastCommand?.text;
+    view.lastCommandAt = s.lastCommand?.at;
     // 줄에는 꼬리표 달린 알림(<task-notification> 등)도 선다 — 사람이 친 것만 싣는다.
     const queued = s.queued?.filter((q) => q.trim() && !q.trimStart().startsWith("<"));
     view.queued = queued?.length ? queued : undefined;

@@ -24,6 +24,11 @@ export interface LogSummary {
   contextWindow?: number;
   recent: Activity[];
   lastPrompt?: string;
+  /**
+   * 사람이 친 마지막 내장 명령(`/clear`, `/model sonnet`)과 그 행의 시각. 내장 명령은 지시가 아니라 lastPrompt 를 바꾸지 않으므로,
+   * 월드에서 보낸 명령이 닿았는지는 이것으로 확인한다. `/clear` 는 새 로그의 첫 행으로 남는다.
+   */
+  lastCommand?: { text: string; at: string };
   lastReply?: string;
   /** 모델이 아직 일하는 중으로 보이는지(사용자 입력 직후이거나 도구 호출이 열려 있음). */
   turnOpen: boolean;
