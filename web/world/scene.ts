@@ -79,8 +79,9 @@ export class WorldScene {
   /**
    * 카메라가 부드럽게 옮겨 갈 목표. 사용자가 직접 움직이면 지운다.
    * position 이 있으면 바라보는 방향까지 그 자리로 되돌린다(고르기 전 시점으로 돌아갈 때).
+   * at 은 떠난 시각(performance.now). 옮겨 가는 양은 그 뒤에 흐른 시간만큼만 센다 — 아래 frame() 참고.
    */
-  private flight: { target: THREE.Vector3; distance: number; position?: THREE.Vector3 } | null = null;
+  private flight: { target: THREE.Vector3; distance: number; position?: THREE.Vector3; at: number } | null = null;
   /** 무언가를 고르기 직전의 시점 — 고르기를 풀면 여기로 돌아간다. */
   private home: { target: THREE.Vector3; position: THREE.Vector3 } | null = null;
   /**
@@ -450,7 +451,7 @@ export class WorldScene {
     if (!id) {
       // 고르기를 풀면 다가가기 전에 보던 자리와 배율로 돌아간다.
       if (before && this.home && fly) {
-        this.flight = { target: this.home.target, position: this.home.position, distance: this.home.position.distanceTo(this.home.target) };
+        this.flight = { target: this.home.target, position: this.home.position, distance: this.home.position.distanceTo(this.home.target), at: performance.now() };
       }
       this.home = null;
     }
@@ -459,10 +460,10 @@ export class WorldScene {
     if (actor && fly) {
       const target = actor.group.position.clone().setY(0.9);
       const distance = Math.min(this.distance(), 17);
-      this.flight = { target, distance, position: this.clearView(actor, target, distance) };
+      this.flight = { target, distance, position: this.clearView(actor, target, distance), at: performance.now() };
     } else if (id && fly) {
       const shell = this.shells.get(id);
-      if (shell) this.flight = { target: shell.position.clone().setY(0.8), distance: Math.min(this.distance(), 17) };
+      if (shell) this.flight = { target: shell.position.clone().setY(0.8), distance: Math.min(this.distance(), 17), at: performance.now() };
       else if (id.startsWith("ws:")) this.flyToPlot(id.slice(3));
     }
   }
@@ -572,7 +573,7 @@ export class WorldScene {
   private release(): void {
     if (this.released) return;
     this.released = true;
-    this.flight = this.home ? { target: this.home.target, position: this.home.position, distance: this.home.position.distanceTo(this.home.target) } : null;
+    this.flight = this.home ? { target: this.home.target, position: this.home.position, distance: this.home.position.distanceTo(this.home.target), at: performance.now() } : null;
     this.home = null;
     this.wake();
   }
@@ -587,7 +588,7 @@ export class WorldScene {
     const target = new THREE.Vector3(0, 0.5, 1.5);
     const position = target.clone().addScaledVector(new THREE.Vector3(0, 0.72, 0.7).normalize(), distance);
     if (animate) {
-      this.flight = { target, distance, position };
+      this.flight = { target, distance, position, at: performance.now() };
       return;
     }
     this.controls.target.copy(target);
@@ -597,7 +598,7 @@ export class WorldScene {
 
   private flyToPlot(workspaceId: string): void {
     const plot = this.layout.plots.get(workspaceId);
-    if (plot) this.flight = { target: plot.center.clone().setY(0.8), distance: 21 };
+    if (plot) this.flight = { target: plot.center.clone().setY(0.8), distance: 21, at: performance.now() };
   }
 
   private pick(e: PointerEvent): string | null {
@@ -743,16 +744,19 @@ export class WorldScene {
     const selected = this.selectedId && !this.released ? this.actors.get(this.selectedId) : undefined;
     if (selected && this.flight) this.flight.target.copy(selected.group.position).setY(0.9);
     this.following = selected?.transit ?? false;
+    // 카메라가 옮겨 가는 양은 떠난 뒤에 흐른 시간으로만 센다. 곁눈질 화면(초당 3장)에서 상태가 바뀌어 떠나면 첫 장의
+    // dt 는 쉬던 동안(최대 MAX_STEP_S)이라, 그대로 쓰면 한 장에 80% 를 건너뛰어 화면이 번쩍 바뀐다. 캐릭터는 dt 그대로 걷는다.
+    const flown = this.flight ? Math.min(dt, Math.max(0, now - this.flight.at) / 1000) : 0;
     if (this.flight?.position) {
-      const k = 1 - Math.exp(-dt * 4.2);
+      const k = 1 - Math.exp(-flown * 4.2);
       this.controls.target.lerp(this.flight.target, k);
       this.camera.position.lerp(this.flight.position, k);
       if (this.camera.position.distanceTo(this.flight.position) < 0.03) {
         // 고른 캐릭터에게 돌아 들어간 것이면, 닿은 뒤로는 그 캐릭터를 따라간다.
-        this.flight = selected ? { target: this.flight.target, distance: this.flight.distance } : null;
+        this.flight = selected ? { target: this.flight.target, distance: this.flight.distance, at: this.flight.at } : null;
       }
     } else if (this.flight) {
-      const k = 1 - Math.exp(-dt * 4.2);
+      const k = 1 - Math.exp(-flown * 4.2);
       const offset = this.camera.position.clone().sub(this.controls.target);
       const distance = offset.length() + (this.flight.distance - offset.length()) * k;
       this.controls.target.lerp(this.flight.target, k);
