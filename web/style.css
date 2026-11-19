@@ -176,9 +176,8 @@ input {
   display: none;
 }
 
-/* 지금 하는 일·전달 확인 줄의 선 아이콘은 글줄 안에 글자처럼 선다. */
-.now .ico,
-.note .ico {
+/* 지금 하는 일 줄의 선 아이콘은 글줄 안에 글자처럼 선다. */
+.now .ico {
   display: inline-block;
   width: 1.2em;
   height: 1.2em;
@@ -2564,10 +2563,6 @@ dialog.dlg input[type="checkbox"] {
   font-size: 11.5px;
 }
 
-.dock-note[data-tone="ok"] {
-  color: var(--done);
-}
-
 .dock-note[data-tone="err"] {
   color: var(--blocked);
 }
@@ -3192,8 +3187,9 @@ dialog.dlg .warn {
     z-index: 30;
   }
 
+  /* 상태 창이 열려 있으면 입력 도크 위에 띄운다 — 다음 말을 치는 입력창과 단추를 덮지 않게(--dock-h 는 detail.ts). */
   #toasts {
-    bottom: calc(12px + env(safe-area-inset-bottom));
+    bottom: calc(12px + env(safe-area-inset-bottom) + var(--dock-h, 0px));
   }
 
   /*

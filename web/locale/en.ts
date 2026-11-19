@@ -201,10 +201,9 @@ export const en: Record<string, string> = {
   "이미지 빼기": "Remove image",
   "붙인 이미지": "Attached image",
   "이미지를 올리는 중입니다. 잠시 뒤에 다시 보내 주세요.": "Uploading the image. Send again in a moment.",
-  "보냈습니다. 에이전트가 받으면 여기에 표시됩니다…": "Sent. This will update once the agent picks it up…",
   "에이전트가 질문에 대한 답을 기다리는 중입니다. 화면의 선택지를 위 키로 먼저 눌러 주세요.": "The agent is waiting for an answer. Pick an option with the keys above first.",
-  "에이전트가 받았습니다.": "The agent received it.",
-  "에이전트가 일하기 시작했습니다.": "The agent started working.",
+  "에이전트가 받았습니다": "The agent received it",
+  "에이전트가 일하기 시작했습니다": "The agent started working",
   "아직 받은 흔적이 없습니다. 터미널 화면에서 입력창에 그대로 남아 있는지 확인해 보세요.": "No sign it was received yet. Check the terminal to see if it is still sitting in the input.",
 
   // ── 상태 창: 에이전트 ──

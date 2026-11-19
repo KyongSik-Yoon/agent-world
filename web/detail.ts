@@ -210,6 +210,8 @@ export class DetailPanel {
     this.attachBtn.addEventListener("click", () => picker.click());
     this.dock.append(this.quick, this.shotsEl, h("div", { class: "compose" }, this.attachBtn, this.input, this.sendBtn), picker, this.note);
     this.root.replaceChildren(this.head, this.body, this.dock, this.grip());
+    // 휴대폰에서는 알림이 화면 맨 아래에 떠 입력창을 덮는다. 도크 높이를 알려 그 위로 띄우게 한다(style.css #toasts).
+    new ResizeObserver(() => document.documentElement.style.setProperty("--dock-h", `${this.dock.offsetHeight}px`)).observe(this.dock);
     this.preview.el.classList.add("preview");
     this.preview.el.title = t("눌러서 크게 보기");
     this.preview.el.addEventListener("click", () => {
@@ -427,8 +429,9 @@ export class DetailPanel {
     this.setNote("", "");
   }
 
-  private setNote(text: string, tone: "" | "ok" | "err" | "wait"): void {
-    this.note.replaceChildren(...(tone === "ok" && text ? [icon("check")] : []), text);
+  /** 입력창 아래에 남겨 둘 말(고쳐야 할 것). 잘 됐다는 확인은 여기 두지 않고 알림으로 띄운다 — 자리를 계속 차지하지 않게. */
+  private setNote(text: string, tone: "" | "err" | "wait"): void {
+    this.note.textContent = text;
     this.note.dataset.tone = tone;
     this.note.hidden = text === "";
   }
@@ -495,7 +498,7 @@ export class DetailPanel {
       if (target.agent) {
         await post("/api/prompt", { paneId: target.paneId, text, ...(shots.length ? { images: shots.map((s) => s.id) } : {}) });
         this.sent = { text, at: Date.now(), confirmed: false, before: this.snapshot?.agents.find((a) => a.paneId === target.paneId)?.lastPrompt };
-        this.setNote(t("보냈습니다. 에이전트가 받으면 여기에 표시됩니다…"), "wait");
+        this.setNote("", "");
         if (still()) this.clearShots();
       } else {
         await sendInput(target.paneId, { text, keys: ["enter"] });
@@ -528,10 +531,12 @@ export class DetailPanel {
     const want = norm(sent.text).slice(0, 32);
     if (logged !== undefined && (want ? logged.startsWith(want) : a.lastPrompt !== sent.before)) {
       sent.confirmed = true;
-      this.setNote(t("에이전트가 받았습니다."), "ok");
+      this.setNote("", "");
+      this.callbacks.toast(t("에이전트가 받았습니다"), a.title, "var(--done)");
     } else if (!a.hasLog && a.status === "working") {
       sent.confirmed = true;
-      this.setNote(t("에이전트가 일하기 시작했습니다."), "ok");
+      this.setNote("", "");
+      this.callbacks.toast(t("에이전트가 일하기 시작했습니다"), a.title, "var(--done)");
     } else if (Date.now() - sent.at > 12_000) {
       this.setNote(t("아직 받은 흔적이 없습니다. 터미널 화면에서 입력창에 그대로 남아 있는지 확인해 보세요."), "err");
     }
