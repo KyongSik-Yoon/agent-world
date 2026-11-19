@@ -560,6 +560,11 @@ export class World {
     return (await this.asking.check()).has(paneId);
   }
 
+  /** 플랜 승인 카드(desk-plan)가 떠 있는지. 질문 카드는 아니다 — 같은 숫자 키가 다른 선택지를 고른다. */
+  async waitingOnPlan(paneId: string): Promise<boolean> {
+    return (await this.asking.check()).get(paneId)?.plan === true;
+  }
+
   /**
    * 활동 로그 한 줄의 원문. 화면은 그 줄의 시각과 한 줄 요약으로 가리키고, 서버는 지금의 최근 활동에서 둘이 같은 것을
    * 찾아 그 자리를 다시 읽는다 — 화면이 로그의 아무 자리나 읽게 하지 않는다. 이미 밀려났거나 로그를 놓았으면 undefined.

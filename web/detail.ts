@@ -18,6 +18,7 @@ export type Action =
   | { type: "open-herdr"; agent: AgentView }
   | { type: "terminal"; paneId: string }
   | { type: "plan"; agent: AgentView }
+  | { type: "approve-plan"; agent: AgentView }
   | { type: "new-agent"; workspaceId: string; paneId?: string }
   | { type: "new-tab"; workspaceId: string }
   | { type: "split"; paneId: string; direction: "right" | "down" }
@@ -628,6 +629,11 @@ export class DetailPanel {
     // 플랜 승인 카드면 플랜 글을 따로 읽는 창을 연다 — 터미널에는 옆 창에 잘려 보인다.
     const plan = a.plan ? this.button(t("플랜 읽기"), () => this.callbacks.act({ type: "plan", agent: a }), { cls: "", icon: "file" }) : null;
     const card = h("section", { class: "ask" }, h("h3", {}, t("답을 기다리고 있어요"), plan, big));
+    // 승인은 플랜 글 위에 둔다 — 글이 길어 그 아래에 두면 굴려 내려가야 보인다. 고칠 점을 적는 것은 카드 안의 글 칸이라 터미널에서 한다.
+    if (a.plan && this.snapshot?.control) {
+      const approve = this.button(t("승인하고 시작"), () => this.callbacks.act({ type: "approve-plan", agent: a }), { cls: "btn primary", icon: "check", title: t("플랜 카드의 Approve and start 를 누릅니다 (1)") });
+      card.append(h("div", { class: "plan-approve" }, approve, h("span", { class: "hint" }, t("고칠 점은 크게 보기에서 Ctrl+X Tab 으로 적습니다."))));
+    }
     if (a.pending) card.append(this.pendingBlock(a.pending));
     card.append(this.preview.el, h("p", { class: "hint" }, this.snapshot?.control ? t("대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 크게 보기에서 직접 입력하세요.") : t("보기 전용이라 여기서는 답할 수 없습니다. herdr 에서 열어 답해 주세요.")));
     return card;

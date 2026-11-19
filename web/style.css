@@ -2228,6 +2228,39 @@ dialog.dlg p.plan-note {
   font-size: 11px;
 }
 
+/* 플랜 승인: 단추와 고칠 점 안내를 한 줄에. 좁으면 안내가 아래로 내려간다. */
+.ask .plan-approve {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.ask .plan-approve .hint {
+  margin: 0;
+}
+
+.plan-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.plan-foot .plan-note {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.plan-foot .btn {
+  flex: none;
+}
+
 .pending {
   margin-bottom: 8px;
   font-size: 12px;

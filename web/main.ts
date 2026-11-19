@@ -70,6 +70,8 @@ terminal.onToggle = (open) => {
 // 승인을 기다리는 플랜을 읽는 창. 크게 보기 위에 뜨고, 닫히면 입력을 다시 터미널로 돌린다.
 const planReader = new PlanReader();
 planReader.onClose = () => terminal.focus();
+planReader.canApprove = () => hud.latest?.control === true;
+planReader.onApprove = (a) => approvePlan(a);
 terminal.onPlan = (paneId) => {
   const agent = hud.latest?.agents.find((a) => a.paneId === paneId);
   if (agent) planReader.open(agent);
@@ -107,6 +109,20 @@ function markSeen(a: AgentView, undo: boolean): void {
     .catch((e: Error) => hud.toast(t("확인 처리 실패"), e.message, "var(--blocked)"));
 }
 
+/** 승인을 보내는 중인 pane — 두 번 누른 것은 한 번만 보낸다. */
+const approving = new Set<string>();
+
+/** 플랜 승인 카드의 Approve and start 를 누른다. 서버가 카드가 아직 떠 있는지 보고 보낸 뒤 카드가 내려가는 것까지 확인한다. */
+function approvePlan(a: AgentView): void {
+  if (!a.paneId || !hud.latest?.control || approving.has(a.paneId)) return;
+  const paneId = a.paneId;
+  approving.add(paneId);
+  void post("/api/plan/approve", { paneId })
+    .then(() => hud.toast(t("플랜을 승인했습니다"), a.title, "var(--accent)"))
+    .catch((e: Error) => hud.toast(t("플랜을 승인하지 못했습니다"), e.message, "var(--blocked)"))
+    .finally(() => approving.delete(paneId));
+}
+
 function openTerminal(paneId: string): void {
   const snap = hud.latest;
   const pane = snap?.panes.find((p) => p.id === paneId);
@@ -132,6 +148,9 @@ function act(action: Action): void {
       break;
     case "plan":
       planReader.open(action.agent);
+      break;
+    case "approve-plan":
+      approvePlan(action.agent);
       break;
     case "new-agent":
       builder.newAgent(action.workspaceId, action.paneId);

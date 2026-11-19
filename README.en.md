@@ -90,8 +90,11 @@ Worth knowing:
   herdr still reports the agent as working; Agent World reads the marker file the card leaves and shows it as needs
   input (desk-look 0.81.5 or later). A plan card also gets a `Read plan` button on its status-window card and in the
   header of the large terminal: the terminal shows the plan clipped in a side pane, so the button fetches the plan
-  file and shows it as formatted text (headings, tables, code). The view is read-only — keys pressed in it do not
-  reach the terminal — follows the file as the agent revises it, and closes once the plan is answered.
+  file and shows it as formatted text (headings, tables, code). Keys pressed in that view do not reach the
+  terminal; it follows the file as the agent revises it and closes once the plan is answered. The status-window card
+  and the plan view also have `Approve and start`, so you can approve without opening the terminal. It is sent only
+  while the card is still up, so pressing it after you already answered in the terminal does not type `1` into the
+  input. Asking for changes happens in the card's text field — use `Ctrl+X Tab` in the large terminal.
 - **Another PWA on the same host's default port can take the notifications.** Seen on Android Chrome: with another
   app installed from the same tailnet address on port 443, notifications appeared under that app's name. Moving that
   app to another port, removing it from the phone and turning the bell on again fixed it.

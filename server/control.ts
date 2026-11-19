@@ -62,6 +62,8 @@ const IMAGE_MARK = /\[Image #\d+\]/g;
 /** 지시가 입력창에 나타나고 제출되기까지 기다리는 시간. 막 뜬 Claude 는 시작 10초 안팎에야 입력창을 채우기도 한다. */
 const SUBMIT_CHECK_MS = 20_000;
 const SUBMIT_POLL_MS = 100;
+/** 플랜 승인 키를 보낸 뒤 카드가 내려가기를(desk-plan 이 표식 파일을 지우기를) 기다리는 시간. */
+const PLAN_APPROVE_MS = 3_000;
 /** Enter 를 누른 뒤 보낸 글이 이만큼 입력창에 남아 있으면 그 Enter 는 버려진 것이다. */
 const SUBMIT_STUCK_MS = 1000;
 const SUBMIT_PRESSES = 3;
@@ -472,6 +474,17 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         keysRefresh = setTimeout(refresh, KEYS_REFRESH_MS);
       },
     ),
+    // 플랜 승인 카드의 "Approve and start"(desk-plan 의 1 키). 키 단추로 1 을 보내는 것과 달리, 카드가 아직 떠 있을 때만
+    // 보낸다 — 터미널에서 먼저 답해 카드가 내려간 뒤라면 1 이 입력창에 그대로 찍힌다. 보낸 뒤 카드가 내려가는 것까지 본다.
+    "/api/plan/approve": mutate(async (body) => {
+      const paneId = await need("pane", text(body, "paneId"));
+      if (!(await world.waitingOnPlan(paneId))) throw new Reject(L("승인을 기다리는 플랜이 없습니다. 이미 답했을 수 있습니다.", "No plan is waiting for approval. It may already have been answered."), 409, "no_plan");
+      await herdrRaw(paneId, "1");
+      poke(paneId);
+      for (const until = Date.now() + PLAN_APPROVE_MS; await world.waitingOnPlan(paneId); await Bun.sleep(SUBMIT_POLL_MS)) {
+        if (Date.now() > until) throw new Reject(L("승인 키를 보냈지만 카드가 그대로입니다. 터미널 화면을 확인해 주세요.", "The approve key was sent but the card is still up. Check the terminal."), 504, "plan_unconfirmed");
+      }
+    }),
     "/api/seen": mutate(async (body) => {
       const paneId = await need("pane", text(body, "paneId"));
       return { seen: world.markSeen(paneId, body.undo === true) };

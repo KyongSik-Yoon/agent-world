@@ -1,7 +1,8 @@
 // 승인을 기다리는 플랜을 읽는 창.
 //
 // 플랜 승인 카드가 뜨면 터미널에는 플랜이 옆 창에 잘려 보인다 — 그 창은 터미널 안의 그림이라 월드에서는 굴릴 수 없다.
-// 플랜은 파일로 있으므로(server/plan.ts) 그 글을 받아 응답 글처럼 그려 보여 준다. 읽기만 하는 창이고, 답은 터미널에서 한다.
+// 플랜은 파일로 있으므로(server/plan.ts) 그 글을 받아 응답 글처럼 그려 보여 준다. 다 읽고 바로 승인할 수 있다 — 고칠 점은
+// 카드 안의 글 칸에 적는 것이라 터미널에서 한다.
 import type { AgentView } from "../shared/types.ts";
 import { get } from "./api.ts";
 import { h, icon, prose } from "./dom.ts";
@@ -22,6 +23,10 @@ export class PlanReader {
   private at = 0;
   /** 닫힌 뒤에 부른다 — 크게 보기가 열려 있으면 입력을 다시 그리로 돌린다. */
   onClose: (() => void) | undefined;
+  /** 이 월드가 pane 을 조작할 수 있는지(보기 전용이 아닌지). */
+  canApprove: () => boolean = () => false;
+  /** 승인 단추를 눌렀다. 카드가 내려가면 다음 스냅샷(sync)에서 창이 닫힌다. */
+  onApprove: ((a: AgentView) => void) | undefined;
 
   get isOpen(): boolean {
     return this.dlg !== undefined;
@@ -39,7 +44,7 @@ export class PlanReader {
       { class: "dlg plan-dlg" },
       h("header", {}, icon("file"), h("div", { class: "names" }, h("b", {}, t("플랜 — {title}", { title: a.title })), file), close),
       body,
-      h("p", { class: "plan-note" }, t("읽기만 하는 창입니다. 승인하거나 고치려면 닫고 터미널에서 답하세요.")),
+      this.canApprove() && this.onApprove ? this.footer(a) : h("p", { class: "plan-note" }, t("읽기만 하는 창입니다. 승인하거나 고치려면 닫고 터미널에서 답하세요.")),
     );
     this.dlg = dlg;
     this.body = body;
@@ -64,6 +69,12 @@ export class PlanReader {
     // 글에 초점을 둔다 — 화살표·PageDown·Space 로 바로 굴릴 수 있다.
     body.focus();
     this.load(a.plan);
+  }
+
+  private footer(a: AgentView): HTMLElement {
+    const approve = h("button", { class: "btn primary", type: "button", title: t("플랜 카드의 Approve and start 를 누릅니다 (1)") }, icon("check"), h("span", {}, t("승인하고 시작")));
+    approve.addEventListener("click", () => this.onApprove?.(a));
+    return h("footer", { class: "plan-foot" }, h("span", { class: "plan-note" }, t("고칠 점은 닫고 크게 보기에서 Ctrl+X Tab 으로 적습니다.")), approve);
   }
 
   /** 새 스냅샷에 맞춘다: 카드가 내려갔으면(승인·거절·세션 종료) 닫고, 에이전트가 플랜을 고쳤으면 다시 읽는다. */

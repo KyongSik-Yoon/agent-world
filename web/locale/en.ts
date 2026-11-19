@@ -59,6 +59,12 @@ export const en: Record<string, string> = {
   "플랜을 읽는 중…": "Loading the plan…",
   "플랜을 읽지 못했습니다.": "Couldn't load the plan.",
   "읽기만 하는 창입니다. 승인하거나 고치려면 닫고 터미널에서 답하세요.": "This view is read-only. To approve or revise, close it and answer in the terminal.",
+  "승인하고 시작": "Approve and start",
+  "플랜 카드의 Approve and start 를 누릅니다 (1)": "Presses Approve and start on the plan card (1)",
+  "고칠 점은 크게 보기에서 Ctrl+X Tab 으로 적습니다.": "To ask for changes, open the terminal and press Ctrl+X Tab.",
+  "고칠 점은 닫고 크게 보기에서 Ctrl+X Tab 으로 적습니다.": "To ask for changes, close this and press Ctrl+X Tab in the terminal.",
+  "플랜을 승인했습니다": "Plan approved",
+  "플랜을 승인하지 못했습니다": "Couldn't approve the plan",
 
   // ── 집 짓기·새 주민 대화상자 ──
   "취소": "Cancel",
