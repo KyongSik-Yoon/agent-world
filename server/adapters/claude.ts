@@ -36,14 +36,33 @@ function root(): string {
 // `{"type":"…"` 로 시작하는 행은 대화가 아니라 부기 행이다. 그중 쓸 것만 파싱한다 —
 // api-request-blob 같은 행은 수십~수백 KB 라서 JSON 으로 푸는 것 자체가 낭비다.
 const BOOKKEEPING = '{"type":"';
-const WANTED_BOOKKEEPING = ['{"type":"ai-title"', '{"type":"last-prompt"', '{"type":"permission-mode"'];
+const WANTED_BOOKKEEPING = ['{"type":"ai-title"', '{"type":"last-prompt"', '{"type":"permission-mode"', '{"type":"queue-operation","operation":"enqueue"'];
 
 /** 사용자 행의 텍스트에서 하네스가 끼워 넣은 꼬리표를 걷어낸다. 사람이 친 말이 아니면 빈 문자열. */
 function userText(raw: string): string {
+  const command = skillCommand(raw);
+  if (command) return command;
   if (/^<(local-command-|command-name|command-message|task-notification|bash-input|bash-stdout)/.test(raw.trimStart())) return "";
+  // Esc 로 턴을 끊으면 Claude 가 사용자 행으로 남기는 표시. 사람이 친 지시가 아니다.
+  if (/^\[Request interrupted by user[^\]]*\]$/.test(raw.trim())) return "";
   return withoutBlocks(raw, "<system-reminder>", "</system-reminder>")
     .replace(/<\/?pasted_content[^>]*>/g, "")
     .trim();
+}
+
+/**
+ * 빗금으로 부른 스킬(`/herdr 할 일`)은 사용자 행에 친 글 대신 꼬리표로 남는다 — 이름표가 앞이다:
+ *   <command-message>herdr</command-message>\n<command-name>/herdr</command-name>\n<command-args>할 일</command-args>
+ * 친 그대로(`/herdr 할 일`) 되살린다. `/model`·`/compact` 같은 내장 명령은 `<command-name>` 이 앞에 오고, 월드가 모델을
+ * 바꿀 때도 보내므로 지시로 치지 않는다.
+ */
+function skillCommand(raw: string): string | undefined {
+  const text = raw.trimStart();
+  if (!text.startsWith("<command-message>")) return undefined;
+  const name = /<command-name>(\/[^<\s]+)<\/command-name>/.exec(text)?.[1];
+  if (!name) return undefined;
+  const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1]?.trim();
+  return args ? `${name} ${args}` : name;
 }
 
 /**
@@ -155,6 +174,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
     const text = userText(content);
     if (text) {
       setPrompt(s, text);
+      s.promptQueued = false;
       noteReviewReply(s, text);
       s.sawPromptRow = true;
       pushActivity(s, "user", "", text, at);
@@ -192,6 +212,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
   if (texts.length > 0) {
     const text = texts.join("\n\n");
     setPrompt(s, text);
+    s.promptQueued = false;
     noteReviewReply(s, text);
     s.sawPromptRow = true;
     pushActivity(s, "user", "", text, at);
@@ -224,12 +245,36 @@ export const claudeReader: LogReader<LogSummary> = {
       case "permission-mode":
         s.permissionMode = str(row.permissionMode) ?? s.permissionMode;
         break;
+      case "queue-operation": {
+        // 일하는 중에 보낸 지시는 줄에 선다. 받은 그 순간 남는 것은 이 행뿐이다 — 턴 사이에 끼워 넣어지면(absorbed_mid_turn)
+        // 사용자 행 없이 첨부(queued_command)로만, 턴이 끝난 뒤에 나가면 그때 사용자 행으로 남는다. 그래서 받은 지시는 여기서
+        // 마지막 지시로 삼고, 활동 줄은 실제로 들어간 때(첨부나 사용자 행)에 적는다. 끝난 백그라운드 일의 알림도 같은 줄에
+        // 서지만 꼬리표가 붙어 userText 가 걸러 낸다.
+        const text = userText(str(row.content) ?? "");
+        if (row.operation === "enqueue" && text) {
+          setPrompt(s, text);
+          s.promptQueued = true;
+        }
+        break;
+      }
+      case "attachment": {
+        const a = row.attachment;
+        if (row.isSidechain === true || !isRecord(a) || a.type !== "queued_command" || !isRecord(a.origin) || a.origin.kind !== "human") break;
+        const text = userText(str(a.prompt) ?? "");
+        if (!text) break;
+        setPrompt(s, text);
+        s.promptQueued = true;
+        noteReviewReply(s, text);
+        pushActivity(s, "user", "", text, at);
+        break;
+      }
       case "last-prompt": {
         // Claude Code 가 직접 적어 두는 마지막 프롬프트(줄바꿈을 지운 한 줄로 잘린 형태). 사용자 행에서 읽은 원문이
         // 같은 프롬프트면 원문을 두고, 다르면(꼬리 창 밖이었다면) 이 값을 쓴다. 공백은 아예 빼고 견준다 — 한 줄로 접을 때
         // 줄바꿈이 사라지기도 해서("[Image #4]\n\n글" → "[Image #4]글") 한 칸으로 접어 견주면 원문이 잘린 한 줄에 덮인다.
         const text = str(row.lastPrompt);
-        if (!text) break;
+        // 줄 선 지시는 이 행에 적히지 않는다 — 그 앞의 지시가 다시 적혀 방금 받은 지시를 덮는다.
+        if (!text || s.promptQueued) break;
         const bare = (v: string) => v.replace(/\s+/g, "");
         const head = bare(text.replace(/…$/, "")).slice(0, 40);
         if (!s.lastPrompt || !bare(s.lastPrompt).startsWith(head)) setPrompt(s, text);

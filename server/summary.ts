@@ -31,6 +31,8 @@ export interface LogSummary {
   sawAssistant: boolean;
   /** 사용자 행에서 지시 원문을 읽었는지. 하네스가 따로 적어 두는 한 줄 요약(Claude 의 last-prompt)만 봤으면 꼬리 창을 키운다. */
   sawPromptRow?: boolean;
+  /** 마지막 지시가 줄 선 지시(Claude 의 queue-operation)에서 왔다. Claude 가 적는 last-prompt 행은 이것을 모른다. */
+  promptQueued?: boolean;
   /** 결과를 기다리는 도구 호출들(호출 id → 요청). 결과 행이 오면 지운다. */
   open: Map<string, PendingRequest>;
   /**
