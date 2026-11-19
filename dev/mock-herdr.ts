@@ -3,6 +3,7 @@
 //   bun dev/mock-herdr.ts <소켓 경로> <시나리오.json>
 //   HERDR_SOCKET_PATH=<소켓 경로> AGENT_WORLD_PORT=4781 bun server/index.ts
 //   MOCK_DELAY="agent.prompt=12000" 을 주면 그 메서드의 답을 늦춘다(시간 초과 시험).
+//   10분 동안 요청이 없거나 소켓 파일이 없어지거나 같은 경로로 새 흉내가 뜨면 스스로 끝난다(MOCK_IDLE_MS).
 //
 // 시나리오 파일이 바뀌면 다시 읽으므로, 파일의 agent_status 를 고치면 화면의 캐릭터가 따라 움직인다.
 // 조작 요청(지시·키 입력·만들기·닫기)은 메모리 안의 상태만 바꾸고, 받은 요청을 표준 출력에 적는다.
@@ -191,8 +192,38 @@ async function handle(method: string, p: Record<string, unknown>): Promise<unkno
   }
 }
 
+/**
+ * 스스로 끝나는 조건. 시험 세션은 이 흉내를 백그라운드로 띄우고 끄는 것을 잊기 쉽고(포트가 없어 "포트로 pid 를 찾아 끈다"에
+ * 걸리지 않는다), 같은 소켓 경로로 다시 띄우면 새 흉내가 소켓 파일을 지우고 만들어, 앞의 흉내는 아무도 닿지 못하는 소켓을
+ * 붙든 채 남는다. 그래서 소켓 파일이 없어지거나 남의 것이 되면, 또는 한동안 요청이 없으면 끝낸다 — 서버가 붙어 있는 동안은
+ * 상태를 몇 초마다 읽으므로 시험 중에는 끝나지 않는다. MOCK_IDLE_MS 로 기다리는 시간을 바꾼다(0 이면 기다림으로는 끝내지 않는다).
+ */
+const IDLE_MS = Number(process.env.MOCK_IDLE_MS ?? 10 * 60_000);
+let lastRequest = Date.now();
+let socketIno = 0;
+
+function watchExit(): void {
+  setInterval(() => {
+    let ino = 0;
+    try {
+      ino = statSync(socketPath!).ino;
+    } catch {
+      // 소켓 파일이 지워졌다(scratchpad 정리 등).
+    }
+    if (ino !== socketIno) {
+      console.log("mock herdr: 소켓 파일이 없어지거나 다른 흉내의 것이 되어 끝냅니다");
+      process.exit(0);
+    }
+    if (IDLE_MS > 0 && Date.now() - lastRequest > IDLE_MS) {
+      console.log(`mock herdr: ${Math.round(IDLE_MS / 1000)}초 동안 요청이 없어 끝냅니다`);
+      process.exit(0);
+    }
+  }, Math.min(30_000, IDLE_MS > 0 ? IDLE_MS : 30_000)).unref();
+}
+
 createServer((socket) => {
   let buffer = "";
+  lastRequest = Date.now();
   // 기다리다 끊은 상대에게 쓰다가 흉내 소켓이 통째로 죽지 않게 한다.
   socket.on("error", () => {});
   socket.on("data", async (chunk) => {
@@ -206,4 +237,8 @@ createServer((socket) => {
       socket.end(`${JSON.stringify({ id: request.id, error: { code: err.code ?? "internal", message: err.message } })}\n`);
     }
   });
-}).listen(socketPath, () => console.log(`mock herdr → ${socketPath}`));
+}).listen(socketPath, () => {
+  socketIno = statSync(socketPath!).ino;
+  watchExit();
+  console.log(`mock herdr → ${socketPath}`);
+});
