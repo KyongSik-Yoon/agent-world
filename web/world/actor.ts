@@ -310,7 +310,7 @@ export class Actor {
         const spot = spots[(this.spotIndex + this.placement.inPlot) % spots.length]!;
         // 일터보다 일꾼이 많으면 같은 일터의 옆자리에 선다.
         const extra = Math.floor(this.placement.inPlot / spots.length);
-        return extra === 0 ? spot : { pos: spot.pos.clone().addScaledVector(plot.side, extra * 1.35), look: spot.look };
+        return extra === 0 ? spot : { pos: spot.pos.clone().addScaledVector(plot.side, extra * 1.35 * plot.scale), look: spot.look };
       }
       default:
         return { pos: restSpot(plot, this.placement.inPlot), look: center };

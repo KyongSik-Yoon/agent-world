@@ -3,7 +3,7 @@ import * as THREE from "three";
 
 import type { WorkspaceView } from "../../shared/types.ts";
 import { labels } from "./labels.ts";
-import { PLAZA_RADIUS, type Layout, type Plot } from "./layout.ts";
+import { PLAZA_RADIUS, type Layout, type Lot, type Plot } from "./layout.ts";
 
 export type Theme = "day" | "night";
 
@@ -135,9 +135,18 @@ export class Environment {
 
     this.buildIsland(layout);
     this.buildPlaza();
-    for (const ws of workspaces) {
-      const plot = layout.plots.get(ws.id);
-      if (plot) this.buildPlot(plot, ws);
+    const byId = new Map(workspaces.map((ws) => [ws.id, ws]));
+    for (const lot of layout.lots) {
+      if (lot.houses.length > 1) this.buildLotGround(layout, lot);
+      for (const plot of lot.houses) {
+        const ws = byId.get(plot.id);
+        if (ws) this.buildPlot(plot, ws);
+        else if (lot.empty && plot === lot.main) {
+          // 본체 체크아웃이 닫힌 저장소: 본채는 비어 있고 문패는 저장소 이름이다. 누르면 첫 별채를 연다.
+          const first = lot.houses.find((h) => h !== plot);
+          this.buildPlot(plot, { id: plot.id, label: lot.empty.name, number: 0, focused: false, managed: false }, first?.id);
+        }
+      }
     }
     this.buildNature(layout);
     this.batch();
@@ -283,10 +292,29 @@ export class Environment {
     g.add(this.crystal);
   }
 
-  private buildPlot(plot: Plot, ws: WorkspaceView): void {
+  /**
+   * 한 저장소의 본채와 별채들이 같이 쓰는 바닥 — 길과 같은 흙빛으로 마당들을 이어 "한 집"으로 읽히게 한다.
+   * 길과 높이·색이 같으니 둘이 겹쳐도 깜빡이지 않는다.
+   */
+  private buildLotGround(layout: Layout, lot: Lot): void {
+    const R = layout.ringRadius;
+    const pad = 1.4 / R;
+    const ground = this.mesh(
+      new THREE.RingGeometry(R - 3.9, R + 1.3, Math.max(8, Math.round(((lot.to - lot.from) * R) / 1.2)), 1, -lot.to + pad, lot.to - lot.from - pad * 2),
+      this.mat("#E3D6B4", "#5F5C78"),
+      this.staticGroup,
+      { cast: false, receive: true },
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = GROUND.path;
+  }
+
+  private buildPlot(plot: Plot, ws: WorkspaceView, clickTo = ws.id): void {
     const g = new THREE.Group();
     g.position.copy(plot.center);
     g.rotation.y = plot.facing;
+    // 별채는 본채를 줄인 것이다. 마당의 일터·쉼터(layout.ts)도 같은 비율로 줄어 이 소품들과 맞는다.
+    if (plot.scale !== 1) g.scale.setScalar(plot.scale);
     this.plotGroup.add(g);
     // 이 그룹 안에서는 -z 가 집 뒤(섬 바깥), +z 가 광장 쪽이다.
 
@@ -361,11 +389,13 @@ export class Environment {
     );
     lamp.position.set(1.7, 1.6, 3.3);
 
-    // 광장으로 이어지는 길.
-    const pathLen = plot.center.length() - PLAZA_RADIUS - 3.2;
-    const path = this.mesh(new THREE.PlaneGeometry(1.5, pathLen), this.mat("#E3D6B4", "#5F5C78"), g, { cast: false, receive: true });
-    path.rotation.x = -Math.PI / 2;
-    path.position.set(0, GROUND.path, 3.4 + pathLen / 2);
+    // 광장으로 이어지는 길. 별채는 집터 바닥을 거쳐 본채의 길로 나간다.
+    if (plot.role !== "annex") {
+      const pathLen = plot.center.length() - PLAZA_RADIUS - 3.2;
+      const path = this.mesh(new THREE.PlaneGeometry(1.5, pathLen), this.mat("#E3D6B4", "#5F5C78"), g, { cast: false, receive: true });
+      path.rotation.x = -Math.PI / 2;
+      path.position.set(0, GROUND.path, 3.4 + pathLen / 2);
+    }
 
     // 문패.
     const post = this.mesh(new THREE.BoxGeometry(0.1, 1.1, 0.1), woodDark, g);
@@ -374,7 +404,7 @@ export class Environment {
     el.type = "button";
     el.className = "plot-sign";
     el.style.setProperty("--hue", String(Math.round(plot.hue * 360)));
-    el.addEventListener("click", () => this.onPlotClick(ws.id));
+    el.addEventListener("click", () => this.onPlotClick(clickTo));
     const sign = new THREE.Object3D();
     sign.position.set(-1.6, 1.25, 3.3);
     sign.userData.label = el;
@@ -426,13 +456,21 @@ export class Environment {
     const trunk = this.mat("#8B6243", "#3A2D38");
     const leaves = [this.mat("#4FA65B", "#28625A"), this.mat("#6DBB5F", "#327060"), this.mat("#3F9467", "#245859")];
     const rock = this.mat("#AEB3BD", "#4A4D62");
-    const plots = [...layout.plots.values()];
+    const plots = layout.lots.flatMap((lot) => lot.houses);
+    const shared = layout.lots.filter((lot) => lot.houses.length > 1);
+    const R = layout.ringRadius;
     const free = (x: number, z: number): boolean => {
       const r = Math.hypot(x, z);
       if (r < PLAZA_RADIUS + 1.6 || r > layout.islandRadius - 1.2) return false;
+      // 여러 채가 같이 쓰는 집터의 바닥 위에도 심지 않는다 — 집 사이에 나무가 서면 한 집터로 안 읽힌다.
+      if (r > R - 4.6 && r < R + 2.4) {
+        const a = Math.atan2(z, x);
+        for (const lot of shared) if ((((a - lot.from) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) < lot.to - lot.from) return false;
+      }
       for (const p of plots) {
-        if (Math.hypot(x - p.center.x, z - p.center.z) < 5.4) return false;
-        // 집터와 광장을 잇는 길 위에도 심지 않는다.
+        if (Math.hypot(x - p.center.x, z - p.center.z) < 5.4 * p.scale) return false;
+        // 집터와 광장을 잇는 길 위에도 심지 않는다(길은 본채에만 있다).
+        if (p.role === "annex") continue;
         const along = x * p.out.x + z * p.out.z;
         const across = Math.abs(x * p.side.x + z * p.side.z);
         if (along > 0 && along < layout.ringRadius && across < 1.5) return false;

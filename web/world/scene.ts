@@ -8,7 +8,7 @@ import { t } from "../i18n.ts";
 import { Actor, PICK_LAYER } from "./actor.ts";
 import { Environment, type Theme } from "./environment.ts";
 import { labels } from "./labels.ts";
-import { buildLayout, shellSpot, type Layout } from "./layout.ts";
+import { buildLayout, groupLots, lotsKey, shellSpot, type Layout } from "./layout.ts";
 
 export interface SceneCallbacks {
   onSelect(id: string | null): void;
@@ -277,11 +277,13 @@ export class WorldScene {
 
   /** 스냅샷을 장면에 반영한다: 배치가 바뀌었으면 무대를 다시 짓고, 배우를 만들고 치우고 갱신한다. */
   sync(snapshot: WorldSnapshot): void {
-    const key = snapshot.workspaces.map((w) => w.id).join("|");
+    // 집터의 구성(어느 스페이스가 어느 저장소의 본채·별채인지)이 바뀔 때만 무대를 다시 짓는다.
+    const lots = groupLots(snapshot.workspaces);
+    const key = lotsKey(lots);
     if (key !== this.layoutKey) {
       const first = this.layoutKey === null;
       this.layoutKey = key;
-      this.layout = buildLayout(snapshot.workspaces.map((w) => w.id));
+      this.layout = buildLayout(lots);
       this.env.rebuild(this.layout, snapshot.workspaces);
       if (first) this.overview(false);
     } else {

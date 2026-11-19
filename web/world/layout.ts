@@ -8,6 +8,9 @@ import * as THREE from "three";
 export const PLAZA_RADIUS = 7.6;
 const PLOT_ARC = 6.6;
 const MIN_RING = 16.5;
+/** 별채의 크기(본채 대비)와 별채 한 채가 고리 위에서 차지하는 폭. */
+export const ANNEX_SCALE = 0.7;
+const ANNEX_ARC = PLOT_ARC * ANNEX_SCALE;
 
 export interface Plot {
   id: string;
@@ -21,12 +24,43 @@ export interface Plot {
   /** 집이 광장을 바라보도록 돌릴 각도(y 축). */
   facing: number;
   hue: number;
+  /** 본채는 1, 별채는 ANNEX_SCALE. 집과 마당의 일터·쉼터가 모두 이 비율로 줄어든다. */
+  scale: number;
+  /** 홀로 선 집(solo), 저장소 집터의 본채(main), 그 옆의 워크트리 별채(annex). */
+  role: "solo" | "main" | "annex";
+}
+
+/**
+ * 고리 위의 집터 한 칸. 저장소 하나에 스페이스가 여럿이면 본채 하나와 별채들이 한 칸을 같이 쓴다.
+ * 본체 체크아웃 스페이스가 닫혀 있으면 본채는 비어 있다(`empty`) — 그 Plot 은 plots 에 없다(아무도 거기 살지 않는다).
+ */
+export interface Lot {
+  key: string;
+  /** 왼쪽에서 오른쪽(시계 방향) 차례로 놓인 집들. */
+  houses: Plot[];
+  main: Plot;
+  /** 본채가 비어 있으면 문패에 쓸 저장소 이름. */
+  empty?: { name: string };
+  /** 집터 양 끝 사이의 각도 범위(라디안). */
+  from: number;
+  to: number;
 }
 
 export interface Layout {
   ringRadius: number;
   islandRadius: number;
+  /** 스페이스 id → 그 스페이스의 집(본채든 별채든). */
   plots: Map<string, Plot>;
+  lots: Lot[];
+}
+
+/** 집터 하나에 들어갈 스페이스들. linked 가 아닌 것(본체 체크아웃)이 main 이다. */
+export interface LotSpec {
+  key: string;
+  main?: string;
+  annexes: string[];
+  /** 본채가 비었을 때 문패에 쓸 이름. */
+  name?: string;
 }
 
 /** 워크스페이스 id 로 정해지는 색상 — 순서가 바뀌어도 같은 집은 같은 지붕색을 갖는다. */
@@ -36,29 +70,100 @@ export function hueOf(id: string): number {
   return ((h >>> 0) % 360) / 360;
 }
 
-export function buildLayout(workspaceIds: readonly string[]): Layout {
-  const n = Math.max(workspaceIds.length, 1);
-  const ringRadius = Math.max(MIN_RING, (n * PLOT_ARC) / (Math.PI * 2));
+/**
+ * 스페이스들을 집터로 묶는다. 같은 저장소(repoKey)의 스페이스가 둘 이상이면 한 집터, 아니면 홀로 선 집이다.
+ * 집터의 차례는 그 저장소의 첫 스페이스가 herdr 목록에 나오는 자리다.
+ */
+export function groupLots(workspaces: ReadonlyArray<{ id: string; label: string; repo?: string; worktree?: { linked: boolean; repoKey?: string } }>): LotSpec[] {
+  const count = new Map<string, number>();
+  for (const ws of workspaces) if (ws.worktree?.repoKey) count.set(ws.worktree.repoKey, (count.get(ws.worktree.repoKey) ?? 0) + 1);
+  const lots: LotSpec[] = [];
+  const byRepo = new Map<string, LotSpec>();
+  for (const ws of workspaces) {
+    const repoKey = ws.worktree?.repoKey;
+    if (!repoKey || (count.get(repoKey) ?? 0) < 2) {
+      lots.push({ key: ws.id, main: ws.id, annexes: [] });
+      continue;
+    }
+    let lot = byRepo.get(repoKey);
+    if (!lot) {
+      lot = { key: `repo:${repoKey}`, annexes: [], name: ws.repo ?? repoKey };
+      byRepo.set(repoKey, lot);
+      lots.push(lot);
+    }
+    // 본체 체크아웃이 둘 이상 열려 있으면(같은 폴더에 스페이스 둘) 먼저 나온 것만 본채이고 나머지는 별채로 선다.
+    if (!ws.worktree!.linked && !lot.main) lot.main = ws.id;
+    else lot.annexes.push(ws.id);
+  }
+  return lots;
+}
+
+/** 집터 배치를 다시 지어야 하는지 가르는 열쇠 — 이름·초점이 바뀌는 것으로는 다시 짓지 않는다. */
+export function lotsKey(lots: readonly LotSpec[]): string {
+  return lots.map((l) => (l.annexes.length === 0 && l.main === l.key ? l.key : `${l.key}[${l.main ?? ""}|${l.annexes.join(",")}]`)).join("|");
+}
+
+export function buildLayout(specs: readonly LotSpec[]): Layout {
+  const widths = specs.map((l) => PLOT_ARC + l.annexes.length * ANNEX_ARC);
+  const total = Math.max(
+    widths.reduce((a, b) => a + b, 0),
+    PLOT_ARC,
+  );
+  const ringRadius = Math.max(MIN_RING, total / (Math.PI * 2));
   const plots = new Map<string, Plot>();
-  workspaceIds.forEach((id, index) => {
-    // 1번 집터가 화면 왼쪽 앞에서 시작해 시계 방향으로 돈다.
-    const angle = Math.PI * 0.75 + (index / n) * Math.PI * 2;
+  const lots: Lot[] = [];
+  const plot = (id: string, index: number, angle: number, hue: number, scale: number, role: Plot["role"]): Plot => {
     const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-    plots.set(id, {
+    return {
       id,
       index,
       center: out.clone().multiplyScalar(ringRadius),
       out,
       side: new THREE.Vector3(-out.z, 0, out.x),
       facing: Math.atan2(-out.x, -out.z),
-      hue: hueOf(id),
-    });
+      hue,
+      scale,
+      role,
+    };
+  };
+  // 1번 집터가 화면 왼쪽 앞에서 시작해 시계 방향으로 돈다. 집터마다 제 폭만큼 고리를 나눠 갖는다
+  // (모두 홀로 선 집이면 예전처럼 같은 간격이다).
+  let along = -widths[0]! / 2;
+  let index = 0;
+  specs.forEach((spec, i) => {
+    const width = widths[i]!;
+    const start = along;
+    along += width;
+    const angleAt = (arc: number) => Math.PI * 0.75 + (arc / total) * Math.PI * 2;
+    if (spec.annexes.length === 0 && spec.main) {
+      const p = plot(spec.main, index++, angleAt(start + width / 2), hueOf(spec.main), 1, "solo");
+      plots.set(spec.main, p);
+      lots.push({ key: spec.key, houses: [p], main: p, from: angleAt(start), to: angleAt(start + width) });
+      return;
+    }
+    // 본채를 가운데에 두고 별채를 오른쪽·왼쪽 번갈아 붙인다.
+    const hue = hueOf(spec.key);
+    const right = spec.annexes.filter((_, k) => k % 2 === 0);
+    const left = spec.annexes.filter((_, k) => k % 2 === 1).reverse();
+    const order: Array<{ id: string; main: boolean }> = [...left.map((id) => ({ id, main: false })), { id: spec.main ?? spec.key, main: true }, ...right.map((id) => ({ id, main: false }))];
+    let cursor = start;
+    const houses: Plot[] = [];
+    let main: Plot | undefined;
+    for (const item of order) {
+      const w = item.main ? PLOT_ARC : ANNEX_ARC;
+      const p = plot(item.id, item.main && !spec.main ? -1 : index++, angleAt(cursor + w / 2), hue, item.main ? 1 : ANNEX_SCALE, item.main ? "main" : "annex");
+      cursor += w;
+      houses.push(p);
+      if (item.main) main = p;
+      if (!item.main || spec.main) plots.set(item.id, p);
+    }
+    lots.push({ key: spec.key, houses, main: main!, empty: spec.main ? undefined : { name: spec.name ?? "" }, from: angleAt(start), to: angleAt(start + width) });
   });
-  return { ringRadius, islandRadius: ringRadius + 7.5, plots };
+  return { ringRadius, islandRadius: ringRadius + 7.5, plots, lots };
 }
 
 function at(plot: Plot, outward: number, sideways: number): THREE.Vector3 {
-  return plot.center.clone().addScaledVector(plot.out, outward).addScaledVector(plot.side, sideways);
+  return plot.center.clone().addScaledVector(plot.out, outward * plot.scale).addScaledVector(plot.side, sideways * plot.scale);
 }
 
 export interface Spot {
