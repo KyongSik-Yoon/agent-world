@@ -4,7 +4,7 @@
 // herdr 에 없는 세션(다른 터미널, 데스크톱 앱)은 로그만으로 찾아 상태를 추정한다.
 import { basename } from "node:path";
 
-import type { Activity, AgentStatus, AgentView, PaneView, TabView, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
+import type { Activity, AgentStatus, AgentView, PaneView, ReviewReport, TabView, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
 import { agy } from "./adapters/agy.ts";
 import { claude } from "./adapters/claude.ts";
 import { codex } from "./adapters/codex.ts";
@@ -13,6 +13,7 @@ import { AskingPanes, type Card } from "./asking.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Text } from "./text.ts";
 import { planMtime, planPathIn, readPlan, type PlanText } from "./plan.ts";
+import { readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
 import { activityText, currentPending, oneLine, refOf, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
@@ -183,6 +184,8 @@ export class World {
     view.activity = currentActivity(s);
     view.lastPrompt = s.lastPrompt;
     view.lastReply = s.lastReply;
+    const reviewAt = s.review ? Date.parse(s.review.at) : NaN;
+    if (Number.isFinite(reviewAt)) view.review = reviewAt;
     view.pending = currentPending(s);
     view.logUpdatedAt = entry.tail.mtimeMs;
     if (harness.subagents) view.subagents = await harness.subagents(entry.path);
@@ -553,6 +556,14 @@ export class World {
   async planText(agentId: string): Promise<PlanText | undefined> {
     const path = this.plans.get(agentId)?.path;
     return path ? readPlan(path) : undefined;
+  }
+
+  /** 마지막 턴의 리뷰 보고. 그 뒤로 새 지시가 갔거나 로그를 놓았으면 undefined. */
+  async reviewText(agentId: string): Promise<ReviewReport | undefined> {
+    const key = this.logOf.get(agentId);
+    const entry = key ? this.tracked.get(key) : undefined;
+    const mark = entry?.tail.state.review;
+    return entry && mark ? readReview(entry.path, mark) : undefined;
   }
 
   /** 카드를 띄워 답을 기다리는 중인지 — herdr 가 막아 주지 않으므로 지시를 보내기 전에 따로 묻는다. */

@@ -100,6 +100,14 @@ Worth knowing:
   and the plan view also have `Approve and start`, so you can approve without opening the terminal. It is sent only
   while the card is still up, so pressing it after you already answered in the terminal does not type `1` into the
   input. Asking for changes happens in the card's text field — use `Ctrl+X Tab` in the large terminal.
+- **Review reports from desk-review.** When [desk-review](https://github.com/KyongSik-Yoon/cc-desktop-mod/tree/main/desk-review)'s
+  `/desk-review:simplify-review` finishes, the status window gets `Read review` (`R`). The report is drawn in a side
+  pane next to the terminal, which is hard to see on a phone, so the button reads the same report from the session log
+  and shows it on its own: open findings first, then what the review fixed, skipped cleanups, cleanups applied,
+  dismissed findings, what was not verified and what to decide next. Each item has its file, line and reason, and how
+  it was fixed or why it was left. Pick open findings and skipped cleanups, add a note if you like, and `Fix` sends
+  them to the agent; all open findings start picked. The report belongs to that turn, so the button goes away once you
+  send the next prompt.
 - **Another PWA on the same host's default port can take the notifications.** Seen on Android Chrome: with another
   app installed from the same tailnet address on port 443, notifications appeared under that app's name. Moving that
   app to another port, removing it from the phone and turning the bell on again fixed it.
@@ -160,7 +168,7 @@ remembers it and plain `http://127.0.0.1:4780` works. `bun run url` prints the a
 Camera: drag to rotate, `Space`+drag (or middle/right-button drag) to pan, wheel to zoom. `⌂` (`H`) resets position,
 zoom and angle.
 
-Shortcuts: `N` next agent to check · `C` talk · `` ` `` terminal · `D` mark as seen · `B` build a house · `Enter` open
+Shortcuts: `N` next agent to check · `C` talk · `` ` `` terminal · `D` mark as seen · `R` read review · `B` build a house · `Enter` open
 in herdr · `/` search · `H` home · `T` day/night · `Esc` close. Shortcuts are off while you type in an input or the terminal.
 
 This server shows your terminal screens and can type into your terminals. So:

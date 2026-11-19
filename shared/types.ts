@@ -59,6 +59,8 @@ export interface AgentView {
   pending?: PendingRequest;
   /** 승인을 기다리는 플랜 파일이 마지막으로 고쳐진 시각(ms). 있으면 `/api/plan` 으로 그 글을 읽을 수 있다. */
   plan?: number;
+  /** 마지막 턴에 desk-review 가 남긴 리뷰 보고의 시각(ms). 있으면 `/api/review` 로 그 보고를 읽을 수 있다. */
+  review?: number;
   focused: boolean;
   cwd: string;
   sessionId?: string;
@@ -89,6 +91,28 @@ export interface AgentView {
 }
 
 /** 하네스에서 고를 수 있는 모델 하나와 그 모델이 받는 사고 수준(effort). */
+/** desk-review 의 리뷰 보고 한 항목. 정리(simplify)는 fixed·skipped, 리뷰(code-review)는 fixed·found·dismissed. */
+export interface ReviewItem {
+  stage: "simplify" | "review";
+  status: "fixed" | "skipped" | "found" | "dismissed";
+  /** 작업 폴더 안이면 그 기준의 경로, 밖이면 받은 그대로. */
+  file: string;
+  line: number;
+  reason: string;
+  /** 리뷰에서 찾은 결함(fixed·found)만: 어떻게 고쳤는지, 왜 남겼는지. */
+  resolution?: string;
+}
+
+/** `/api/review` 의 답 — desk-review 의 review_report 입력을 화면이 그릴 모양으로 다듬은 것. */
+export interface ReviewReport {
+  summary: string;
+  items: ReviewItem[];
+  unverified?: string;
+  next?: string;
+  /** 보고를 남긴 시각(ms). AgentView.review 와 같다. */
+  at: number;
+}
+
 export interface ModelChoice {
   /** 하네스에 넘기는 이름(Claude 는 별칭, Codex 는 slug, agy 는 수준을 뗀 모델 id). */
   id: string;

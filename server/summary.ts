@@ -2,6 +2,7 @@
 import { basename } from "node:path";
 
 import type { Activity, ActivityKind, PendingRequest } from "../shared/types.ts";
+import type { ReviewMark } from "./review.ts";
 import { type LogReader, readLineAt } from "./tail.ts";
 
 export const MAX_RECENT = 16;
@@ -32,6 +33,13 @@ export interface LogSummary {
   sawPromptRow?: boolean;
   /** 결과를 기다리는 도구 호출들(호출 id → 요청). 결과 행이 오면 지운다. */
   open: Map<string, PendingRequest>;
+  /**
+   * 마지막 턴에 desk-review 가 남긴 리뷰 보고의 자리. 사람이 새 지시를 보내면 지운다 — 보고는 그 턴의 결과를 두고 무엇을
+   * 고칠지 정하라는 것이라, 다음 지시가 가면 할 일을 다 한 것이다.
+   */
+  review?: ReviewMark;
+  /** 리뷰 보고 호출을 봤지만 아직 결과 행이 오지 않았다. 훅이 거절한(is_error) 호출은 보고가 아니다. */
+  reviewCall?: ReviewMark;
   /** 로그의 마지막 사건이 컴팩션(대화 요약)이다 — 그 뒤로 지시도 응답도 없었다. */
   compacted?: boolean;
   /** 지금 읽고 있는 행의 자리와, 그 행에서 지금까지 나온 활동 수. 활동의 ref 를 짓는다. */

@@ -18,6 +18,7 @@ export type Action =
   | { type: "open-herdr"; agent: AgentView }
   | { type: "terminal"; paneId: string }
   | { type: "plan"; agent: AgentView }
+  | { type: "review"; agent: AgentView }
   | { type: "approve-plan"; agent: AgentView }
   | { type: "new-agent"; workspaceId: string; paneId?: string }
   | { type: "new-tab"; workspaceId: string }
@@ -610,6 +611,7 @@ export class DetailPanel {
     const keyed: Array<[string, HTMLElement | null]> = [
       ["status", statusLine],
       ["ask", blocked ? this.askCard(a) : null],
+      ["review", a.review && !blocked ? this.reviewCard(a) : null],
       ["now", nowEl],
       ["facts", this.facts(a)],
       ["actions", this.actions(a)],
@@ -621,6 +623,12 @@ export class DetailPanel {
     for (const [k, el] of keyed) if (el) el.dataset.k = k;
     this.setBody(...keyed.map(([, el]) => el));
     return a.paneId && (blocked || this.open.screen) ? a.paneId : null;
+  }
+
+  /** 마지막 턴에 desk-review 가 남긴 리뷰 보고 — 터미널 옆 패널 대신 따로 띄워 읽고, 고칠 항목을 골라 보낸다. */
+  private reviewCard(a: AgentView): HTMLElement {
+    const read = this.button(t("리뷰 읽기"), () => this.callbacks.act({ type: "review", agent: a }), { cls: "btn", icon: "search", title: t("리뷰 보고를 열어 고칠 항목을 고릅니다 (R)") });
+    return h("section", { class: "review-card" }, h("div", { class: "rv-card-text" }, h("b", {}, t("리뷰 보고가 있어요")), h("span", {}, this.snapshot?.control ? t("남은 결함을 읽고 고칠 것을 골라 보냅니다.") : t("남은 결함과 고친 것을 읽습니다."))), read);
   }
 
   /** 확인 필요: 무엇을 묻는지 — 로그에 남은 요청과, 화면에 떠 있는 대화상자를 함께 보여 준다. */

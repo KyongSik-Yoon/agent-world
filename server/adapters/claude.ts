@@ -22,6 +22,7 @@ import {
   summarizeToolInput,
   type LogSummary,
 } from "../summary.ts";
+import { REVIEW_TOOL } from "../review.ts";
 import type { Harness, LogFile } from "./types.ts";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -121,6 +122,7 @@ function feedAssistant(s: LogSummary, row: Record<string, unknown>, at: string):
       pushActivity(s, "tool", name, summarizeToolInput(part.input), at, part.input);
       const id = str(part.id);
       if (id) s.open.set(id, pendingRequest(name, part.input, at));
+      if (id && name === REVIEW_TOOL && s.row) s.reviewCall = { pos: s.row.pos, id, at };
     }
   }
   const stop = str(message.stop_reason);
@@ -146,6 +148,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
     const text = userText(content);
     if (text) {
       setPrompt(s, text);
+      s.review = s.reviewCall = undefined;
       s.sawPromptRow = true;
       pushActivity(s, "user", "", text, at);
       s.compacted = false;
@@ -164,6 +167,10 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
     } else if (part.type === "tool_result") {
       const id = str(part.tool_use_id);
       if (id) s.open.delete(id);
+      if (id && id === s.reviewCall?.id) {
+        if (part.is_error !== true) s.review = s.reviewCall;
+        s.reviewCall = undefined;
+      }
       if (part.is_error !== true) continue;
       // 방금 부른 도구가 실패했다 — 가장 최근 도구 활동에 표시한다.
       for (let i = s.recent.length - 1; i >= 0; i -= 1) {
@@ -178,6 +185,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
   if (texts.length > 0) {
     const text = texts.join("\n\n");
     setPrompt(s, text);
+    s.review = s.reviewCall = undefined;
     s.sawPromptRow = true;
     pushActivity(s, "user", "", text, at);
     s.compacted = false;

@@ -12,6 +12,7 @@ import { acceptKey, withKey } from "./key.ts";
 import { swipeToClose } from "./sheet.ts";
 import { PlanReader } from "./plan.ts";
 import { askForInput, askOnFirstTouch, reportPresence } from "./presence.ts";
+import { ReviewReader } from "./review.ts";
 import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
@@ -76,6 +77,16 @@ planReader.onApprove = (a) => approvePlan(a);
 terminal.onPlan = (paneId) => {
   const agent = hud.latest?.agents.find((a) => a.paneId === paneId);
   if (agent) planReader.open(agent);
+};
+
+// 마지막 턴의 리뷰 보고를 읽고 고칠 항목을 골라 보내는 창.
+const reviewReader = new ReviewReader();
+reviewReader.canSend = () => hud.latest?.control === true;
+// 실패는 리뷰 창이 제 안에 적는다(토스트는 모달 창 뒤에 깔린다). 보냈으면 창이 닫히므로 토스트로 알린다.
+reviewReader.onSend = async (a, text) => {
+  if (!a.paneId) throw new Error(t("이 세션은 herdr 밖에서 돌아 지시를 보낼 pane 이 없습니다."));
+  await post("/api/prompt", { paneId: a.paneId, text });
+  hud.toast(t("고칠 항목을 보냈습니다"), a.title, "var(--accent)");
 };
 
 const builder = new Builder({
@@ -149,6 +160,9 @@ function act(action: Action): void {
       break;
     case "plan":
       planReader.open(action.agent);
+      break;
+    case "review":
+      reviewReader.open(action.agent);
       break;
     case "approve-plan":
       approvePlan(action.agent);
@@ -419,6 +433,7 @@ function show(snapshot: WorldSnapshot): void {
   hud.update(snapshot);
   if (terminal.isOpen) terminal.setPlan(snapshot.agents.some((a) => a.paneId === terminal.pane && a.plan !== undefined));
   planReader.sync(snapshot.agents);
+  reviewReader.sync(snapshot.agents);
   builder.observe(snapshot);
   selectWanted(snapshot);
   buildBtn.hidden = !snapshot.herdr || !snapshot.control;
@@ -720,6 +735,12 @@ window.addEventListener("keydown", (e) => {
     case "d": {
       const a = hud.selected;
       if (a?.status === "done") markSeen(a, false);
+      break;
+    }
+    case "r": {
+      const a = hud.selected;
+      // 상태 창의 카드와 같은 조건 — 확인 필요일 때는 질문 카드가 먼저다.
+      if (a?.review && a.status !== "blocked") reviewReader.open(a);
       break;
     }
     case "n":
