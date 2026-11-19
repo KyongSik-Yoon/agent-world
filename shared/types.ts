@@ -162,6 +162,11 @@ export interface WorkspaceView {
    * repoKey 가 같은 스페이스들은 한 저장소다 — 월드는 이것들을 한 집터의 본채와 별채로 묶는다.
    */
   worktree?: { path?: string; linked: boolean; repoKey?: string; repoRoot?: string };
+  /**
+   * herdr 가 저장소 정보를 붙이지 않았어도 그 스페이스의 폴더가 git 저장소 안인지. herdr 는 워크트리와 엮인 적 없는
+   * 스페이스에는 worktree 를 싣지 않는다 — 그래도 거기서 워크트리를 열 수 있으므로 '워크트리 추가'를 보일지 이것으로 가른다.
+   */
+  inRepo?: boolean;
 }
 
 export interface TabView {

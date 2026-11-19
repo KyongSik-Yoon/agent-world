@@ -1018,7 +1018,7 @@ export class DetailPanel {
             { class: "actions" },
             this.button(t("새 주민"), () => this.callbacks.act({ type: "new-agent", workspaceId: ws.id }), { cls: "btn primary", icon: "plus", title: t("이 집에 에이전트를 하나 더 들입니다") }),
             this.button(t("새 탭"), () => this.callbacks.act({ type: "new-tab", workspaceId: ws.id }), { icon: "plus", title: t("셸만 있는 새 탭을 엽니다") }),
-            ...(ws.worktree?.repoKey
+            ...(ws.worktree?.repoKey || ws.inRepo
               ? [this.button(t("워크트리 추가"), () => this.callbacks.act({ type: "new-worktree", workspace: ws }), { icon: "plus", title: t("이 저장소에 새 브랜치를 따로 체크아웃해 별채로 짓습니다") })]
               : []),
           ),

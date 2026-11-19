@@ -2,7 +2,8 @@
 //
 // 누가 있고 어떤 상태인지는 herdr 가 정본이고, 무엇을 하고 있는지·모델·effort 는 로그에서 읽는다.
 // herdr 에 없는 세션(다른 터미널, 데스크톱 앱)은 로그만으로 찾아 상태를 추정한다.
-import { basename } from "node:path";
+import { statSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 
 import type { Activity, AgentStatus, AgentView, PaneView, ReviewReport, TabView, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
 import { agy } from "./adapters/agy.ts";
@@ -401,6 +402,29 @@ export class World {
     return this.running;
   }
 
+  /** 폴더 → git 저장소 안인지. 스냅샷마다 묻지 않게 1분 동안 기억한다(git init 을 하면 1분 안에 따라온다). */
+  private readonly repoDirs = new Map<string, { inRepo: boolean; at: number }>();
+
+  private inRepo(dir: string): boolean {
+    const now = Date.now();
+    const hit = this.repoDirs.get(dir);
+    if (hit && now - hit.at < 60_000) return hit.inRepo;
+    let inRepo = false;
+    for (let d = dir; ; d = dirname(d)) {
+      try {
+        statSync(join(d, ".git"));
+        inRepo = true;
+        break;
+      } catch {
+        // 이 층에는 없다 — 한 층 위로.
+      }
+      if (dirname(d) === d) break;
+    }
+    if (this.repoDirs.size > 500) this.repoDirs.clear();
+    this.repoDirs.set(dir, { inRepo, at: now });
+    return inRepo;
+  }
+
   private async build(): Promise<WorldSnapshot> {
     this.used = new Set();
     await Promise.all([this.seen.load(), this.names.load()]);
@@ -434,6 +458,12 @@ export class World {
             ? { path: ws.worktree.checkout_path, linked: ws.worktree.is_linked_worktree === true, repoKey: ws.worktree.repo_key, repoRoot: ws.worktree.repo_root }
             : undefined,
         });
+      }
+      // herdr 가 저장소 정보를 안 붙인 스페이스는 첫 pane 의 시작 폴더가 git 저장소 안인지 직접 본다.
+      for (const ws of workspaces.values()) {
+        if (ws.worktree) continue;
+        const cwd = snap.panes.find((p) => p.workspace_id === ws.id && p.cwd)?.cwd;
+        if (cwd && this.inRepo(cwd)) ws.inRepo = true;
       }
       for (const tab of snap.tabs) tabs.push({ id: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? "", number: tab.number ?? 0 });
 
