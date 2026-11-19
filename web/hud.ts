@@ -379,6 +379,7 @@ export class Hud {
     this.placeToasts();
     this.toasts.append(el);
     while (this.toasts.childElementCount > 4) this.toasts.firstElementChild?.remove();
+    this.raiseToasts();
     swipeAway(el, 7000);
   }
 
@@ -394,7 +395,17 @@ export class Hud {
     this.placeToasts();
     this.toasts.append(el);
     while (this.toasts.childElementCount > 4) this.toasts.firstElementChild?.remove();
+    this.raiseToasts();
     swipeAway(el, 6000);
+  }
+
+  /**
+   * 알림 칸을 최상위 층(top layer)에 다시 올린다. 모달 창(플랜·리뷰 읽기)도 그 층에 뜨므로 z-index 로는 그 뒤에 깔린다 —
+   * 그 층에서는 나중에 올린 것이 위라, 알림을 띄울 때마다 내렸다 올린다.
+   */
+  private raiseToasts(): void {
+    if (this.toasts.matches(":popover-open")) this.toasts.hidePopover();
+    this.toasts.showPopover();
   }
 }
 
