@@ -122,7 +122,8 @@ export class DetailPanel {
   /** 도크가 지금 붙어 있는 pane 과 방식. */
   private docked: { paneId: string; agent: boolean } | null = null;
   private sent: { text: string; at: number; confirmed: boolean; before?: string } | null = null;
-  private readonly open = { prompt: false, reply: false, screen: false };
+  /** 마지막 응답은 읽으려고 여는 것이라 펼쳐 두고, 필요할 때 접는다. 지시와 터미널 미리보기는 접어 둔다. */
+  private readonly open = { prompt: false, reply: true, screen: false };
   private readonly sectionOf: { prompt?: { stamp: string; el: HTMLElement }; reply?: { stamp: string; el: HTMLElement } } = {};
   /** 활동 로그에서 펼친 줄(logKey). 원문은 펼칠 때 서버에서 받아 둔다 — 스냅샷에는 한 줄 요약만 온다. */
   private logOpen: string | null = null;
@@ -361,7 +362,8 @@ export class DetailPanel {
     const pin: { node?: Element; key?: string; top: number } | undefined = selectedId === this.selectedId ? (this.logPin ?? this.pinPoint()) : undefined;
     this.logPin = null;
     if (selectedId !== this.selectedId) {
-      this.open.prompt = this.open.reply = this.open.screen = false;
+      this.open.prompt = this.open.screen = false;
+      this.open.reply = true;
       this.sent = null;
       this.logOpen = null;
       this.logText.clear();

@@ -1,6 +1,6 @@
 {
   "name": "agent-world",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "A 3D village for the coding agents running in herdr — see who needs you, talk to them, and build new workspaces from the browser.",
   "license": "MIT",
   "private": true,
