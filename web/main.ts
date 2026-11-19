@@ -74,6 +74,7 @@ terminal.onToggle = (open) => {
   hud.setCovered(open);
   // 덮인 화면의 애니메이션(일하는 로고, 이름표의 깜빡임)을 멈춘다 — 보이지 않는 움직임이 합성을 초당 수십 장 붙든다.
   document.body.toggleAttribute("data-covered", open);
+  syncBack();
 };
 
 const builder = new Builder({
@@ -102,6 +103,7 @@ function select(id: string | null): void {
   selectedAt = Date.now();
   scene.select(id);
   hud.select(id);
+  syncBack();
 }
 
 /** 완료를 확인했다고 적는다(또는 되돌린다). herdr 의 초점은 건드리지 않고 월드 서버가 기억한다. */
@@ -488,6 +490,7 @@ const rosterBtn = document.getElementById("btn-roster")!;
 function setRoster(open: boolean): void {
   document.body.dataset.roster = open ? "open" : "closed";
   rosterBtn.setAttribute("aria-expanded", String(open));
+  syncBack();
 }
 rosterBtn.addEventListener("click", () => setRoster(document.body.dataset.roster !== "open"));
 // 휴대폰의 서랍은 아래로 끌어내려도 닫힌다.
@@ -501,6 +504,55 @@ swipeToClose(
 document.getElementById("detail")!.addEventListener("click", (e) => {
   if (document.body.dataset.roster === "open" && e.target === e.currentTarget) setRoster(false);
 });
+
+// ── 뒤로 가기 ──────────────────────────────────────────────────────────────────────────────
+// 휴대폰의 뒤로 가기(몸짓·단추)는 앱을 벗어나는 대신 맨 위에 열린 것 하나를 닫는다: 대화상자 → 크게 보기 → 목록 서랍 →
+// 상태 창. 열린 것이 하나라도 있는 동안 방문 기록에 지킴 칸을 하나 얹어 두고, 뒤로 가기가 그 칸을 빼면 하나를 닫은 뒤
+// 남은 것이 있으면 다시 얹는다. 단추로 다 닫았으면 얹어 둔 칸을 스스로 걷어, 다음 뒤로 가기가 헛돌지 않게 한다.
+// 닫을 수 없는 대화상자(열쇠 묻기, data-stay)는 세지 않는다 — 뒤로 가기에 갇히지 않고 앱을 떠날 수 있게.
+const BACK_GUARD = "agent-world.back";
+const phoneLayout = matchMedia("(max-width: 760px)");
+/** 지금 기록 칸이 우리가 얹은 지킴 칸인가. */
+const onGuard = (): boolean => (history.state as Record<string, unknown> | null)?.[BACK_GUARD] === true;
+/** 뒤로 가기로 닫을 맨 위의 것. 없으면 null. */
+function topLayer(): (() => void) | null {
+  const dlg = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]:not([data-stay])")].at(-1);
+  if (dlg)
+    return () => {
+      // Esc 와 같은 길로 닫는다 — 대화상자가 cancel 을 막으면 닫지 않는다.
+      const cancel = new Event("cancel", { cancelable: true });
+      if (dlg.dispatchEvent(cancel)) dlg.close();
+    };
+  if (terminal.isOpen) return () => terminal.close();
+  if (document.body.dataset.roster === "open" && phoneLayout.matches) return () => setRoster(false);
+  if (selectedId !== null) return () => select(null);
+  return null;
+}
+/** 얹은 칸을 걷으려고 부른 history.back() 이 아직 돌아오지 않았다. */
+let unwinding = false;
+function syncBack(): void {
+  if (unwinding) return; // 돌아온 뒤(popstate)에 다시 맞춘다
+  const open = topLayer() !== null;
+  if (open && !onGuard()) history.pushState({ [BACK_GUARD]: true }, "");
+  else if (!open && onGuard()) {
+    unwinding = true;
+    history.back();
+  }
+}
+window.addEventListener("popstate", () => {
+  if (unwinding) {
+    unwinding = false;
+    return syncBack();
+  }
+  // 지킴 칸에 내려앉았으면(앞으로 가기, 알림으로 옮겨 오며 뒤에 남은 옛 칸) 닫지 않고 맞추기만 한다.
+  if (onGuard()) return syncBack();
+  topLayer()?.();
+  syncBack();
+});
+// 대화상자는 여러 곳(집 짓기·이름 바꾸기 등)에서 열고 닫는다 — open 속성이 바뀔 때마다 맞춘다.
+new MutationObserver(() => syncBack()).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["open"] });
+// 새로 읽은 페이지가 지난번의 지킴 칸 위에서 시작하면 그 칸을 보통 칸으로 바꾼다. 뒤로 가서 걷으면 이전 칸의 문서를 새로 읽는다.
+if (onGuard()) history.replaceState(null, "");
 
 // 목록과 상태 창이 장면을 얼마나 덮는지 알려 준다 — 장면이 그 사이 빈 자리의 한가운데에 오게.
 // 좁은 화면(휴대폰)에서는 패널이 화면 전체를 쓰는 서랍이라 밀지 않는다.
@@ -555,6 +607,7 @@ function askForKey(): void {
   });
   const dlg = h("dialog", { class: "dlg" }, form);
   dlg.addEventListener("cancel", (e) => e.preventDefault());
+  dlg.dataset.stay = "";
   document.body.append(dlg);
   dlg.showModal();
   input.focus();
