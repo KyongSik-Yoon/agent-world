@@ -792,6 +792,9 @@ export class WorldScene {
       this.renderer.shadowMap.needsUpdate = true;
       this.shadowAt = now;
     }
+    // 해상도 배율은 그리기 전에 바꾼다. 캔버스 크기를 다시 쓰면 그려 둔 그림이 지워지므로, 그린 뒤에 바꾸면 다음 장을
+    // 그릴 때까지 빈 캔버스가 화면에 나간다 — 섬이 통째로 사라졌다 돌아오는 번쩍임(곁눈질 화면이면 0.3초).
+    this.tune(now);
     const startedAt = performance.now();
     this.renderer.render(this.scene, this.camera);
     // 어쩌다 한 번 튀는 프레임(셰이더 컴파일, 탭 전환)에 끌려가지 않게 표본을 눌러 담는다.
@@ -805,6 +808,5 @@ export class WorldScene {
       else if (this.labelsDirty > 0) this.labelsDirty -= 1;
       this.lastCamera.copy(this.camera.matrixWorld);
     }
-    this.tune(now);
   }
 }
