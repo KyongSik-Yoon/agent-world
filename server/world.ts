@@ -5,7 +5,7 @@
 import { statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import type { Activity, AgentStatus, AgentView, PaneView, ReviewReport, TabView, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
+import type { Activity, AgentStatus, AgentView, PaneView, ReviewReport, SkillView, TabView, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
 import { agy } from "./adapters/agy.ts";
 import { claude } from "./adapters/claude.ts";
 import { codex } from "./adapters/codex.ts";
@@ -16,6 +16,7 @@ import { asText, type Text } from "./text.ts";
 import { planMtime, planPathIn, readPlan, type PlanText } from "./plan.ts";
 import { findReview, readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
+import { claudeSkills } from "./skills.ts";
 import { activityText, currentPending, oneLine, refOf, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
 import { UsageWatch } from "./usage.ts";
@@ -663,6 +664,14 @@ export class World {
     const ref = activity && refOf(activity);
     if (!entry || !activity || !ref) return undefined;
     return activityText(entry.path, entry.harness.reader, ref, at);
+  }
+
+  /** 입력창에서 고를 스킬. 지금은 Claude Code 만 — 다른 하네스는 부르는 문법과 목록의 출처를 아직 확인하지 않았다. */
+  async skills(agentId: string): Promise<SkillView[] | undefined> {
+    const key = this.logOf.get(agentId);
+    const entry = key ? this.tracked.get(key) : undefined;
+    if (!entry || entry.harness.vendor !== "claude") return undefined;
+    return claudeSkills(entry.path, entry.tail.state.cwd);
   }
 
   hasPane(paneId: string): Promise<boolean> {

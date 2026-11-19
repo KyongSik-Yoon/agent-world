@@ -532,6 +532,17 @@ const listen = (at: number) =>
         }
       }),
     },
+    // 입력창의 스킬 고르기. 스냅샷에 싣지 않고 고르는 창을 열 때 받는다 — 세션마다 수십 개에 설명까지 붙어 길다.
+    "/api/skills": {
+      GET: guarded(async (req) => {
+        try {
+          const skills = await world.skills(new URL(req.url).searchParams.get("agent") ?? "");
+          return json({ skills: skills ?? [] });
+        } catch (e) {
+          return json({ error: (e as Error).message }, 500);
+        }
+      }),
+    },
     // 승인을 기다리는 플랜 파일의 글 — 터미널의 옆 창에는 잘려 보이므로 화면이 따로 받아 그린다.
     "/api/plan": {
       GET: guarded(async (req) => {

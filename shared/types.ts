@@ -28,6 +28,14 @@ export interface PendingRequest {
   at: string;
 }
 
+/** 입력창에서 빗금(`/이름`)으로 부를 수 있는 스킬 하나(/api/skills). */
+export interface SkillView {
+  name: string;
+  description: string;
+  /** 이름 뒤에 쓰는 것(머리말의 argument-hint). */
+  hint?: string;
+}
+
 export interface AgentView {
   /** 안정 키. herdr pane 이면 pane_id, 로그에서만 찾은 세션이면 `log:<vendor>:<session>`. */
   id: string;

@@ -36,6 +36,7 @@ const ICONS = {
   info: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 1 0 0-17zM12 11v5.5M12 7.6v.1",
   play: "M8 5.5v13l10.5-6.5z",
   stop: "M7 7h10v10H7z",
+  slash: "M15.5 4.5 8.5 19.5",
   splitRight: "M3.5 5h17v14h-17zM12 5v14",
   splitDown: "M3.5 5h17v14h-17zM3.5 12h17",
   trash: "M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5",

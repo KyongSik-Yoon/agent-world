@@ -3,8 +3,8 @@
 //
 // 스냅샷이 올 때마다 위쪽(머리·본문)은 다시 그리지만, 아래쪽 도크(빠른 키·입력창)는 고른 대상이 바뀔 때만
 // 새로 만든다 — 치고 있던 글과 초점이 스냅샷에 쓸려 가지 않게.
-import { type Activity, type AgentView, LIVE_MODEL_KINDS, type PaneView, type PendingRequest, type WorkspaceView, type WorldSnapshot } from "../shared/types.ts";
-import { ApiError, headers, post, sendInput, uploadImage } from "./api.ts";
+import { type Activity, type AgentView, LIVE_MODEL_KINDS, type PaneView, type PendingRequest, type SkillView, type WorkspaceView, type WorldSnapshot } from "../shared/types.ts";
+import { ApiError, get, headers, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
 import { type Child, type IconName, STATUS_VAR, h, icon, prose, store, stored } from "./dom.ts";
 import { STATUS_LABEL, activityParts, bubbleParts, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
@@ -60,6 +60,8 @@ const QUICK_KEYS: Array<{ label: string; title: string; icon?: IconName; caption
  * 흔들린다(휴대폰 폭에서 0.4초마다 302↔320px). 넘치면 상자는 상한에 머물고 아래에 붙은 채 위쪽만 밀린다.
  */
 const PREVIEW_LINES = 32;
+/** 받아 둔 스킬 목록을 다시 쓰는 시간. 세션이 플러그인을 다시 읽으면 목록이 바뀐다. */
+const SKILLS_TTL_MS = 30_000;
 const STAGE_OFF_KEY = "agent-world.stage-off";
 /** 미리보기가 이만큼(px) 넘게 보이면 다시 그릴 때 그것을 제자리에 붙든다(pinPoint). 상자 높이의 절반쯤이다. */
 const PIN_SCREEN_PX = 160;
@@ -115,6 +117,17 @@ export class DetailPanel {
   private readonly input = h("textarea", { rows: "1", spellcheck: "false" });
   private readonly sendBtn = h("button", { class: "btn primary", type: "button" }, t("보내기"));
   private readonly attachBtn = h("button", { class: "attach", type: "button", title: t("이미지 붙이기 — 입력창에 붙여넣거나 끌어다 놓아도 됩니다"), "aria-label": t("이미지 붙이기") }, icon("plus"));
+  private readonly skillBtn = h("button", { class: "attach", type: "button", title: t("스킬 고르기 — 입력창에 / 를 쳐도 됩니다"), "aria-label": t("스킬 고르기") }, icon("slash"));
+  private readonly skillPop = h("div", { class: "skill-pop", role: "listbox", "aria-label": t("스킬"), hidden: "" });
+  /** 스킬을 고를 수 있는 에이전트(지금은 Claude Code 만). */
+  private skillAgent: string | null = null;
+  private readonly skillCache = new Map<string, { at: number; skills: SkillView[] }>();
+  private skillLoading: string | null = null;
+  /** 지금 목록에 보이는 스킬과 고른 줄. */
+  private skillShown: SkillView[] = [];
+  private skillActive = 0;
+  /** 쓰던 글이 있을 때 단추로 연 목록 — 거르지 않고 다 보이며, 고른 스킬을 그 글 앞에 붙인다. */
+  private skillAll = false;
   private readonly note = h("div", { class: "dock-note" });
   /** 보낼 말에 붙인 이미지들. id 는 서버가 맡아 준 뒤에 생긴다. */
   private readonly shotsEl = h("div", { class: "shots", hidden: "" });
@@ -203,7 +216,14 @@ export class DetailPanel {
     term.addEventListener("click", () => this.docked && this.callbacks.act({ type: "terminal", paneId: this.docked.paneId }));
     this.quick.append(keys, term);
 
-    this.input.addEventListener("input", () => this.fitInput());
+    this.input.addEventListener("input", () => {
+      this.fitInput();
+      this.updateSkills();
+    });
+    this.input.addEventListener("blur", () => this.closeSkills());
+    // 단추와 목록을 누르는 동안 입력창이 초점을 잃어 목록이 먼저 닫히지 않게 한다.
+    for (const el of [this.skillBtn, this.skillPop]) el.addEventListener("pointerdown", (e) => e.preventDefault());
+    this.skillBtn.addEventListener("click", () => this.toggleSkills());
     // 상태 창 폭이 바뀌면 줄바꿈이 달라지므로 높이를 다시 맞춘다(높이 변화에는 반응하지 않는다).
     // 관찰 콜백 안에서 크기를 바꾸면 관찰 고리 오류가 나므로 다음 프레임에 맞춘다.
     let inputWidth = 0;
@@ -214,6 +234,7 @@ export class DetailPanel {
       requestAnimationFrame(() => this.fitInput());
     }).observe(this.input);
     this.input.addEventListener("keydown", (e) => {
+      if (this.skillKey(e)) return;
       // 한글을 조합하는 중의 Enter 는 글자를 확정하는 키다.
       if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
       e.preventDefault();
@@ -243,7 +264,7 @@ export class DetailPanel {
       picker.value = "";
     });
     this.attachBtn.addEventListener("click", () => picker.click());
-    this.dock.append(this.quick, this.shotsEl, h("div", { class: "compose" }, this.attachBtn, this.input, this.sendBtn), picker, this.note);
+    this.dock.append(this.quick, this.shotsEl, h("div", { class: "compose" }, h("div", { class: "lead" }, this.attachBtn, this.skillBtn), this.input, this.sendBtn, this.skillPop), picker, this.note);
     this.root.replaceChildren(this.head, this.body, this.dock, this.grip());
     this.preview.el.classList.add("preview");
     this.preview.el.title = t("눌러서 크게 보기");
@@ -481,6 +502,9 @@ export class DetailPanel {
     if (agent?.paneId && control) this.setDock({ paneId: agent.paneId, agent: true });
     else if (pane && control) this.setDock({ paneId: pane.id, agent: false });
     else this.setDock(null);
+    this.skillAgent = agent?.paneId && control && agent.vendor === "claude" ? agent.id : null;
+    this.skillBtn.hidden = this.skillAgent === null;
+    if (this.skillAgent === null) this.closeSkills();
     if (agent) this.confirmDelivery(agent);
   }
 
@@ -492,11 +516,125 @@ export class DetailPanel {
     this.dock.hidden = target === null;
     this.attachBtn.hidden = !target?.agent;
     if (same || !target) return;
+    this.closeSkills();
     this.setInput("");
     this.clearShots();
     this.input.placeholder = target.agent ? t("Enter 전송 · Shift+Enter 줄바꿈") : t("Enter 실행");
     this.sendBtn.textContent = target.agent ? t("보내기") : t("실행");
     this.setNote("", "");
+  }
+
+  // ── 스킬 고르기 ────────────────────────────────────────────────────────────────────────────
+
+  /** 입력창이 `/글자` 뿐이면 그 글자로 거른 스킬 목록을 띄운다. 다른 글이 되면 닫는다. */
+  private updateSkills(): void {
+    const typed = /^\/(\S*)$/.exec(this.input.value)?.[1];
+    const agent = this.skillAgent;
+    if (!agent || (typed === undefined && !this.skillAll)) return this.closeSkills();
+    if (typed !== undefined) this.skillAll = false;
+    const cached = this.skillCache.get(agent);
+    if (!cached || Date.now() - cached.at > SKILLS_TTL_MS) this.loadSkills(agent);
+    const query = (typed ?? "").toLowerCase();
+    const rank = (s: SkillView): number => {
+      const name = s.name.toLowerCase();
+      if (!query || name.startsWith(query)) return 0;
+      if (name.slice(name.indexOf(":") + 1).startsWith(query)) return 1;
+      if (name.includes(query)) return 2;
+      return s.description.toLowerCase().includes(query) ? 3 : -1;
+    };
+    this.skillShown = (cached?.skills ?? [])
+      .map((s, i) => ({ s, r: rank(s), i }))
+      .filter((x) => x.r >= 0)
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .map((x) => x.s);
+    this.skillActive = 0;
+    const empty = !cached ? t("스킬 목록을 읽는 중…") : cached.skills.length === 0 ? t("이 세션에서 찾은 스킬이 없습니다.") : t("맞는 스킬이 없습니다.");
+    this.renderSkills(this.skillShown.length > 0 ? null : empty);
+  }
+
+  private renderSkills(empty: string | null): void {
+    const rows = this.skillShown.map((s, i) => {
+      const row = h(
+        "div",
+        { class: i === this.skillActive ? "skill on" : "skill", role: "option", "aria-selected": String(i === this.skillActive), id: `skill-${i}` },
+        h("div", { class: "skill-name" }, h("span", { class: "n" }, `/${s.name}`), s.hint ? h("span", { class: "hint" }, s.hint) : null),
+        s.description ? h("div", { class: "skill-desc" }, s.description) : null,
+      );
+      row.title = s.description;
+      row.addEventListener("click", () => this.chooseSkill(s));
+      return row;
+    });
+    this.skillPop.replaceChildren(...(empty ? [h("div", { class: "skill-empty" }, empty)] : rows));
+    // 목록은 입력창 위로 편다. 상태 창 위 끝을 넘지 않게 높이를 그때그때 맞춘다(휴대폰 자판이 올라오면 줄어든다).
+    const room = (this.input.parentElement?.getBoundingClientRect().top ?? 0) - this.root.getBoundingClientRect().top - 16;
+    this.skillPop.style.maxHeight = `${Math.max(120, Math.min(360, room))}px`;
+    this.skillPop.hidden = false;
+    this.input.setAttribute("aria-expanded", "true");
+    this.markSkill();
+  }
+
+  private markSkill(): void {
+    this.skillPop.querySelectorAll(".skill").forEach((row, i) => {
+      row.classList.toggle("on", i === this.skillActive);
+      row.setAttribute("aria-selected", String(i === this.skillActive));
+      if (i === this.skillActive) row.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  private loadSkills(agent: string): void {
+    if (this.skillLoading === agent) return;
+    this.skillLoading = agent;
+    void get<{ skills: SkillView[] }>(`/api/skills?agent=${encodeURIComponent(agent)}`)
+      .then(({ skills }) => this.skillCache.set(agent, { at: Date.now(), skills }))
+      .catch(() => {})
+      .finally(() => {
+        this.skillLoading = null;
+        if (!this.skillPop.hidden && this.skillAgent === agent) this.updateSkills();
+      });
+  }
+
+  private closeSkills(): void {
+    this.skillAll = false;
+    if (this.skillPop.hidden) return;
+    this.skillPop.hidden = true;
+    this.skillPop.replaceChildren();
+    this.input.setAttribute("aria-expanded", "false");
+  }
+
+  /** 단추: 빈 입력창이면 `/` 를 넣어 치면서 거르게 하고, 쓰던 글이 있으면 그대로 두고 다 보인다. */
+  private toggleSkills(): void {
+    if (!this.skillPop.hidden) return this.closeSkills();
+    this.input.focus();
+    if (this.input.value.trim() === "") this.setInput("/");
+    else if (!this.input.value.startsWith("/")) this.skillAll = true;
+    this.updateSkills();
+  }
+
+  /** 고른 스킬을 입력창 맨 앞에 넣는다. 보내지는 않는다 — 대개 뒤에 할 일을 적는다. 쓰던 글은 그 뒤에 남긴다. */
+  private chooseSkill(s: SkillView): void {
+    const rest = this.input.value.replace(/^\/\S*\s*/, "");
+    this.closeSkills();
+    this.setInput(`/${s.name} ${rest}`);
+    this.input.focus();
+    this.input.setSelectionRange(this.input.value.length, this.input.value.length);
+  }
+
+  /** 목록이 떠 있을 때의 키. 처리했으면 true. */
+  private skillKey(e: KeyboardEvent): boolean {
+    if (this.skillPop.hidden || e.isComposing) return false;
+    const n = this.skillShown.length;
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && n > 0) {
+      this.skillActive = (this.skillActive + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+      this.markSkill();
+    } else if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey && n > 0) {
+      this.chooseSkill(this.skillShown[this.skillActive]!);
+    } else if (e.key === "Escape") {
+      // 목록만 닫는다 — 상태 창의 Esc(입력창 떠나기·창 닫기)로 번지지 않게.
+      e.stopPropagation();
+      this.closeSkills();
+    } else return false;
+    e.preventDefault();
+    return true;
   }
 
   /** 입력창 아래에 남겨 둘 말(고쳐야 할 것). 잘 됐다는 확인은 여기 두지 않고 알림으로 띄운다 — 자리를 계속 차지하지 않게. */
