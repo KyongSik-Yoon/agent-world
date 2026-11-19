@@ -49,6 +49,150 @@ function field(label: string, control: HTMLElement, hint?: string): HTMLElement 
   return h("label", { class: "field" }, h("span", {}, label), control, hint ? h("small", {}, hint) : null);
 }
 
+/**
+ * 폴더 칸과 그 제안 목록. <datalist> 는 브라우저가 제 글꼴·크기로 목록을 그려 CSS 가 닿지 않으므로, 고르기 칸의 펼친 목록과
+ * 같은 모양으로 직접 그린다. 목록은 대화상자 안에 두되(모달 밖은 눌리지 않는다) popover 로 띄워 대화상자의 스크롤에 잘리지 않게 하고,
+ * 위치는 칸에 맞춰 잡는다.
+ */
+function dirCombo(): { input: HTMLInputElement; box: HTMLElement; list: HTMLElement; attach(dlg: HTMLDialogElement): void } {
+  const input = h("input", {
+    type: "text",
+    class: "combo-input",
+    role: "combobox",
+    "aria-autocomplete": "list",
+    "aria-expanded": "false",
+    "aria-controls": "dlg-dirs",
+    autocomplete: "off",
+    spellcheck: "false",
+    required: "",
+    placeholder: "~/dev/…",
+  });
+  const chevron = h("span", { class: "combo-chevron", "aria-hidden": "true" });
+  const box = h("div", { class: "combo" }, input, chevron);
+  const list = h("div", { class: "combo-list", id: "dlg-dirs", role: "listbox", popover: "manual" });
+  let items: string[] = [];
+  let active = -1;
+  let seq = 0;
+
+  const isOpen = () => list.matches(":popover-open");
+  const mark = () => {
+    list.querySelectorAll<HTMLElement>("[role=option]").forEach((el, i) => el.classList.toggle("active", i === active));
+    const el = list.children[active] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+    if (el) input.setAttribute("aria-activedescendant", el.id);
+    else input.removeAttribute("aria-activedescendant");
+  };
+  const place = () => {
+    const r = input.getBoundingClientRect();
+    const below = innerHeight - r.bottom - 12;
+    const above = r.top - 12;
+    const up = below < 140 && above > below;
+    list.style.left = `${r.left}px`;
+    list.style.width = `${r.width}px`;
+    list.style.maxHeight = `${Math.min(320, up ? above : below)}px`;
+    list.style.top = up ? "" : `${r.bottom + 4}px`;
+    list.style.bottom = up ? `${innerHeight - r.top + 4}px` : "";
+  };
+  const close = () => {
+    if (isOpen()) list.hidePopover();
+    input.setAttribute("aria-expanded", "false");
+    active = -1;
+    mark();
+  };
+  const open = () => {
+    if (items.length === 0 || document.activeElement !== input) return close();
+    place();
+    if (!isOpen()) list.showPopover();
+    input.setAttribute("aria-expanded", "true");
+  };
+  const render = () => {
+    list.replaceChildren(
+      ...items.map((d, i) => {
+        const el = h("div", { role: "option", id: `dlg-dir-${i}`, title: d }, d);
+        if (d === input.value) el.setAttribute("aria-selected", "true");
+        el.addEventListener("pointermove", () => {
+          if (active !== i) {
+            active = i;
+            mark();
+          }
+        });
+        el.addEventListener("click", () => choose(d));
+        return el;
+      }),
+    );
+    active = Math.min(active, items.length - 1);
+    mark();
+  };
+  const suggest = (show: boolean) => {
+    const mine = (seq += 1);
+    void get<{ dirs: string[] }>(`/api/dirs?prefix=${encodeURIComponent(input.value)}`)
+      .then(({ dirs }) => {
+        if (mine !== seq) return;
+        items = dirs;
+        active = -1;
+        render();
+        if (show) open();
+        else if (isOpen() && items.length === 0) close();
+      })
+      .catch(() => {});
+  };
+  const choose = (d: string) => {
+    input.value = d;
+    close();
+    suggest(false);
+  };
+
+  input.addEventListener("input", () => suggest(true));
+  input.addEventListener("click", open);
+  input.addEventListener("blur", close);
+  // 목록을 누르는 동안 칸이 초점을 잃어 목록이 먼저 닫히지 않게 한다.
+  list.addEventListener("pointerdown", (e) => e.preventDefault());
+  chevron.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    if (isOpen()) close();
+    else {
+      input.focus();
+      open();
+    }
+  });
+  // 칸을 감싼 <label> 이 꺾쇠 클릭을 입력 칸으로 넘겨 방금 닫은 목록을 다시 열지 않게 한다.
+  chevron.addEventListener("click", (e) => e.preventDefault());
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!isOpen()) return open();
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      active = (active + step + items.length + 1) % (items.length + 1);
+      if (active === items.length) active = -1;
+      mark();
+    } else if (e.key === "Enter" && isOpen() && active >= 0) {
+      e.preventDefault();
+      choose(items[active]!);
+    } else if (e.key === "Escape" && isOpen()) {
+      // 목록만 닫고 대화상자는 그대로 둔다.
+      e.preventDefault();
+      close();
+    }
+  });
+  suggest(false);
+
+  return {
+    input,
+    box,
+    list,
+    attach(dlg) {
+      const stop = new AbortController();
+      const follow = () => {
+        if (isOpen()) place();
+      };
+      addEventListener("resize", follow, { signal: stop.signal });
+      dlg.addEventListener("scroll", follow, { signal: stop.signal, capture: true });
+      visualViewport?.addEventListener("resize", follow, { signal: stop.signal });
+      dlg.addEventListener("close", () => stop.abort(), { once: true });
+    },
+  };
+}
+
 /** 따옴표를 존중해 실행 인자를 나눈다: `--model opus -p "a b"` → [--model, opus, -p, a b]. */
 function splitArgs(text: string): string[] {
   const out: string[] = [];
@@ -308,8 +452,8 @@ export class Builder {
   // ── 집 짓기 ────────────────────────────────────────────────────────────────────────────────
 
   newHouse(): void {
-    const dirs = h("datalist", { id: "dlg-dirs" });
-    const cwd = h("input", { type: "text", list: "dlg-dirs", autocomplete: "off", spellcheck: "false", required: "", placeholder: "~/dev/…" });
+    const dirs = dirCombo();
+    const cwd = dirs.input;
     const label = h("input", { type: "text", autocomplete: "off", placeholder: t("비워 두면 herdr 가 폴더 이름으로 붙입니다") });
     const worktree = h("input", { type: "checkbox" });
     const branch = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: t("비워 두면 herdr 가 이름을 짓습니다") });
@@ -327,26 +471,14 @@ export class Builder {
       wtBox.hidden = !worktree.checked;
     });
 
-    let seq = 0;
-    const suggest = () => {
-      const mine = (seq += 1);
-      void get<{ dirs: string[] }>(`/api/dirs?prefix=${encodeURIComponent(cwd.value)}`)
-        .then(({ dirs: list }) => {
-          if (mine === seq) dirs.replaceChildren(...list.map((d) => h("option", { value: d })));
-        })
-        .catch(() => {});
-    };
-    cwd.addEventListener("input", suggest);
-    suggest();
-
     const agent = this.agentFields(true);
     let made: Created | undefined;
-    this.dialog(
+    const dlg = this.dialog(
       t("집 짓기"),
       t("짓기"),
       [
-        field(t("폴더"), cwd, t("이 폴더에서 셸이 열립니다")),
-        dirs,
+        field(t("폴더"), dirs.box, t("이 폴더에서 셸이 열립니다")),
+        dirs.list,
         field(t("집 이름"), label),
         h("label", { class: "check" }, worktree, t("워크트리로 — 새 브랜치를 따로 체크아웃해서 엽니다")),
         wtBox,
@@ -372,6 +504,7 @@ export class Builder {
         this.deps.toast(t("집을 지었습니다"), label.value || cwd.value, "var(--done)");
       },
     );
+    dirs.attach(dlg);
     cwd.focus();
   }
 
