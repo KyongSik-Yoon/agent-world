@@ -690,6 +690,86 @@ export function panelLines(lines: readonly string[], shownLines: readonly string
   return out;
 }
 
+/** 세로로 나뉜 창의 구분선 글자. */
+const DIVIDER = /[\u2502\u2503\u2551]/;
+/** 오른쪽 창 끝의 스크롤 막대 글자. 줄을 접으면 엉뚱한 자리에 흩어지므로 뗀다. */
+const SCROLL_TRACK = /[\u2502\u2503\u2588\u2590\u258C\u2595\u258F]/;
+/** 구분선으로 볼 최소 높이: 화면 줄의 이만큼 넘게 같은 칸에 이어져야 한다(표의 세로선은 가로줄에서 끊기고 짧다). */
+const SPLIT_SHARE = 0.4;
+const SPLIT_MIN_ROWS = 8;
+/** 양쪽 창이 이보다 좁으면 나뉜 창으로 보지 않는다. */
+const SPLIT_MIN_SIDE = 20;
+const SGR_ONLY = /\x1b\[[0-9;:]*m/g;
+/** 바탕색만 거는 색상 코드. */
+const BG_CODE = /\x1b\[48;(?:2;\d+;\d+;\d+|5;\d+)m/g;
+
+/** 줄에서 구분선 글자가 있는 칸들과 줄의 칸 수. */
+function dividerCols(text: string): [number[], number] {
+  const at: number[] = [];
+  let col = 0;
+  for (const ch of text) {
+    if (JOINS.test(ch)) continue;
+    if (DIVIDER.test(ch)) at.push(col);
+    col += WIDE.test(ch) ? 2 : 1;
+  }
+  return [at, col];
+}
+
+/**
+ * 세로로 나뉜 화면(Claude Code 가 오른쪽에 플랜 보기 창을 띄운 것 등)을 줄 접는 화면에서 볼 수 있게 위아래로 쌓는다.
+ * 그대로 접으면 왼쪽 창 줄 뒤에 오른쪽 창 줄이 이어 붙어 접혀, 두 창의 글이 한 줄씩 엇갈려 섞인다. 같은 칸의 세로선이
+ * 화면의 SPLIT_SHARE 넘게 이어지는 구간을 찾아, 오른쪽 창을 위에, 왼쪽 창을 아래에 둔다 — 아래에 붙여 보는 미리보기와
+ * 크게 보기의 끝이 왼쪽 창(대화)의 끝과 그 밑의 입력창으로 이어진다. 나뉜 화면이 아니면 null.
+ */
+export function stackPanes(lines: readonly string[]): string[] | null {
+  if (lines.filter((l) => l.includes("\u2502") || l.includes("\u2503") || l.includes("\u2551")).length < SPLIT_MIN_ROWS) return null;
+  const texts = lines.map(plain);
+  const marks = texts.map(dividerCols);
+  const width = Math.max(0, ...marks.map(([, w]) => w));
+  // 칸마다 지금 이어지는 줄 수를 세며 가장 긴 구간을 찾는다.
+  const runs = new Map<number, number>();
+  let best = { col: -1, start: 0, end: 0 };
+  marks.forEach(([at], i) => {
+    const here = new Set(at.filter((c) => c >= SPLIT_MIN_SIDE && c < width - SPLIT_MIN_SIDE));
+    for (const c of [...runs.keys()]) if (!here.has(c)) runs.delete(c);
+    for (const c of here) {
+      const start = runs.get(c) ?? i;
+      runs.set(c, start);
+      if (i + 1 - start > best.end - best.start) best = { col: c, start, end: i + 1 };
+    }
+  });
+  const { col, start, end } = best;
+  if (col < 0 || end - start < Math.max(SPLIT_MIN_ROWS, lines.length * SPLIT_SHARE)) return null;
+  // 상자에 든 큰 표의 안쪽 세로선이다 — 줄마다 테두리로 시작한다.
+  let boxed = 0;
+  for (let i = start; i < end; i += 1) if (/^\s*[\u2502\u2503\u2551\u251C\u2560\u256D\u2570\u250C\u2514]/.test(texts[i]!)) boxed += 1;
+  if (boxed * 2 > end - start) return null;
+  const left: string[] = [];
+  const right: string[] = [];
+  for (let i = start; i < end; i += 1) {
+    const [head, rest] = splitColumns(lines[i]!, col);
+    const [bar, tail] = splitColumns(rest, 1);
+    left.push(head);
+    // 오른쪽 창의 글은 줄 앞에서 이어지던 스타일로 시작해야 한다 — 앞쪽의 색상 코드를 차례로 다시 건다.
+    let side = `\x1b[0m${(head + bar).match(SGR_ONLY)?.join("") ?? ""}${tail}`;
+    const shown = plain(tail).trimEnd();
+    const last = shown.at(-1) ?? "";
+    if (SCROLL_TRACK.test(last) && col + 1 + displayCols(shown) === marks[i]![1] && marks[i]![1] === width) {
+      side = splitColumns(side, displayCols(shown) - 1)[0];
+    }
+    right.push(side);
+  }
+  // 오른쪽 창의 바탕색(가장 많이 쓰인 바탕)은 걷어 낸다. 줄마다 바탕이 깔리면 배너로 잘못 읽혀 끝이 잘리고, 접힌 줄은
+  // 줄무늬가 된다. 인라인 코드처럼 그 위에 다른 바탕을 깐 글은 남는다.
+  const bgs = new Map<string, number>();
+  for (const line of right) for (const [code] of line.matchAll(BG_CODE)) bgs.set(code, (bgs.get(code) ?? 0) + 1);
+  const surface = [...bgs].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (surface) for (let i = 0; i < right.length; i += 1) right[i] = right[i]!.split(surface).join("\x1b[49m");
+  while (right.length && plain(right[right.length - 1]!).trim() === "") right.pop();
+  while (right.length && plain(right[0]!).trim() === "") right.shift();
+  return [...lines.slice(0, start), ...right, `\x1b[0m\x1b[2m${"\u2500".repeat(24)}\x1b[0m`, ...left, ...lines.slice(end)];
+}
+
 /**
  * 글 상자의 한 줄을 세로선 칸과 글 칸으로 나눠 그린다. 접힌 줄이 세로선 밖(맨 왼쪽)으로 나가지 않고 글 칸 안에서 이어지며,
  * 세로선은 접힌 줄 높이만큼 내려온다(스타일시트의 .tl.panel).
@@ -1072,7 +1152,7 @@ export class TermScreen {
       else pool.set(row.key, [row]);
     }
     let style: Style = {};
-    let rows = raw.map((full) => {
+    let rows = (reflow ? (stackPanes(raw) ?? raw) : raw).map((full) => {
       const line = reflow ? trimTrailing(full) : full;
       const row = pool.get(styleKey(style) + line)?.pop() ?? renderLine(line, style, reflow);
       style = row.end;
