@@ -270,7 +270,12 @@ export const claudeReader: LogReader<LogSummary> = {
       case "attachment": {
         const a = row.attachment;
         if (row.isSidechain === true || !isRecord(a) || a.type !== "queued_command" || !isRecord(a.origin) || a.origin.kind !== "human") break;
-        const text = userText(str(a.prompt) ?? "");
+        // 이미지를 붙인 지시는 글 하나가 아니라 사용자 행처럼 조각 배열([{type:"text"}, {type:"image"}])로 남는다.
+        const parts = Array.isArray(a.prompt) ? a.prompt.filter((p) => isRecord(p) && p.type === "text").map((p) => str(p.text) ?? "") : [str(a.prompt) ?? ""];
+        const text = parts
+          .map(userText)
+          .filter(Boolean)
+          .join("\n\n");
         if (!text) break;
         setPrompt(s, text);
         s.promptQueued = true;
