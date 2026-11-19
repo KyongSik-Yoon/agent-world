@@ -69,6 +69,12 @@ function installGlyphFonts(): void {
     `@font-face{font-family:"AW Mono";src:url("font/mono");font-display:block;unicode-range:U+2190-21FF,U+2500-25FF,U+2700-27BF,U+2800-28FF}`,
   ].join("\n");
   document.head.append(style);
+  // 사용자의 터미널(ghostty) 글꼴: 서버가 설정을 읽어 그 글꼴들과 --term-mono·--term-bold 를 적은 CSS 를 내준다(server/termfont.ts).
+  // 설정이 없으면 빈 파일이고, 화면은 위의 기본 글꼴을 쓴다.
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "font/term.css";
+  document.head.append(link);
 }
 
 /**
@@ -223,7 +229,7 @@ function css(s: Style): string {
   // 위아래 여백(padding)으로 칠할 자리를 넓혀 두고(줄 배치는 그대로), 가운데에 줄 높이 + 1px 띠를 깐다(이웃 줄과 0.5px
   // 겹쳐 소수점 경계에 틈이 없다 — 블록 문자 칸과 같다).
   if (bg) out += `background:linear-gradient(${bg},${bg}) 0 50%/100% calc(1.22em + 1px) no-repeat;padding:0.2em 0;`;
-  if (s.bold) out += "font-weight:700;";
+  if (s.bold) out += "font-weight:var(--term-bold,700);";
   if (s.dim) out += "opacity:.62;";
   if (s.italic) out += "font-style:italic;";
   if (s.underline || s.strike) out += `text-decoration:${[s.underline ? "underline" : "", s.strike ? "line-through" : ""].join(" ").trim()};`;

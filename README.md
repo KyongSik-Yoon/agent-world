@@ -49,7 +49,7 @@ herdr plugin install KyongSik-Yoon/agent-world
 
 <img src="docs/img/terminal.webp" alt="크게 연 터미널. 에이전트의 화면이 색까지 그대로 보이고, 키 입력은 pane 으로 바로 간다" width="960">
 
-`` ` `` 를 누르면 그 pane 의 화면이 크게 열립니다. 열려 있는 동안에는 키 입력이 그대로 pane 으로 가고 한글도 됩니다. `지난 출력 보기`로 스크롤백을 보고, Shift+Esc 로 닫습니다. 전체 화면으로 도는 Claude Code 처럼 스크롤백이 남지 않는 에이전트는 PageUp/PageDown 을 보내 앱의 화면을 넘깁니다(화면 끝에서 더 끌거나 굴려도 넘어가고, 창을 닫으면 지금 화면으로 돌아갑니다). 색은 ghostty 설정에서 읽은 배경·글자색·팔레트를 씁니다(설정이 없으면 어두운 기본색입니다).
+`` ` `` 를 누르면 그 pane 의 화면이 크게 열립니다. 열려 있는 동안에는 키 입력이 그대로 pane 으로 가고 한글도 됩니다. `지난 출력 보기`로 스크롤백을 보고, Shift+Esc 로 닫습니다. 전체 화면으로 도는 Claude Code 처럼 스크롤백이 남지 않는 에이전트는 PageUp/PageDown 을 보내 앱의 화면을 넘깁니다(화면 끝에서 더 끌거나 굴려도 넘어가고, 창을 닫으면 지금 화면으로 돌아갑니다). 색은 ghostty 설정에서 읽은 배경·글자색·팔레트를 씁니다(설정이 없으면 어두운 기본색입니다). 글꼴도 ghostty 설정을 따릅니다. `font-family`·`font-family-bold`·`font-variation-bold` 의 굵기·`font-codepoint-map` 을 읽어 그 글꼴 파일을 이 PC 에서 찾아 내주므로(fontconfig 가 있는 Linux), 휴대폰에서도 터미널과 같은 글씨로 보입니다. 글꼴을 바꿨으면 서버를 다시 띄웁니다.
 
 ### 완료 확인
 

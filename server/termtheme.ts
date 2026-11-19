@@ -87,6 +87,32 @@ function themeDirs(): string[] {
   return [...configDirs(), ...resources].map((d) => join(d, "themes"));
 }
 
+/** ghostty 설정에 적힌 줄들을 적힌 차례대로(끼워 넣은 `config-file` 까지 따라가서) 돌려준다. 설정이 없으면 빈 배열. */
+export async function ghosttyEntries(): Promise<Array<[key: string, value: string]>> {
+  const out: Array<[string, string]> = [];
+  const read = async (path: string, depth: number): Promise<void> => {
+    let body: string;
+    try {
+      body = await readFile(path, "utf8");
+    } catch {
+      return;
+    }
+    for (const raw of body.split("\n")) {
+      const line = raw.trim();
+      const eq = line.indexOf("=");
+      if (!line || line.startsWith("#") || eq < 0) continue;
+      const key = line.slice(0, eq).trim();
+      const value = line.slice(eq + 1).trim();
+      if (key === "config-file" && depth < 4) {
+        const file = unquote(value.replace(/^\?/, ""));
+        await read(file.startsWith("~/") ? join(homedir(), file.slice(2)) : resolve(dirname(path), file), depth + 1);
+      } else out.push([key, unquote(value)]);
+    }
+  };
+  for (const dir of configDirs()) for (const file of ["config", "config.ghostty"]) await read(join(dir, file), 0);
+  return out;
+}
+
 /** `theme` 값에서 지금 쓸 이름을 고른다: `이름` 또는 `light:밝은것,dark:어두운것`. */
 function themeName(value: string, scheme: "light" | "dark"): string {
   const byMode = new Map<string, string>();

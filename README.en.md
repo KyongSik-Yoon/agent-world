@@ -80,6 +80,9 @@ Worth knowing:
   and keys are sent as they are.
 - Terminal colours come from your ghostty config — background, foreground and palette, including `theme = …`
   (a dark default otherwise).
+  The fonts follow the ghostty config too: `font-family`, `font-family-bold`, the weight in `font-variation-bold` and
+  `font-codepoint-map` are read, and the font files are found on this machine and served (Linux with fontconfig), so a
+  phone shows the same typeface as your terminal. Restart the server after changing fonts.
 - **Attached images become files on this machine.** They are written to `~/.cache/agent-world/images/` and the path
   is typed into the pane. Claude Code turns the path into `[Image #N]`; other harnesses get the path in the prompt
   text. Files older than seven days are removed.

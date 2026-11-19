@@ -1851,6 +1851,8 @@ kbd {
   background: var(--term-bg);
   color: var(--term-fg);
   font: 12px/1.22 var(--mono);
+  /* 터미널(ghostty) 설정의 글꼴이 있으면 그것으로(term.ts 의 installGlyphFonts). */
+  font-family: var(--term-mono, var(--mono));
   font-variant-ligatures: none;
   white-space: pre;
   scrollbar-width: thin;

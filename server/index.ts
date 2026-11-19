@@ -11,6 +11,7 @@ import index from "../web/index.html";
 import type { SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
 import { controlRoutes } from "./control.ts";
 import { fontRoutes } from "./fonts.ts";
+import { termFontRoutes } from "./termfont.ts";
 import { MAX_IMAGE_BYTES } from "./images.ts";
 import { herdrAlive, herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag, herdrSocketPath } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
@@ -475,6 +476,7 @@ const listen = (at: number) =>
     ...page,
     ...app,
     ...fontRoutes(),
+    ...termFontRoutes(),
     // 묻는 쪽이 준 값(n)에 열쇠로 답을 달아, 이 서버가 열쇠를 가진 진짜 Agent World 임을 보인다.
     "/api/identity": { GET: guarded((req) => json({ ...identity, build: pageBuild, proof: proofOf(KEY, new URL(req.url).searchParams.get("n") ?? "", identity.socket) })) },
     "/api/snapshot": {
