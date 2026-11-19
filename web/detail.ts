@@ -6,6 +6,7 @@
 import { type Activity, type AgentView, LIVE_MODEL_KINDS, type PaneView, type PendingRequest, type SkillView, type WorkspaceView, type WorldSnapshot } from "../shared/types.ts";
 import { ApiError, get, headers, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
+import { buzzConfirm, tapOnPress } from "./haptic.ts";
 import { type Child, type IconName, STATUS_VAR, h, icon, prose, store, stored } from "./dom.ts";
 import { STATUS_LABEL, activityParts, bubbleParts, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
 import { t } from "./i18n.ts";
@@ -206,6 +207,7 @@ export class DetailPanel {
       const btn = key.icon
         ? h("button", { type: "button", title: key.title, "aria-label": key.title }, icon(key.icon), key.caption ? h("span", { "aria-hidden": "true" }, key.caption) : null)
         : h("button", { type: "button", title: key.title }, key.label);
+      tapOnPress(btn);
       btn.addEventListener("click", () => {
         if (!this.docked) return;
         void sendInput(this.docked.paneId, { text: key.text, keys: key.keys, raw: key.raw }).catch((e: Error) => this.setNote(e.message, "err"));
@@ -748,10 +750,12 @@ export class DetailPanel {
       sent.confirmed = true;
       this.setNote("", "");
       this.callbacks.toast(t("에이전트가 받았습니다"), a.title, "var(--done)");
+      buzzConfirm();
     } else if (!a.hasLog && a.status === "working") {
       sent.confirmed = true;
       this.setNote("", "");
       this.callbacks.toast(t("에이전트가 일하기 시작했습니다"), a.title, "var(--done)");
+      buzzConfirm();
     } else if (Date.now() - sent.at > 12_000) {
       this.setNote(t("아직 받은 흔적이 없습니다. 터미널 화면에서 입력창에 그대로 남아 있는지 확인해 보세요."), "err");
     }

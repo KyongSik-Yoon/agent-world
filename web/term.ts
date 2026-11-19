@@ -6,6 +6,7 @@
 import { rideFrame } from "./beat.ts";
 import { get, sendInput, headers } from "./api.ts";
 import { withKey } from "./key.ts";
+import { tapOnPress } from "./haptic.ts";
 import { drawnClass } from "./cells.ts";
 import { type IconName, icon } from "./dom.ts";
 import { t } from "./i18n.ts";
@@ -1569,6 +1570,7 @@ export class TermOverlay {
       } else btn.textContent = key.label;
       // 단추를 눌러도 입력란의 초점(과 화면 자판)이 그대로 있도록 한다.
       btn.addEventListener("pointerdown", (e) => e.preventDefault());
+      tapOnPress(btn);
       const latch = key.latch;
       if (latch) {
         btn.setAttribute("aria-pressed", "false");
