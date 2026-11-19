@@ -66,6 +66,11 @@ with a new version, open pages reload themselves (they wait while you are typing
 Turn on the bell button at the top to be **notified** when an agent finishes or needs input — also while the page is closed or
 the app is in the background (Web Push). It is off by default, switched on per device, and one more tap turns it off.
 Notifications for the same agent replace each other, and in Chromium browsers you only get the page's toast while you are looking at it.
+While you are using one of the devices with notifications on (its window is in front and was touched in the last 5 minutes, or on
+desktop Chrome the keyboard or mouse was used in any app in the last 2 minutes), notifications go to that device only — your
+phone and watch stay quiet while you sit at the PC. When you then walk away, whatever went only to the PC in the meantime and
+is still unchanged is sent to the phone as well. To have it notice you in other apps, allow the idle detection permission
+Chrome asks for on your first click in the page.
 On iOS it is available only in the installed home-screen app (16.4 or later). The text is encrypted so that only your
 browser can read it; the push service in between (Google, Apple, Mozilla) cannot. While nobody has the page open the
 server looks at the agents only every 15 seconds, so a notification can be that late.

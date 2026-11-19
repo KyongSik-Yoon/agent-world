@@ -27,6 +27,16 @@ const MAX_TARGETS = 20;
 /** 푸시 서버가 기기에 닿지 못할 때 붙들어 두는 시간(초). 한 시간 지난 "확인 필요"는 이미 늦었다. */
 const TTL_S = 3600;
 const SEND_TIMEOUT_MS = 10_000;
+/**
+ * "이 기기 앞에 사람이 있다"는 소식을 믿는 시간. 화면은 있는 동안 1분마다 다시 알리므로, 이만큼 끊기면
+ * 브라우저가 죽었거나 기기가 잠든 것으로 보고 잊는다 — 잊으면 다시 모든 기기로 보낸다.
+ */
+const PRESENCE_MS = 200_000;
+/**
+ * 앞에 있는 기기로만 보낸 알림을 들고 있는 시간. 자리를 뜬 뒤에도 화면은 몇 분 동안 "있다"고 하므로(입력 없이 지켜보는
+ * 동안을 봐주느라), 그사이 온 알림은 "없음"이 되는 순간 다른 기기로도 보낸다 — 그때도 상태가 그대로일 때만.
+ */
+const HOLD_MS = 7 * 60_000;
 /** 서명한 표의 수명. 푸시 서버는 24시간까지만 받는다. */
 const TOKEN_S = 12 * 3600;
 /**
@@ -188,6 +198,10 @@ export class Pusher {
   private targets = new Map<string, PushTarget>();
   private loaded: Promise<void> | undefined;
   private writing: Promise<void> = Promise.resolve();
+  /** 사람이 앞에 있다고 알려 온 구독과, 그 소식을 믿을 시각. */
+  private present = new Map<string, number>();
+  /** 앞에 있는 기기로만 보낸 알림: 에이전트별로 그때의 상태·글·받은 구독. */
+  private held = new Map<string, { status: AgentStatus; agent: AgentView; sentTo: Set<string>; at: number }>();
   /** 직전 스냅샷의 상태. 구독이 없는 동안에는 비워 둔다. */
   private last = new Map<string, AgentStatus>();
   private primed = false;
@@ -224,7 +238,49 @@ export class Pusher {
 
   async remove(endpoint: string): Promise<void> {
     await this.load();
+    this.present.delete(endpoint);
     if (this.targets.delete(endpoint)) this.save();
+  }
+
+  /** 그 구독의 기기 앞에 사람이 있는지 적는다. 모르는 구독이면 false 를 돌려준다. */
+  async setPresent(endpoint: string, on: boolean, now = Date.now()): Promise<boolean> {
+    await this.load();
+    if (!this.targets.has(endpoint)) return false;
+    if (on) this.present.set(endpoint, now + PRESENCE_MS);
+    else this.present.delete(endpoint);
+    return true;
+  }
+
+  /**
+   * 이번 알림을 받을 구독. 사람이 앞에 있는 기기가 있으면 그 기기만 — PC 를 쓰는 동안 휴대폰·워치까지 울리지 않게.
+   * 그런 기기가 없거나 소식이 끊겼으면 모두에게 보낸다(모를 때는 보낸다).
+   */
+  recipients(now = Date.now()): PushTarget[] {
+    const here = this.presentTargets(now);
+    return here.length > 0 ? here : [...this.targets.values()];
+  }
+
+  private presentTargets(now: number): PushTarget[] {
+    const here: PushTarget[] = [];
+    for (const [endpoint, until] of this.present) {
+      const target = this.targets.get(endpoint);
+      if (!target || until <= now) this.present.delete(endpoint);
+      else here.push(target);
+    }
+    return here;
+  }
+
+  /** 앞에 있던 기기가 모두 "없음"이 됐으면, 그 기기로만 보냈던 알림 중 아직 상태가 그대로인 것을 나머지 기기로 보낸다. */
+  private release(status: Map<string, AgentStatus>, now: number): void {
+    if (this.held.size === 0) return;
+    const away = this.presentTargets(now).length === 0;
+    for (const [id, h] of this.held) {
+      if (status.get(id) !== h.status || now - h.at > HOLD_MS) this.held.delete(id);
+      else if (away) {
+        for (const target of this.targets.values()) if (!h.sentTo.has(target.endpoint)) void this.send(target, message(h.agent, target.lang));
+        this.held.delete(id);
+      }
+    }
   }
 
   private save(): void {
@@ -248,17 +304,24 @@ export class Pusher {
       // 구독이 없으면 아무것도 하지 않는다. 다시 생기면 그때의 스냅샷이 기준이 된다.
       if (this.primed) {
         this.last.clear();
+        this.held.clear();
         this.primed = false;
       }
       return;
     }
     const now = new Map<string, AgentStatus>();
+    const at = Date.now();
+    let to: PushTarget[] | undefined;
     for (const a of snapshot.agents) {
       now.set(a.id, a.status);
       const before = this.last.get(a.id);
       if (!this.primed || before === undefined || before === a.status || (a.status !== "blocked" && a.status !== "done") || a.compacted) continue;
-      for (const target of this.targets.values()) void this.send(target, message(a, target.lang));
+      to ??= this.recipients(at);
+      for (const target of to) void this.send(target, message(a, target.lang));
+      if (to.length < this.targets.size) this.held.set(a.id, { status: a.status, agent: a, sentTo: new Set(to.map((t) => t.endpoint)), at });
+      else this.held.delete(a.id);
     }
+    this.release(now, at);
     this.last = now;
     this.primed = true;
   }
@@ -280,7 +343,10 @@ export class Pusher {
       });
       // 브라우저가 구독을 버렸다(알림을 껐거나 앱을 지웠다) — 더 보내지 않는다.
       if (res.status === 404 || res.status === 410) {
-        if (this.targets.get(target.endpoint) === target && this.targets.delete(target.endpoint)) this.save();
+        if (this.targets.get(target.endpoint) === target && this.targets.delete(target.endpoint)) {
+          this.present.delete(target.endpoint);
+          this.save();
+        }
       } else if (!res.ok) console.error(say(L("알림을 보내지 못했습니다:", "Could not send the push notification:")), res.status, (await res.text()).slice(0, 200));
     } catch (e) {
       console.error(say(L("알림을 보내지 못했습니다:", "Could not send the push notification:")), (e as Error).message);

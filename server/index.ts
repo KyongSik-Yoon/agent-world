@@ -578,6 +578,14 @@ const listen = (at: number) =>
         return json({ ok: true });
       }),
     },
+    // 알림을 켠 화면이 "이 기기 앞에 사람이 있다/없다"를 알린다. 있는 기기가 있으면 알림은 그 기기로만 간다.
+    "/api/push/presence": {
+      POST: guarded(async (req) => {
+        const body = (await req.json().catch(() => null)) as { endpoint?: unknown; present?: unknown } | null;
+        if (typeof body?.endpoint !== "string" || typeof body.present !== "boolean") return json({ error: say(L("요청 본문이 제 모양이 아닙니다.", "The request body is malformed."), langOf(req)) }, 400);
+        return json({ ok: await pusher.setPresent(body.endpoint, body.present) });
+      }),
+    },
     ...controlRoutes({ world, readonly: READONLY, guarded, json, refresh: () => void tick(true) }),
   },
   fetch: () => new Response("not found", { status: 404 }),

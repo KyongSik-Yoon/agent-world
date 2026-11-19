@@ -11,6 +11,7 @@ import { lang, localizeStatic, t, setLang } from "./i18n.ts";
 import { acceptKey, withKey } from "./key.ts";
 import { swipeToClose } from "./sheet.ts";
 import { PlanReader } from "./plan.ts";
+import { askForInput, askOnFirstTouch, reportPresence } from "./presence.ts";
 import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
@@ -276,6 +277,8 @@ async function subscribePush(): Promise<boolean> {
     }
     sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromBase64Url(key) });
     await post("/api/push", { subscription: sub.toJSON() as Record<string, unknown> });
+    // 그사이 알림을 껐으면(열자마자 다시 맞추는 중에 🔔 을 누름) 자리는 알리지 않는다.
+    if (notify) reportPresence(sub.endpoint);
     return true;
   } catch {
     // 구독하지 못하면 화면이 열려 있는 동안의 알림만 남는다.
@@ -286,6 +289,7 @@ async function subscribePush(): Promise<boolean> {
 /** 구독을 브라우저와 서버 양쪽에서 지운다. */
 async function unsubscribePush(): Promise<void> {
   if (!pushable) return;
+  reportPresence(null);
   try {
     const reg = await navigator.serviceWorker.getRegistration("/");
     const sub = await reg?.pushManager.getSubscription();
@@ -309,6 +313,8 @@ function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
 }
 
 notifyBtn.addEventListener("click", async () => {
+  // PC 를 쓰는 동안 휴대폰으로 알림을 넘기지 않으려면 기기의 입력을 볼 권한이 필요하다. 누른 순간에만 물을 수 있다.
+  if (!notify) void askForInput();
   if (!notify && "Notification" in window) {
     const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
     notify = permission === "granted";
@@ -330,7 +336,10 @@ notifyBtn.addEventListener("click", async () => {
   }
 });
 // 켜 둔 브라우저는 열 때마다 구독을 다시 맞춘다(서버가 기록을 잃었거나 브라우저가 구독을 갈았을 수 있다). 화면이 뜬 뒤로 미룬다.
-if (notify && pushable) setTimeout(() => void subscribePush().then((ok) => (pushed = ok && notify)), 3000);
+if (notify && pushable) {
+  setTimeout(() => void subscribePush().then((ok) => (pushed = ok && notify)), 3000);
+  askOnFirstTouch();
+}
 
 /** 알림을 눌러 들어왔을 때 고를 에이전트. 스냅샷에 나타나면 고른다. */
 let wanted: string | null = null;
