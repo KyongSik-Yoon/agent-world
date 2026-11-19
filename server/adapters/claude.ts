@@ -208,12 +208,14 @@ export const claudeReader: LogReader<LogSummary> = {
         s.permissionMode = str(row.permissionMode) ?? s.permissionMode;
         break;
       case "last-prompt": {
-        // Claude Code 가 직접 적어 두는 마지막 프롬프트(잘린 형태). 사용자 행에서 읽은 원문이
-        // 같은 프롬프트면 원문을 두고, 다르면(꼬리 창 밖이었다면) 이 값을 쓴다.
+        // Claude Code 가 직접 적어 두는 마지막 프롬프트(줄바꿈을 지운 한 줄로 잘린 형태). 사용자 행에서 읽은 원문이
+        // 같은 프롬프트면 원문을 두고, 다르면(꼬리 창 밖이었다면) 이 값을 쓴다. 공백은 아예 빼고 견준다 — 한 줄로 접을 때
+        // 줄바꿈이 사라지기도 해서("[Image #4]\n\n글" → "[Image #4]글") 한 칸으로 접어 견주면 원문이 잘린 한 줄에 덮인다.
         const text = str(row.lastPrompt);
         if (!text) break;
-        const head = text.replace(/…$/, "").slice(0, 40);
-        if (!s.lastPrompt || !s.lastPrompt.replace(/\s+/g, " ").startsWith(head.replace(/\s+/g, " "))) setPrompt(s, text);
+        const bare = (v: string) => v.replace(/\s+/g, "");
+        const head = bare(text.replace(/…$/, "")).slice(0, 40);
+        if (!s.lastPrompt || !bare(s.lastPrompt).startsWith(head)) setPrompt(s, text);
         break;
       }
     }
