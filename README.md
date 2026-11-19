@@ -192,7 +192,7 @@ Claude Code 의 로그에는 쓴 토큰만 있고 컨텍스트 창 크기는 없
 
 사용량도 남아 있는 것만 읽습니다. 30초에 한 번 파일 시각을 보고 바뀐 것만 다시 읽으며, 계정 메일이나 id 는 화면으로 보내지 않습니다.
 
-- Claude Code: herdr 웹 UI 의 statusLine 기록이 남기는 `~/.herdr/statusline-last.json`(5시간·7일 창). 요금제 이름은 `~/.claude.json` 의 계정 정보에서 읽고, 두 파일의 계정이 같을 때만 보여 줍니다
+- Claude Code: herdr 웹 UI 의 statusLine 기록이 남기는 `~/.herdr/statusline-last.json`(5시간·7일 창). 요금제 이름은 `~/.claude.json` 의 계정 정보에서 읽고, 두 파일의 계정이 같을 때만 보여 줍니다. Fable 같은 모델별 주간 한도는 statusLine 스크립트가 usage API 응답을 `$XDG_RUNTIME_DIR/claude-statusline/statusline-usage-cache.json` 에 남겨 둘 때만 함께 보입니다
 - Codex: 세션 로그의 `token_count` 행에 실려 오는 `rate_limits`(창과 요금제). 가장 최근에 쓴 세션의 것을 씁니다
 - Antigravity: statusLine 스크립트가 받은 값을 `/tmp/agy-statusline-<uid>/last-payload.json` 에 남겨 둘 때만 읽습니다. Antigravity 가 스스로 남기는 파일이 아니라서, 그런 스크립트를 쓰지 않으면 뜨지 않습니다
 
@@ -228,7 +228,7 @@ docs/     홈페이지(index.html)와 스크린샷
 - `bun run url`: 이 herdr 세션에 떠 있는 서버의 주소를 출력합니다(열쇠 포함. 서버가 `~/.local/state/agent-world/server*.json` 에 적어 둔 값을 읽습니다)
 - `bun run i18n`: 화면의 문장마다 영어 번역이 있는지 검사합니다. 화면에 문장을 추가할 때는 `t("…")` 로 감싸고 `web/locale/en.ts` 에 번역을 적어 주세요
 
-사용량을 가상 값으로 시험할 때는 Claude Code 쪽 파일을 `AGENT_WORLD_CLAUDE_LIMITS`, Antigravity 쪽 파일을 `AGENT_WORLD_AGY_PAYLOAD` 로 바꿔 줍니다(Claude Code 는 `CLAUDE_CONFIG_DIR/.claude.json` 의 계정과 맞아야 뜹니다). `CLAUDE_CONFIG_DIR`·`CODEX_HOME`·`AGY_HOME` 을 빈 폴더로 돌린 서버는 이 PC 의 실제 사용량을 읽지 않습니다.
+사용량을 가상 값으로 시험할 때는 Claude Code 쪽 파일을 `AGENT_WORLD_CLAUDE_LIMITS`(모델별 한도는 `AGENT_WORLD_CLAUDE_USAGE`), Antigravity 쪽 파일을 `AGENT_WORLD_AGY_PAYLOAD` 로 바꿔 줍니다(Claude Code 는 `CLAUDE_CONFIG_DIR/.claude.json` 의 계정과 맞아야 뜹니다). `CLAUDE_CONFIG_DIR`·`CODEX_HOME`·`AGY_HOME` 을 빈 폴더로 돌린 서버는 이 PC 의 실제 사용량을 읽지 않습니다.
 
 조작 기능을 시험할 때는 쓰고 있는 herdr 말고 이름 붙은 테스트 세션을 씁니다. 쓰던 세션에 시험용 지시가 들어가면 곤란하니까요.
 

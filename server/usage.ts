@@ -91,7 +91,7 @@ async function claudeSignedIn(want: string): Promise<{ id?: string; plan?: strin
  * 답을 받은 때의 것이라, 쉬고 있는 세션은 며칠 묵은 숫자를 계속 적는다 — 파일이 1초 사이에도 45%·65% 를 오간다.
  * 한 창(같은 초기화 시각) 안에서 사용량은 줄지 않으므로, 같은 창이면 가장 큰 값이 지금 값이고 더 늦은 초기화 시각이 새 창이다.
  */
-let claudeHeld: { owner: string; windows: Map<number, UsageWindow> } | undefined;
+let claudeHeld: { owner: string; windows: Map<string, UsageWindow> } | undefined;
 
 function newerWindow(held: UsageWindow | undefined, seen: UsageWindow): UsageWindow {
   if (!held) return seen;
@@ -99,6 +99,53 @@ function newerWindow(held: UsageWindow | undefined, seen: UsageWindow): UsageWin
   const now = seen.resetsAt ?? 0;
   if (now !== was) return now > was ? seen : held;
   return seen.usedPct >= held.usedPct ? seen : held;
+}
+
+const heldKey = (w: UsageWindow): string => `${w.group ?? ""}:${w.minutes ?? 0}`;
+
+function hold(w: UsageWindow): void {
+  const key = heldKey(w);
+  claudeHeld!.windows.set(key, newerWindow(claudeHeld!.windows.get(key), w));
+}
+
+/**
+ * 모델별 주간 한도(Fable 등)는 statusLine 에 실려 오지 않는다. 사용자의 statusLine 스크립트가 60초마다 usage API 를 불러
+ * 남겨 두는 응답을 읽는다 — Antigravity 칩처럼, 그 스크립트가 없으면 이 창도 없다.
+ * 설정 폴더나 한도 파일을 돌려 띄운 서버(시험·그림 찍기)는 이 PC 의 실제 응답을 읽지 않는다.
+ */
+function claudeUsageCachePath(): string | undefined {
+  if (process.env.AGENT_WORLD_CLAUDE_USAGE) return process.env.AGENT_WORLD_CLAUDE_USAGE;
+  if (process.env.AGENT_WORLD_CLAUDE_LIMITS || process.env.CLAUDE_CONFIG_DIR) return undefined;
+  return join(process.env.XDG_RUNTIME_DIR || join(homedir(), ".cache"), "claude-statusline", "statusline-usage-cache.json");
+}
+
+/** usage API 응답의 창들. 모델별 한도는 모델 이름을 묶음으로 단다. */
+async function claudeUsageCache(): Promise<UsageWindow[]> {
+  const path = claudeUsageCachePath();
+  if (!path) return [];
+  if (!process.env.AGENT_WORLD_CLAUDE_USAGE) {
+    const dir = await lstat(join(path, "..")).catch(() => undefined);
+    if (!dir?.isDirectory() || dir.uid !== process.getuid?.()) return [];
+  }
+  const got = await smallJson(path);
+  if (!got) return [];
+  const at = (v: unknown): number | undefined => {
+    const t = Date.parse(str(v) ?? "");
+    return Number.isFinite(t) ? t : undefined;
+  };
+  const windows: UsageWindow[] = [];
+  for (const [key, minutes] of [["five_hour", 300], ["seven_day", 7 * 1440]] as const) {
+    const w = isRecord(got.body[key]) ? got.body[key] : undefined;
+    const made = window(num(w?.utilization), at(w?.resets_at), minutes);
+    if (made) windows.push(made);
+  }
+  for (const limit of Array.isArray(got.body.limits) ? got.body.limits : []) {
+    if (!isRecord(limit) || limit.kind !== "weekly_scoped") continue;
+    const model = isRecord(limit.scope) && isRecord(limit.scope.model) ? str(limit.scope.model.display_name)?.trim() : undefined;
+    const made = model ? window(num(limit.percent), at(limit.resets_at), 7 * 1440, model) : undefined;
+    if (made) windows.push(made);
+  }
+  return windows;
 }
 
 async function readClaude(): Promise<Reading | undefined> {
@@ -116,9 +163,14 @@ async function readClaude(): Promise<Reading | undefined> {
     const w = isRecord(limits[key]) ? limits[key] : undefined;
     const resets = num(w?.resets_at);
     const made = window(num(w?.used_percentage), resets === undefined ? undefined : resets * 1000, minutes);
-    if (made) claudeHeld.windows.set(minutes, newerWindow(claudeHeld.windows.get(minutes), made));
+    if (made) hold(made);
   }
-  const windows = [...claudeHeld.windows.values()].sort((a, b) => (a.minutes ?? 0) - (b.minutes ?? 0));
+  // 그 응답에는 계정이 적혀 있지 않다. 계정을 확인한 창과 초기화 시각이 같을 때만 같은 계정·같은 창의 것으로 본다.
+  const cached = await claudeUsageCache().catch(() => []);
+  const same = cached.some((w) => !w.group && w.resetsAt !== undefined && claudeHeld?.windows.get(heldKey(w))?.resetsAt === w.resetsAt);
+  if (same) for (const w of cached) hold(w);
+  // 모델 묶음이 없는 창(5시간·7일)이 먼저, 그 안에서는 짧은 창부터.
+  const windows = [...claudeHeld.windows.values()].sort((a, b) => (a.group ? 1 : 0) - (b.group ? 1 : 0) || (a.minutes ?? 0) - (b.minutes ?? 0));
   return windows.length > 0 ? { plan: account.plan, windows, at: got.mtimeMs } : undefined;
 }
 

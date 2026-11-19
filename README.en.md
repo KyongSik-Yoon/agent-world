@@ -203,7 +203,7 @@ file is read again; account emails and ids are never sent to the page.
 
 | Harness | Plan and usage from |
 | --- | --- |
-| Claude Code | `~/.herdr/statusline-last.json`, left by the herdr web UI's status-line capture (5h and 7d windows). The plan name comes from the account in `~/.claude.json`, and usage is shown only when both files name the same account. |
+| Claude Code | `~/.herdr/statusline-last.json`, left by the herdr web UI's status-line capture (5h and 7d windows). The plan name comes from the account in `~/.claude.json`, and usage is shown only when both files name the same account. Per-model weekly limits such as Fable appear only if your status-line script leaves the usage API response at `$XDG_RUNTIME_DIR/claude-statusline/statusline-usage-cache.json`. |
 | Codex | `rate_limits` on the `token_count` rows of the session log (windows and plan), from the most recently used session. |
 | Antigravity | `/tmp/agy-statusline-<uid>/last-payload.json`, only if your status-line script leaves what it receives there. Antigravity does not write this file itself, so without such a script it does not appear. |
 
@@ -240,7 +240,8 @@ docs/     the homepage (index.html) and screenshots
 `bun run probe` prints the current snapshot as a table without starting the server. `bun run url` prints the address
 (with the key) of the server running for this herdr session. `bun run i18n` checks that every UI string has an English entry.
 
-To try the usage button with made-up values, point `AGENT_WORLD_CLAUDE_LIMITS` at a Claude Code limits file and
+To try the usage button with made-up values, point `AGENT_WORLD_CLAUDE_LIMITS` at a Claude Code limits file (and
+`AGENT_WORLD_CLAUDE_USAGE` at a usage API response for per-model limits),
 `AGENT_WORLD_AGY_PAYLOAD` at an Antigravity payload (Claude Code's shows only when the account matches
 `CLAUDE_CONFIG_DIR/.claude.json`). A server started with `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `AGY_HOME` pointing at
 empty folders reads none of this machine's real usage.

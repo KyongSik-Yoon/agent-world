@@ -6,7 +6,7 @@
 
 id = "kyongsik-yoon.agent-world"
 name = "Agent World"
-version = "0.2.12"
+version = "0.2.13"
 min_herdr_version = "0.9.5"
 description = "A 3D village for your coding agents: see who is working, done or waiting on you, talk to them, answer prompts and build new workspaces from the browser."
 platforms = ["linux", "macos"]
