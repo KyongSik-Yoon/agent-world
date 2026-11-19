@@ -1087,6 +1087,11 @@ kbd {
   flex-wrap: wrap;
 }
 
+/* 큰 단추는 남는 폭을 채우되 여기까지만. 휴대폰 폭에서는 닿지 않아 그대로 꽉 차고, 넓은 창에서는 막대처럼 늘어나지 않는다. */
+.actions:has(> .tools) > .btn {
+  max-width: 220px;
+}
+
 .actions > .tools {
   display: flex;
   gap: 4px;
