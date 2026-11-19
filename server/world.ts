@@ -9,9 +9,10 @@ import { agy } from "./adapters/agy.ts";
 import { claude } from "./adapters/claude.ts";
 import { codex } from "./adapters/codex.ts";
 import type { Harness, LogFile } from "./adapters/types.ts";
-import { AskingPanes } from "./asking.ts";
+import { AskingPanes, type Card } from "./asking.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Text } from "./text.ts";
+import { planMtime, planPathIn, readPlan, type PlanText } from "./plan.ts";
 import { NameStore, SeenStore } from "./seen.ts";
 import { activityText, currentPending, oneLine, refOf, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
@@ -93,6 +94,8 @@ export class World {
   private readonly names = new NameStore();
   /** herdr 는 working 이라 하지만 카드를 띄워 답을 기다리는 pane 들. */
   private readonly asking = new AskingPanes();
+  /** 플랜 승인 카드가 떠 있는 pane 의 플랜 파일. 카드(세션·뜬 시각)마다 한 번 로그에서 찾고, 못 찾은 것도 적어 다시 찾지 않는다. */
+  private readonly plans = new Map<string, { card: string; path: string | undefined }>();
   /** herdr pane 안에서 돌던 세션을 마지막으로 본 시각. pane 을 닫은 세션이 "herdr 밖 세션"으로 되살아나지 않게 한다. */
   private readonly lastInHerdr = new Map<string, number>();
   /** 완료 상태인 pane 의 herdr 상태 변경 번호 — 확인 기록을 남길 때 쓴다. */
@@ -186,7 +189,7 @@ export class World {
     return s;
   }
 
-  private async paneView(pane: HerdrPane, snap: HerdrSnapshot, asking: ReadonlySet<string>): Promise<AgentView> {
+  private async paneView(pane: HerdrPane, snap: HerdrSnapshot, asking: ReadonlyMap<string, Card>): Promise<AgentView> {
     const ws = snap.workspaces.find((w) => w.workspace_id === pane.workspace_id);
     const tab = snap.tabs.find((t) => t.tab_id === pane.tab_id);
     const vendor = (pane.agent ?? "unknown").toLowerCase();
@@ -249,10 +252,12 @@ export class World {
 
     // 상태는 herdr 가 정본이다. 하나만 덧쓴다: desk-look·desk-plan 이 엔진 대화상자 대신 띄운 카드는 도구가 도는 중이라
     // herdr 가 working 으로 본다. 그 카드가 답을 기다리는 것을 desk-look 의 표식 파일로 확인했으면 확인 필요로 올린다(asking.ts).
-    if (status === "working" && asking.has(pane.pane_id)) {
+    const card = asking.get(pane.pane_id);
+    if (status === "working" && card) {
       status = "blocked";
       view.statusSource = "card";
     }
+    if (card?.plan) view.plan = await this.planOf(pane.pane_id, card, view.sessionId);
     // 갓 띄운 Claude 의 첫 턴은 PC 가 바쁘면 Enter 뒤 몇 초에서 수십 초가 지나서야 시작한다(SessionStart 훅 등). 그동안
     // herdr 가 읽는 작업 표시(제목 스피너, esc to interrupt)가 빠지는 틈이 생겨 herdr 는 working → done(또는 idle) → working 으로
     // 오간다 — 새 주민이 "다 했어요" 하고 뛰쳐나갔다가 돌아온다. desk-look 이 스피너 줄을 바꿔 그리면 그 틈이 넓어진다.
@@ -412,7 +417,8 @@ export class World {
       }
       for (const tab of snap.tabs) tabs.push({ id: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? "", number: tab.number ?? 0 });
 
-      const asking = snap.agents.some((p) => p.agent_status === "working") ? await this.asking.check() : new Set<string>();
+      const asking = snap.agents.some((p) => p.agent_status === "working") ? await this.asking.check() : new Map<string, Card>();
+      for (const paneId of this.plans.keys()) if (!asking.get(paneId)?.plan) this.plans.delete(paneId);
       const views = await Promise.all(snap.agents.filter((p) => p.agent).map((p) => this.paneView(p, snap, asking)));
       for (const view of views) {
         agents.push(view);
@@ -528,6 +534,25 @@ export class World {
     if (kind === "tab") return snap.tabs.some((t) => t.tab_id === id);
     if (kind === "agent") return snap.agents.some((p) => p.pane_id === id && p.agent);
     return snap.panes.some((p) => p.pane_id === id);
+  }
+
+  /** 플랜 승인 카드가 뜬 pane 의 플랜 파일이 고쳐진 시각. 파일을 찾지 못했으면 undefined. */
+  private async planOf(paneId: string, card: Card, sessionId: string | undefined): Promise<number | undefined> {
+    const session = card.sessionId ?? sessionId;
+    const key = `${session}|${card.since}`;
+    let found = this.plans.get(paneId);
+    if (found?.card !== key) {
+      const log = session ? await claude.resolve(session) : null;
+      found = { card: key, path: log ? await planPathIn(log) : undefined };
+      this.plans.set(paneId, found);
+    }
+    return found.path ? planMtime(found.path) : undefined;
+  }
+
+  /** 승인을 기다리는 플랜의 글. 화면은 에이전트만 가리키고, 어느 파일인지는 서버가 정한다. 카드가 내려갔으면 undefined. */
+  async planText(agentId: string): Promise<PlanText | undefined> {
+    const path = this.plans.get(agentId)?.path;
+    return path ? readPlan(path) : undefined;
   }
 
   /** 카드를 띄워 답을 기다리는 중인지 — herdr 가 막아 주지 않으므로 지시를 보내기 전에 따로 묻는다. */

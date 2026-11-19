@@ -17,6 +17,9 @@ import { herdrSocketPath } from "./herdr.ts";
 const HAS_PROC = existsSync("/proc/self/environ");
 
 interface Marker {
+  kind?: unknown;
+  sessionId?: unknown;
+  since?: unknown;
   pane?: unknown;
   socket?: unknown;
   fifo?: unknown;
@@ -55,9 +58,19 @@ async function holdsPane(pid: number, pane: string): Promise<boolean> {
   }
 }
 
+/** 떠 있는 카드 하나. */
+export interface Card {
+  /** 플랜 승인 카드인지(desk-plan) — 아니면 질문 카드다. */
+  plan: boolean;
+  /** 카드를 띄운 세션. */
+  sessionId?: string;
+  /** 카드가 뜬 시각(ms) — 같은 pane 에 뜬 카드들을 가린다. */
+  since?: number;
+}
+
 /** 지금 카드를 띄워 답을 기다리는 pane 들. 이 서버가 붙은 herdr 세션의 pane 만 — pane id 는 세션마다 따로 매긴다. */
-async function scan(socket: string): Promise<Set<string>> {
-  const found = new Set<string>();
+async function scan(socket: string): Promise<Map<string, Card>> {
+  const found = new Map<string, Card>();
   await Promise.all(
     markerDirs().map(async (dir) => {
       let names: string[];
@@ -72,7 +85,7 @@ async function scan(socket: string): Promise<Set<string>> {
             const m = JSON.parse(await readFile(join(dir, name), "utf8")) as Marker;
             if (typeof m.pane !== "string" || typeof m.socket !== "string" || typeof m.fifo !== "string" || typeof m.pid !== "number") return;
             if (resolve(m.socket) !== socket || !(await holdsPane(m.pid, m.pane)) || !(await isFifo(m.fifo))) return;
-            found.add(m.pane);
+            found.set(m.pane, { plan: m.kind === "plan", sessionId: typeof m.sessionId === "string" ? m.sessionId : undefined, since: typeof m.since === "number" ? m.since : undefined });
           } catch {
             // 쓰는 중이거나 그 사이에 지워졌다.
           }
@@ -84,10 +97,10 @@ async function scan(socket: string): Promise<Set<string>> {
 }
 
 export class AskingPanes {
-  private running: Promise<ReadonlySet<string>> | undefined;
+  private running: Promise<ReadonlyMap<string, Card>> | undefined;
 
   /** 카드를 띄워 놓고 답을 기다리는 pane 들. 동시에 부르면 한 번만 읽는다. */
-  check(): Promise<ReadonlySet<string>> {
+  check(): Promise<ReadonlyMap<string, Card>> {
     this.running ??= scan(resolve(herdrSocketPath())).finally(() => {
       this.running = undefined;
     });

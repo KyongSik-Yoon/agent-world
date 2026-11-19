@@ -2117,6 +2117,109 @@ body[data-covered] :is(#world, #topbar, #roster, #detail) * {
   color: var(--blocked) !important;
 }
 
+/* ── 플랜 읽기 창 ─────────────────────────────────────────────────── */
+
+dialog.dlg.plan-dlg {
+  width: min(860px, 94vw);
+  height: 88dvh;
+  overflow: hidden;
+}
+
+dialog.dlg.plan-dlg[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.plan-dlg header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.plan-dlg header > .ico {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.plan-dlg .names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.plan-dlg .names b {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-dlg .names span {
+  color: var(--ink-3);
+  font: 11.5px var(--mono);
+}
+
+/* 응답 글과 같은 그림(.prose)을 읽기 좋은 크기로 키운다 — 좁은 상태 창이 아니라 화면 가운데의 넓은 창이다. */
+.prose.plan-body {
+  flex: 1;
+  min-height: 0;
+  padding: 18px 24px 22px;
+  border-radius: 0;
+  background: none;
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-size: 14px;
+  line-height: 1.65;
+  user-select: text;
+}
+
+.prose.plan-body:focus {
+  outline: none;
+}
+
+.prose.plan-body .h1 {
+  font-size: 1.5em;
+  line-height: 1.3;
+}
+
+.prose.plan-body .h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.22em;
+}
+
+.prose.plan-body .h3 {
+  font-size: 1.06em;
+}
+
+.prose.plan-body > .h:not(:first-child) {
+  margin-top: 1.5em;
+}
+
+.prose.plan-body code {
+  font-size: 0.88em;
+}
+
+.prose.plan-body table {
+  font-size: 0.92em;
+}
+
+.prose.plan-body .plan-wait {
+  color: var(--ink-3);
+}
+
+dialog.dlg p.plan-note {
+  flex: none;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
 .ask .hint {
   margin: 6px 0 0;
   color: var(--ink-3);
@@ -3277,6 +3380,15 @@ dialog.dlg .warn {
     max-height: 100dvh;
     margin: auto 0 0;
     border-radius: 16px 16px 0 0;
+  }
+
+  dialog.dlg.plan-dlg {
+    width: 100vw;
+    height: 94dvh;
+  }
+
+  .prose.plan-body {
+    padding: 14px 16px 18px;
   }
 
   .plot-sign {

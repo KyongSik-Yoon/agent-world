@@ -54,6 +54,11 @@ export const en: Record<string, string> = {
   "여기에 치면 터미널로 들어갑니다": "Type here to send to the terminal",
   "지금 화면으로": "Live view",
   "지난 출력 보기": "Scrollback",
+  "플랜 읽기": "Read plan",
+  "플랜 — {title}": "Plan — {title}",
+  "플랜을 읽는 중…": "Loading the plan…",
+  "플랜을 읽지 못했습니다.": "Couldn't load the plan.",
+  "읽기만 하는 창입니다. 승인하거나 고치려면 닫고 터미널에서 답하세요.": "This view is read-only. To approve or revise, close it and answer in the terminal.",
 
   // ── 집 짓기·새 주민 대화상자 ──
   "취소": "Cancel",

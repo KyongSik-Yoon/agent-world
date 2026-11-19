@@ -85,7 +85,10 @@ Worth knowing:
   text. Files older than seven days are removed.
 - **Question cards count as needs input.** While a desk-look or desk-plan question or plan card waits for an answer,
   herdr still reports the agent as working; Agent World reads the marker file the card leaves and shows it as needs
-  input (desk-look 0.81.5 or later).
+  input (desk-look 0.81.5 or later). A plan card also gets a `Read plan` button on its status-window card and in the
+  header of the large terminal: the terminal shows the plan clipped in a side pane, so the button fetches the plan
+  file and shows it as formatted text (headings, tables, code). The view is read-only — keys pressed in it do not
+  reach the terminal — follows the file as the agent revises it, and closes once the plan is answered.
 - **Another PWA on the same host's default port can take the notifications.** Seen on Android Chrome: with another
   app installed from the same tailnet address on port 443, notifications appeared under that app's name. Moving that
   app to another port, removing it from the phone and turning the bell on again fixed it.

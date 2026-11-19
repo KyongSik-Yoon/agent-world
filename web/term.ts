@@ -1469,6 +1469,7 @@ export class TermOverlay {
   private readonly title = document.createElement("b");
   private readonly sub = document.createElement("span");
   private readonly backBtn = document.createElement("button");
+  private readonly planBtn = document.createElement("button");
   private readonly screen = new TermScreen({ live: true });
   private readonly ime = document.createElement("textarea");
   private readonly body = document.createElement("div");
@@ -1498,6 +1499,8 @@ export class TermOverlay {
   onGone: ((title: string) => void) | undefined;
   /** 열리고 닫힐 때 알린다 — 열려 있는 동안에는 뒤의 월드가 가려진다. */
   onToggle: ((open: boolean) => void) | undefined;
+  /** 머리줄의 플랜 읽기 단추를 눌렀다. */
+  onPlan: ((paneId: string) => void) | undefined;
 
   constructor() {
     this.root.id = "term-overlay";
@@ -1509,6 +1512,11 @@ export class TermOverlay {
     this.backBtn.type = "button";
     this.backBtn.className = "btn";
     this.backBtn.addEventListener("click", () => this.toggleBack());
+    this.planBtn.type = "button";
+    this.planBtn.className = "btn";
+    this.planBtn.hidden = true;
+    this.planBtn.append(icon("file"), Object.assign(document.createElement("span"), { textContent: t("플랜 읽기") }));
+    this.planBtn.addEventListener("click", () => this.onPlan?.(this.screen.pane));
     const close = document.createElement("button");
     close.type = "button";
     close.className = "btn icon";
@@ -1519,7 +1527,7 @@ export class TermOverlay {
     const names = document.createElement("div");
     names.className = "names";
     names.append(this.title, this.sub);
-    head.append(names, hint, this.backBtn, close);
+    head.append(names, hint, this.planBtn, this.backBtn, close);
 
     const soft = document.createElement("div");
     soft.className = "soft-keys";
@@ -1671,6 +1679,21 @@ export class TermOverlay {
 
   get isOpen(): boolean {
     return !this.root.hidden;
+  }
+
+  /** 보고 있는 pane. */
+  get pane(): string {
+    return this.screen.pane;
+  }
+
+  /** 이 pane 이 플랜 승인을 기다리는지 — 그동안 머리줄에 플랜 읽기 단추를 둔다. */
+  setPlan(on: boolean): void {
+    this.planBtn.hidden = !on;
+  }
+
+  /** 입력을 다시 터미널로 돌린다(위에 떴던 창이 닫힌 뒤). */
+  focus(): void {
+    if (!this.root.hidden) this.ime.focus();
   }
 
   open(paneId: string, title: string, sub: string, cols: number | undefined): void {

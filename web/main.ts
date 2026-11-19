@@ -10,6 +10,7 @@ import { Hud } from "./hud.ts";
 import { lang, localizeStatic, t, setLang } from "./i18n.ts";
 import { acceptKey, withKey } from "./key.ts";
 import { swipeToClose } from "./sheet.ts";
+import { PlanReader } from "./plan.ts";
 import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
@@ -77,6 +78,14 @@ terminal.onToggle = (open) => {
   syncBack();
 };
 
+// 승인을 기다리는 플랜을 읽는 창. 크게 보기 위에 뜨고, 닫히면 입력을 다시 터미널로 돌린다.
+const planReader = new PlanReader();
+planReader.onClose = () => terminal.focus();
+terminal.onPlan = (paneId) => {
+  const agent = hud.latest?.agents.find((a) => a.paneId === paneId);
+  if (agent) planReader.open(agent);
+};
+
 const builder = new Builder({
   snapshot: () => hud.latest,
   select: (id) => select(id),
@@ -123,6 +132,7 @@ function openTerminal(paneId: string): void {
   const agent = snap?.agents.find((a) => a.paneId === paneId);
   const ws = snap?.workspaces.find((w) => w.id === pane?.workspaceId);
   terminal.open(paneId, agent?.title ?? pane?.label ?? pane?.title ?? paneId, `${ws ? `${ws.number} · ${ws.label} · ` : ""}${paneId}`, pane?.cols);
+  terminal.setPlan(agent?.plan !== undefined);
 }
 
 function act(action: Action): void {
@@ -138,6 +148,9 @@ function act(action: Action): void {
       break;
     case "terminal":
       openTerminal(action.paneId);
+      break;
+    case "plan":
+      planReader.open(action.agent);
       break;
     case "new-agent":
       builder.newAgent(action.workspaceId, action.paneId);
@@ -395,6 +408,8 @@ function show(snapshot: WorldSnapshot): void {
   announce(snapshot);
   scene.sync(snapshot);
   hud.update(snapshot);
+  if (terminal.isOpen) terminal.setPlan(snapshot.agents.some((a) => a.paneId === terminal.pane && a.plan !== undefined));
+  planReader.sync(snapshot.agents);
   builder.observe(snapshot);
   selectWanted(snapshot);
   buildBtn.hidden = !snapshot.herdr || !snapshot.control;

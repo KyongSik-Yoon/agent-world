@@ -57,6 +57,8 @@ export interface AgentView {
   compacted?: boolean;
   /** 아직 결과가 오지 않은 마지막 도구 호출. */
   pending?: PendingRequest;
+  /** 승인을 기다리는 플랜 파일이 마지막으로 고쳐진 시각(ms). 있으면 `/api/plan` 으로 그 글을 읽을 수 있다. */
+  plan?: number;
   focused: boolean;
   cwd: string;
   sessionId?: string;

@@ -17,6 +17,7 @@ export type Action =
   | { type: "select"; id: string | null }
   | { type: "open-herdr"; agent: AgentView }
   | { type: "terminal"; paneId: string }
+  | { type: "plan"; agent: AgentView }
   | { type: "new-agent"; workspaceId: string; paneId?: string }
   | { type: "new-tab"; workspaceId: string }
   | { type: "split"; paneId: string; direction: "right" | "down" }
@@ -624,7 +625,9 @@ export class DetailPanel {
   /** 확인 필요: 무엇을 묻는지 — 로그에 남은 요청과, 화면에 떠 있는 대화상자를 함께 보여 준다. */
   private askCard(a: AgentView): HTMLElement {
     const big = this.button(t("크게 보기"), () => this.callbacks.act({ type: "terminal", paneId: a.paneId! }), { cls: "", icon: "expand" });
-    const card = h("section", { class: "ask" }, h("h3", {}, t("답을 기다리고 있어요"), big));
+    // 플랜 승인 카드면 플랜 글을 따로 읽는 창을 연다 — 터미널에는 옆 창에 잘려 보인다.
+    const plan = a.plan ? this.button(t("플랜 읽기"), () => this.callbacks.act({ type: "plan", agent: a }), { cls: "", icon: "file" }) : null;
+    const card = h("section", { class: "ask" }, h("h3", {}, t("답을 기다리고 있어요"), plan, big));
     if (a.pending) card.append(this.pendingBlock(a.pending));
     card.append(this.preview.el, h("p", { class: "hint" }, this.snapshot?.control ? t("대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 크게 보기에서 직접 입력하세요.") : t("보기 전용이라 여기서는 답할 수 없습니다. herdr 에서 열어 답해 주세요.")));
     return card;

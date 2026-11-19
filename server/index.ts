@@ -21,6 +21,7 @@ import { L, defaultLang, langOf, say } from "./text.ts";
 import { World } from "./world.ts";
 
 const NO_PANE = L("그 pane 은 지금 herdr 에 없습니다.", "That pane no longer exists in herdr.");
+const NO_PLAN = L("승인을 기다리는 플랜이 없습니다.", "There is no plan waiting for approval.");
 const NO_ACTIVITY = L("그 활동은 이제 로그에서 찾을 수 없습니다.", "That activity can no longer be found in the log.");
 
 /** 포트를 직접 정해 줬는지. 정해 줬으면 그 포트만 쓰고, 아니면 이 herdr 세션의 자리부터 빈 포트를 찾는다. */
@@ -523,6 +524,17 @@ const listen = (at: number) =>
           const n = Number(params.get("n") ?? 0);
           const text = await world.activityText(params.get("agent") ?? "", params.get("at") ?? "", params.get("text") ?? "", Number.isInteger(n) && n >= 0 ? n : 0);
           return text === undefined ? json({ error: say(NO_ACTIVITY, langOf(req)) }, 404) : json({ text });
+        } catch (e) {
+          return json({ error: (e as Error).message }, 500);
+        }
+      }),
+    },
+    // 승인을 기다리는 플랜 파일의 글 — 터미널의 옆 창에는 잘려 보이므로 화면이 따로 받아 그린다.
+    "/api/plan": {
+      GET: guarded(async (req) => {
+        try {
+          const plan = await world.planText(new URL(req.url).searchParams.get("agent") ?? "");
+          return plan ? json(plan) : json({ error: say(NO_PLAN, langOf(req)) }, 404);
         } catch (e) {
           return json({ error: (e as Error).message }, 500);
         }
