@@ -19,12 +19,13 @@ export interface SceneCallbacks {
 
 const FOG: Record<Theme, string> = { day: "#CBE7F6", night: "#161B33" };
 
-/** 한 프레임에 칠할 화소 수의 상한. 4K 창에서 화소마다 그림자를 계산하면 내장 그래픽이 버티지 못한다. */
+/**
+ * 한 프레임에 칠할 화소 수의 상한. 4K 창에서 화소마다 그림자를 계산하면 내장 그래픽이 버티지 못한다.
+ * 그리는 시간을 보고 해상도를 오르내리던 조절은 걷어냈다: 그 시간은 화소 수가 아니라 다른 프로그램의 부하를 따라
+ * 움직여서(배율 1.0·0.6 을 번갈아 재도 차이가 부하 변동에 묻혔다), 다른 일로 바쁠 때마다 화면만 흐려졌다가 3초마다
+ * 한 단계씩 돌아오며 그때마다 캔버스가 비어 번쩍였다.
+ */
 const MAX_PIXELS = 3.6e6;
-/** 그리는 데 이보다 오래 걸리면 해상도를 한 단계 낮추고, 충분히 빠르면 다시 올린다(ms). */
-const SLOW_RENDER_MS = 20;
-const FAST_RENDER_MS = 8;
-const MIN_SCALE = 0.6;
 /**
  * 손대지 않고 켜 둔 동안의 최소 프레임 간격(ms). 종일 띄워 두는 화면이라 평소에는 초당 30장쯤이면 충분하다.
  * 60Hz 화면에서는 두 프레임에 한 번(약 30장)이 되고, 더 느린 주사율에서는 거르지 않는다.
@@ -94,11 +95,6 @@ export class WorldScene {
    */
   private released = false;
   private downAt: { x: number; y: number } | null = null;
-  /** 화면 부하에 따라 조절하는 해상도 배율(1 = 기기 화소 그대로, 상한 안에서). */
-  private scale = 1;
-  private renderMs = 0;
-  private tunedAt = 0;
-  private goodStreak = 0;
   private lastFrameAt = 0;
   /** 쉬는 동안 다음 프레임을 그리려는 때. 0 이면 시각표가 없다(조작 중이거나 방금 깨어났다). */
   private dueAt = 0;
@@ -262,33 +258,10 @@ export class WorldScene {
     this.labelsDirty = 3;
   }
 
-  /** 기기 화소 비율에 부하 배율을 곱하되, 한 프레임의 화소 수가 상한을 넘지 않게 한다. */
+  /** 기기 화소 비율을 따르되, 한 프레임의 화소 수가 상한을 넘지 않게 한다. */
   private pixelRatio(w: number, h: number): number {
     const native = Math.min(window.devicePixelRatio, 2);
-    return Math.min(native, Math.sqrt(MAX_PIXELS / (w * h))) * this.scale;
-  }
-
-  /** 그리는 시간을 보고 해상도 배율을 한 단계씩 조절한다. 올릴 때는 한동안 여유가 이어진 뒤에만. */
-  private tune(now: number): void {
-    // 처음 몇 초는 셰이더를 만드느라 느리다. 그걸 부하로 읽고 해상도를 내리지 않는다.
-    if (this.tunedAt === 0) this.tunedAt = now + 4000;
-    if (now - this.tunedAt < 1000) return;
-    this.tunedAt = now;
-    let next = this.scale;
-    if (this.renderMs > SLOW_RENDER_MS) {
-      next = Math.max(MIN_SCALE, this.scale * 0.85);
-      this.goodStreak = 0;
-    } else if (this.renderMs < FAST_RENDER_MS && this.scale < 1) {
-      this.goodStreak += 1;
-      if (this.goodStreak >= 3) {
-        next = Math.min(1, this.scale * 1.1);
-        this.goodStreak = 0;
-      }
-    } else this.goodStreak = 0;
-    if (next !== this.scale) {
-      this.scale = next;
-      this.resize();
-    }
+    return Math.min(native, Math.sqrt(MAX_PIXELS / (w * h)));
   }
 
   setTheme(theme: Theme): void {
@@ -792,13 +765,7 @@ export class WorldScene {
       this.renderer.shadowMap.needsUpdate = true;
       this.shadowAt = now;
     }
-    // 해상도 배율은 그리기 전에 바꾼다. 캔버스 크기를 다시 쓰면 그려 둔 그림이 지워지므로, 그린 뒤에 바꾸면 다음 장을
-    // 그릴 때까지 빈 캔버스가 화면에 나간다 — 섬이 통째로 사라졌다 돌아오는 번쩍임(곁눈질 화면이면 0.3초).
-    this.tune(now);
-    const startedAt = performance.now();
     this.renderer.render(this.scene, this.camera);
-    // 어쩌다 한 번 튀는 프레임(셰이더 컴파일, 탭 전환)에 끌려가지 않게 표본을 눌러 담는다.
-    this.renderMs += (Math.min(performance.now() - startedAt, 60) - this.renderMs) * 0.1;
     // 이름표(DOM)는 카메라나 캐릭터가 움직였을 때만 다시 놓는다. 가만히 있는 동안 매 프레임 위치와 겹침 순서를
     // 다시 쓰면 그리는 것보다 스타일 계산이 더 든다.
     const cameraMoved = !this.lastCamera.equals(this.camera.matrixWorld);
