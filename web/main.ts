@@ -39,17 +39,6 @@ localizeStatic();
 }
 
 let selectedId: string | null = null;
-/** 지금 고른 것을 고른 시각 — 얼마나 들여다봤는지 잰다. */
-let selectedAt = 0;
-
-/** 이 탭이 마지막으로 화면에 드러난 시각. */
-let visibleSince = Date.now();
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") visibleSince = Date.now();
-});
-
-/** 완료를 읽었다고 치는 데 필요한, 상태 창을 열어 둔 최소 시간. 스친 클릭은 치지 않는다. */
-const READ_MS = 1500;
 
 const scene = new WorldScene(document.getElementById("world")!, {
   onSelect: (id) => select(id),
@@ -101,15 +90,7 @@ function select(id: string | null): void {
     if (id) scene.select(id);
     return;
   }
-  // 완료한 에이전트의 상태 창을 들여다보다 떠나면, 읽은 것으로 적는다. 들여다본 시간은 "완료된 결과가
-  // 눈앞에 보이던 동안"만 센다 — 고른 뒤에 끝났거나, 창을 가려 둔 사이에 끝난 것은 아직 읽지 않은 것이다.
-  const left = hud.selected;
-  if (left?.status === "done" && left.paneId && document.visibilityState === "visible") {
-    const readSince = Math.max(selectedAt, left.statusSince, visibleSince);
-    if (Date.now() - readSince >= READ_MS) markSeen(left, false);
-  }
   selectedId = id;
-  selectedAt = Date.now();
   scene.select(id);
   hud.select(id);
   syncBack();
