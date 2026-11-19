@@ -117,7 +117,6 @@ export class DetailPanel {
   private readonly input = h("textarea", { rows: "1", spellcheck: "false" });
   private readonly sendBtn = h("button", { class: "btn primary", type: "button" }, t("보내기"));
   private readonly attachBtn = h("button", { class: "attach", type: "button", title: t("이미지 붙이기 — 입력창에 붙여넣거나 끌어다 놓아도 됩니다"), "aria-label": t("이미지 붙이기") }, icon("plus"));
-  private readonly skillBtn = h("button", { class: "attach", type: "button", title: t("스킬 고르기 — 입력창에 / 를 쳐도 됩니다"), "aria-label": t("스킬 고르기") }, icon("slash"));
   private readonly skillPop = h("div", { class: "skill-pop", role: "listbox", "aria-label": t("스킬"), hidden: "" });
   /** 스킬을 고를 수 있는 에이전트(지금은 Claude Code 만). */
   private skillAgent: string | null = null;
@@ -129,7 +128,6 @@ export class DetailPanel {
   /** 목록을 거른 글자(빗금 뒤, 소문자). */
   private skillQuery = "";
   /** 쓰던 글이 있을 때 단추로 연 목록 — 거르지 않고 다 보이며, 고른 스킬을 그 글 앞에 붙인다. */
-  private skillAll = false;
   private readonly note = h("div", { class: "dock-note" });
   /** 보낼 말에 붙인 이미지들. id 는 서버가 맡아 준 뒤에 생긴다. */
   private readonly shotsEl = h("div", { class: "shots", hidden: "" });
@@ -224,8 +222,7 @@ export class DetailPanel {
     });
     this.input.addEventListener("blur", () => this.closeSkills());
     // 단추와 목록을 누르는 동안 입력창이 초점을 잃어 목록이 먼저 닫히지 않게 한다.
-    for (const el of [this.skillBtn, this.skillPop]) el.addEventListener("pointerdown", (e) => e.preventDefault());
-    this.skillBtn.addEventListener("click", () => this.toggleSkills());
+    this.skillPop.addEventListener("pointerdown", (e) => e.preventDefault());
     // 상태 창 폭이 바뀌면 줄바꿈이 달라지므로 높이를 다시 맞춘다(높이 변화에는 반응하지 않는다).
     // 관찰 콜백 안에서 크기를 바꾸면 관찰 고리 오류가 나므로 다음 프레임에 맞춘다.
     let inputWidth = 0;
@@ -266,7 +263,7 @@ export class DetailPanel {
       picker.value = "";
     });
     this.attachBtn.addEventListener("click", () => picker.click());
-    this.dock.append(this.quick, this.shotsEl, h("div", { class: "compose" }, h("div", { class: "lead" }, this.attachBtn, this.skillBtn), this.input, this.sendBtn, this.skillPop), picker, this.note);
+    this.dock.append(this.quick, this.shotsEl, h("div", { class: "compose" }, this.attachBtn, this.input, this.sendBtn, this.skillPop), picker, this.note);
     this.root.replaceChildren(this.head, this.body, this.dock, this.grip());
     this.preview.el.classList.add("preview");
     this.preview.el.title = t("눌러서 크게 보기");
@@ -505,7 +502,6 @@ export class DetailPanel {
     else if (pane && control) this.setDock({ paneId: pane.id, agent: false });
     else this.setDock(null);
     this.skillAgent = agent?.paneId && control && agent.vendor === "claude" ? agent.id : null;
-    this.skillBtn.hidden = this.skillAgent === null;
     if (this.skillAgent === null) this.closeSkills();
     if (agent) this.confirmDelivery(agent);
   }
@@ -532,11 +528,10 @@ export class DetailPanel {
   private updateSkills(): void {
     const typed = /^\/(\S*)$/.exec(this.input.value)?.[1];
     const agent = this.skillAgent;
-    if (!agent || (typed === undefined && !this.skillAll)) return this.closeSkills();
-    if (typed !== undefined) this.skillAll = false;
+    if (!agent || typed === undefined) return this.closeSkills();
     const cached = this.skillCache.get(agent);
     if (!cached || Date.now() - cached.at > SKILLS_TTL_MS) this.loadSkills(agent);
-    const query = (typed ?? "").toLowerCase();
+    const query = typed.toLowerCase();
     const rank = (s: SkillView): number => {
       const name = s.name.toLowerCase();
       if (name === query) return 0;
@@ -600,27 +595,16 @@ export class DetailPanel {
   }
 
   private closeSkills(): void {
-    this.skillAll = false;
     if (this.skillPop.hidden) return;
     this.skillPop.hidden = true;
     this.skillPop.replaceChildren();
     this.input.setAttribute("aria-expanded", "false");
   }
 
-  /** 단추: 빈 입력창이면 `/` 를 넣어 치면서 거르게 하고, 쓰던 글이 있으면 그대로 두고 다 보인다. */
-  private toggleSkills(): void {
-    if (!this.skillPop.hidden) return this.closeSkills();
-    this.input.focus();
-    if (this.input.value.trim() === "") this.setInput("/");
-    else if (!this.input.value.startsWith("/")) this.skillAll = true;
-    this.updateSkills();
-  }
-
-  /** 고른 스킬을 입력창 맨 앞에 넣는다. 보내지는 않는다 — 대개 뒤에 할 일을 적는다. 쓰던 글은 그 뒤에 남긴다. */
+  /** 고른 스킬을 입력창 맨 앞에 넣는다. 보내지는 않는다 — 대개 뒤에 할 일을 적는다. */
   private chooseSkill(s: SkillView): void {
-    const rest = this.input.value.replace(/^\/\S*\s*/, "");
     this.closeSkills();
-    this.setInput(`/${s.name} ${rest}`);
+    this.setInput(`/${s.name} `);
     this.input.focus();
     this.input.setSelectionRange(this.input.value.length, this.input.value.length);
   }

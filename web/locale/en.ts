@@ -228,8 +228,6 @@ export const en: Record<string, string> = {
   // ── 상태 창: 입력 ──
   "하던 일 멈추기 / 대화상자 닫기": "Interrupt / close dialog",
   "멈추기": "Stop",
-  "스킬 고르기 — 입력창에 / 를 쳐도 됩니다": "Pick a skill — or type / in the input",
-  "스킬 고르기": "Pick a skill",
   "스킬": "Skills",
   "스킬 목록을 읽는 중…": "Reading the skill list…",
   "이 세션에서 찾은 스킬이 없습니다.": "No skills found for this session.",

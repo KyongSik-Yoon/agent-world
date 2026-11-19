@@ -2606,9 +2606,8 @@ dialog.dlg p.plan-note {
   row-gap: 2px;
 }
 
-.compose .lead {
+.compose .attach {
   grid-area: plus;
-  display: flex;
 }
 
 .compose .btn {
