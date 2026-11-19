@@ -136,7 +136,9 @@ async function scan(file: Handle, before: number, reader: LogReader<LogSummary>)
     const buf = carry.length ? Buffer.concat([chunk, carry]) : chunk;
     // 덩어리의 첫 줄은 앞이 잘렸을 수 있다 — 한도의 바닥에 닿기 전에는 다음 덩어리에 붙여 본다.
     const head = start === floor ? 0 : buf.indexOf(NL) + 1;
-    for (let at = buf.lastIndexOf(CALL_MARK); at >= head; at = buf.lastIndexOf(CALL_MARK, at - 1)) {
+    // 다음 찾기는 이 줄의 머리 앞에서 한다. 머리가 0 이면 더 볼 것이 없다 — lastIndexOf 는 음수 위치를 끝에서부터로 읽어
+    // 같은 줄을 다시 찾으므로, 0 에서 1 을 빼 넘기면 끝없이 돈다(이 줄이 덩어리 첫 줄일 때 서버가 통째로 멈췄다).
+    for (let at = buf.lastIndexOf(CALL_MARK); at >= head; at = at > 0 ? buf.lastIndexOf(CALL_MARK, at - 1) : -1) {
       const [from, to] = lineAround(buf, at);
       const line = buf.toString("utf8", from, to);
       try {
