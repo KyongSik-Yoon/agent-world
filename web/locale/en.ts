@@ -227,6 +227,11 @@ export const en: Record<string, string> = {
 
   // ── 상태 창: 입력 ──
   "하던 일 멈추기 / 대화상자 닫기": "Interrupt / close dialog",
+  "멈추기": "Stop",
+  "멈추는 중…": "Stopping…",
+  "멈췄습니다": "Stopped",
+  "멈추지 못했습니다": "Could not stop it",
+  "하던 일을 멈춥니다 — 터미널에서 Esc 를 누른 것과 같습니다. Claude 는 백그라운드 에이전트도 멈춥니다.": "Stops what it is doing — the same as pressing Esc in the terminal. For Claude, background agents stop too.",
   "위": "Up",
   "아래": "Down",
   "{key} 누르기": "Press {key}",

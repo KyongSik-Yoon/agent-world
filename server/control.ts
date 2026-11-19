@@ -64,6 +64,15 @@ const SUBMIT_CHECK_MS = 20_000;
 const SUBMIT_POLL_MS = 100;
 /** 플랜 승인 키를 보낸 뒤 카드가 내려가기를(desk-plan 이 표식 파일을 지우기를) 기다리는 시간. */
 const PLAN_APPROVE_MS = 3_000;
+/** 멈춤 키(Esc)를 보낸 뒤 herdr 가 일하는 중을 벗어나기를 기다리는 시간. 세 하네스 모두 1초 안에 완료로 내려왔다. */
+const STOP_SETTLE_MS = 1_500;
+/** Claude 의 백그라운드 에이전트를 끄고 기다리는 시간. 끈 소식에 답하는 짧은 턴이 이어질 수 있어 조금 넉넉히 둔다. */
+const STOP_AGENTS_MS = 5_000;
+/**
+ * Claude 의 "백그라운드 에이전트 모두 멈추기"(chat:killAgents). 한 번 누르면 "한 번 더 누르면 멈춘다"는 안내만 뜨고 두 번째에
+ * 멈춘다. 돌던 에이전트가 없으면 "No background agents running" 안내만 뜨고 입력창의 글은 그대로다(2.1.328 실측).
+ */
+const KILL_AGENTS = ["ctrl+x", "ctrl+k", "ctrl+x", "ctrl+k"];
 /** Enter 를 누른 뒤 보낸 글이 이만큼 입력창에 남아 있으면 그 Enter 는 버려진 것이다. */
 const SUBMIT_STUCK_MS = 1000;
 const SUBMIT_PRESSES = 3;
@@ -474,6 +483,34 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         keysRefresh = setTimeout(refresh, KEYS_REFRESH_MS);
       },
     ),
+    // 하던 일 멈추기. 키 단추의 Esc 와 달리 지금 일하는 중일 때만 보낸다 — 질문이 떠 있으면 Esc 는 그 질문을 거절한다.
+    // Esc 는 세 하네스(Claude·Codex·agy) 모두 지금 턴을 끊는다. Claude 는 백그라운드 에이전트가 돌면 턴이 끝나도 일하는
+    // 중으로 남아(제목 스피너), 그때는 그 에이전트들도 끈다. 사람이 멈춘 것이라 그 뒤의 완료는 알리지 않는다(stopRequested).
+    "/api/stop": mutate(async (body) => {
+      const paneId = await need("agent", text(body, "paneId"));
+      await refuseIfAsking(paneId);
+      const agent = async () => (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId);
+      const now = await agent();
+      if (now?.agent_status === "blocked") throw new Reject(L("에이전트가 질문에 대한 답을 기다리는 중입니다.", "The agent is waiting for an answer to its question."), 409, "agent_blocked");
+      const working = now?.agent_status === "working";
+      if (!working && !world.holding(paneId)) throw new Reject(L("지금 하는 일이 없습니다. 이미 끝났을 수 있습니다.", "It is not working on anything. It may already have finished."), 409, "not_working");
+      world.stopRequested(paneId, now?.state_change_seq ?? 0, working);
+      const settled = async (ms: number): Promise<boolean> => {
+        for (const until = Date.now() + ms; ; await Bun.sleep(SUBMIT_POLL_MS)) {
+          if ((await agent())?.agent_status !== "working") return true;
+          if (Date.now() > until) return false;
+        }
+      };
+      await herdrInput(paneId, undefined, ["esc"]);
+      poke(paneId);
+      if (await settled(STOP_SETTLE_MS)) return;
+      if (now?.agent === "claude") {
+        await herdrInput(paneId, undefined, KILL_AGENTS);
+        poke(paneId);
+        if (await settled(STOP_AGENTS_MS)) return;
+      }
+      throw new Reject(L("멈춤 키를 보냈지만 아직 일하는 중으로 보입니다. 터미널 화면을 확인해 주세요.", "The stop key was sent but it still looks busy. Check the terminal."), 504, "stop_unconfirmed");
+    }),
     // 플랜 승인 카드의 "Approve and start"(desk-plan 의 1 키). 키 단추로 1 을 보내는 것과 달리, 카드가 아직 떠 있을 때만
     // 보낸다 — 터미널에서 먼저 답해 카드가 내려간 뒤라면 1 이 입력창에 그대로 찍힌다. 보낸 뒤 카드가 내려가는 것까지 본다.
     "/api/plan/approve": mutate(async (body) => {

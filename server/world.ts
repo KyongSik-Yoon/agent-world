@@ -37,6 +37,12 @@ const EXTERNAL_DONE_MS = 10 * 60_000;
  */
 const FIRST_PROMPT_HOLD_MS = 45_000;
 
+/**
+ * 월드에서 멈춘 pane 이 이 안에 완료로 내려오면 확인한 것으로 적는다(stopRequested 참고). Esc 뒤 완료는 1초 안에 오고,
+ * 백그라운드 에이전트를 끄면 Claude 가 그 소식에 답하는 턴을 한 번 더 돈다 — 그것까지 덮는다.
+ */
+const STOP_SEEN_MS = 60_000;
+
 /** pane 이 닫히면서 로그에 마지막 몇 줄이 더 적히는 것을 "다시 움직였다"로 보지 않기 위한 여유. */
 const RETIRED_GRACE_MS = 15_000;
 
@@ -109,6 +115,8 @@ export class World {
   private unread = new Map<string, boolean>();
   /** 월드가 첫 지시를 보낸 pane 과 보낸 시각. 첫 응답이 로그에 적히면 지운다. */
   private readonly firstPrompt = new Map<string, number>();
+  /** 월드에서 멈춘 pane 과 그때의 herdr 상태 번호·시각. 그 뒤의 완료는 사람이 멈춘 것이라 알리지 않는다. */
+  private readonly stopped = new Map<string, { seq: number; at: number }>();
   /**
    * 월드에서 그 세션에만 바꾼 모델·수준. 로그는 다음 응답이 와야 새 모델을 적으므로, 로그가 바꾸기 전의 값(base)을 말하는
    * 동안은 바꾼 값을 보인다. 로그가 무엇이든 다른 값을 말하기 시작하면 로그를 믿는다.
@@ -293,6 +301,10 @@ export class World {
     // 로그의 대기 요청은 확인 필요 카드에 보탤 내용일 뿐, 상태를 바꾸지는 않는다.
     if (status !== "blocked") view.pending = undefined;
     const seq = pane.state_change_seq ?? 0;
+    // 월드에서 멈췄으면 그 뒤의 완료는 새 결과가 아니다 — 주민이 "다 했어요" 하고 뛰어가거나 알림이 가지 않게 확인한 것으로 적는다.
+    const stop = this.stopped.get(pane.pane_id);
+    if (stop && Date.now() - stop.at > STOP_SEEN_MS) this.stopped.delete(pane.pane_id);
+    else if (stop && status === "done" && seq > stop.seq) this.seen.set(pane.pane_id, seq);
     let seen = this.seen.check(pane.pane_id, seq);
     // 컴팩션(대화 요약)도 herdr 에게는 일하다 끝난 것이라 완료로 온다. 로그의 마지막 사건이 컴팩션이면 새 결과가
     // 아니므로 그 전의 모습으로 둔다: 이미 확인했거나 쉬고 있었으면 확인한 것으로, 확인 전의 완료였으면 완료로 두되 알리지 않는다.
@@ -498,6 +510,7 @@ export class World {
       for (const id of this.doneSeq.keys()) if (!alive.has(id)) this.doneSeq.delete(id);
       for (const id of this.unread.keys()) if (!alive.has(id)) this.unread.delete(id);
       for (const id of this.firstPrompt.keys()) if (!alive.has(id)) this.firstPrompt.delete(id);
+      for (const id of this.stopped.keys()) if (!alive.has(id)) this.stopped.delete(id);
       for (const id of this.mainOf.keys()) if (!alive.has(id)) this.mainOf.delete(id);
     }
 
@@ -571,6 +584,21 @@ export class World {
   /** 지시를 보냈다고 적는다. 그 세션의 첫 지시였으면 첫 응답까지 쉬는 것으로 보지 않는다(paneView 참고). */
   promptSent(paneId: string): void {
     this.firstPrompt.set(paneId, Date.now());
+    this.stopped.delete(paneId);
+  }
+
+  /** 첫 지시를 보낸 뒤 첫 응답을 기다리느라 일하는 것으로 붙들고 있는지 — herdr 는 쉰다고 해도 화면에는 작업 중이다. */
+  holding(paneId: string): boolean {
+    return this.firstPrompt.has(paneId);
+  }
+
+  /**
+   * 월드에서 멈추게 했다고 적는다. seq 는 그때 herdr 가 알린 상태 번호다 — 그보다 뒤의 완료를 확인한 것으로 친다.
+   * herdr 가 이미 쉰다고 알린 채 붙들고 있던 pane 이면(holding) 지금의 완료부터 친다. 붙들기도 여기서 끝낸다.
+   */
+  stopRequested(paneId: string, seq: number, working: boolean): void {
+    this.stopped.set(paneId, { seq: working ? seq : seq - 1, at: Date.now() });
+    this.firstPrompt.delete(paneId);
   }
 
   /**

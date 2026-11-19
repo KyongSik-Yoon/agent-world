@@ -153,6 +153,8 @@ export class DetailPanel {
     { root: this.body },
   );
   private busy = false;
+  /** 멈추기를 보내고 답을 기다리는 pane — 두 번 누른 것은 한 번만 보내고, 그동안 단추를 잠가 둔다. */
+  private readonly stopping = new Set<string>();
 
   /**
    * 가운데 아래의 무대. 넓은 화면에서는 고른 주민의 터미널 화면을 상태 창 안의 접힌 구획 대신 여기에 띄운다 —
@@ -668,6 +670,7 @@ export class DetailPanel {
       const undo = this.button(t("되돌리기"), () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: true }), { cls: "link" });
       statusLine.append(undo);
     }
+    if (a.status === "working" && a.paneId && this.snapshot?.control) statusLine.append(this.stopButton(a, a.paneId));
 
     const blocked = a.status === "blocked" && a.paneId !== undefined;
     const now = a.status === "working" ? bubbleParts(a) : null;
@@ -835,6 +838,27 @@ export class DetailPanel {
     }
     if (tools.childElementCount > 0) row.append(tools);
     return h("div", { class: "action-group" }, row);
+  }
+
+  /**
+   * 하던 일 멈추기. 키 단추의 Esc 와 같은 일이지만 일하는 중일 때만 보이고, 서버가 지금도 일하는지 보고 보낸다 — 질문이 떠 있을
+   * 때의 Esc 는 그 질문을 거절한다. 멈춘 뒤의 완료는 서버가 확인한 것으로 적어, 주민이 "다 했어요" 하고 뛰어가지 않는다.
+   */
+  private stopButton(a: AgentView, paneId: string): HTMLButtonElement {
+    const pending = this.stopping.has(paneId);
+    const btn = this.button(pending ? t("멈추는 중…") : t("멈추기"), () => {
+      if (this.stopping.has(paneId)) return;
+      this.stopping.add(paneId);
+      this.rerender();
+      void post("/api/stop", { paneId })
+        .then(() => this.callbacks.toast(t("멈췄습니다"), a.title, "var(--accent)"))
+        .catch((e: Error) => this.callbacks.toast(t("멈추지 못했습니다"), e.message, "var(--blocked)"))
+        .finally(() => {
+          this.stopping.delete(paneId);
+          this.rerender();
+        });
+    }, { cls: "stop", icon: "stop", disabled: pending, title: t("하던 일을 멈춥니다 — 터미널에서 Esc 를 누른 것과 같습니다. Claude 는 백그라운드 에이전트도 멈춥니다.") });
+    return btn;
   }
 
   /** what: 토스트에 띄울 말 — 짧은 값은 그대로, 긴 글은 섹션 이름. */

@@ -2429,6 +2429,48 @@ dialog.dlg p.plan-note {
   cursor: pointer;
 }
 
+.status-line .stop {
+  /* 상태 줄 오른쪽 끝. 배지와 같은 높이로 그려 상태가 바뀌어도 줄 높이가 그대로다. 본문이 위 여백 없는 스크롤 상자라 단추를
+     바깥 여백으로 키우면 위가 잘린다 — 손가락으로 누를 자리는 가상 요소로 넓힌다. */
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0 10px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--blocked) 45%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blocked) 10%, transparent);
+  color: color-mix(in srgb, var(--blocked) 82%, var(--ink));
+  font: 600 12px var(--font);
+  cursor: pointer;
+}
+
+.status-line .stop::after {
+  content: "";
+  position: absolute;
+  inset: -9px -6px;
+}
+
+.status-line .stop .ico {
+  width: 12px;
+  height: 12px;
+}
+
+.status-line .stop .ico path {
+  fill: currentColor;
+}
+
+.status-line .stop:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.status-line .src ~ .stop {
+  margin-left: 4px;
+}
+
 .d-dock {
   padding: 8px 12px 12px;
   border-top: 1px solid var(--line);
