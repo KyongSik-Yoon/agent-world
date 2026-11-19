@@ -53,6 +53,12 @@ herdr plugin install KyongSik-Yoon/agent-world
 
 일을 끝낸 캐릭터의 상태 창을 읽고 나오면 확인한 것으로 치고, 캐릭터는 집으로 돌아갑니다. `D` 를 누르면 바로 처리되고, 잘못 눌렀으면 토스트에서 되돌립니다.
 
+### 요금제와 사용량
+
+위쪽 막대에 하네스마다 로고와 퍼센트가 하나씩 뜹니다. 한도 창(5시간, 7일 등) 가운데 가장 많이 쓴 창의 값이고, 70% 부터 주황, 90% 부터 빨강이 됩니다. 누르면 요금제 이름과 창마다 쓴 만큼·남은 만큼·초기화까지 남은 시간이 나옵니다. 막대가 좁으면 가장 많이 쓴 하네스 하나만 남습니다.
+
+어디에 물어보는 값이 아니라 각 하네스가 이 PC 에 남긴 값입니다. 그래서 다른 기기에서 쓴 만큼은 그 하네스를 여기서 다시 쓸 때 반영되고, 한동안 쓰지 않은 하네스는 흐리게 보이며 언제 값인지 함께 적힙니다. 남긴 것이 없는 하네스는 뜨지 않습니다.
+
 ### 집 짓기
 
 `＋ 집 짓기`(`B`)에서 폴더, 이름, 워크트리 여부, 들일 에이전트와 그 모델·effort, 첫 지시까지 한 번에 정합니다. 모델과 effort 는 실행 인자(`--model`, `-m` 등)로 넘겨 그 세션에만 적용됩니다. 지어 둔 집의 문패를 누르면 집 패널이 열리고, 여기서 `새 주민`, `새 탭`, 이름 바꾸기, 철거를 합니다. 셸 pane 은 집 앞에 단말기 모양으로 서 있습니다.
@@ -170,7 +176,7 @@ tailscale serve --bg --https=4780 http://127.0.0.1:4780
 
 ## 동작 원리
 
-하네스에 훅을 걸지 않습니다. 읽는 것은 두 가지뿐입니다.
+하네스에 훅을 걸지 않습니다. 읽는 것은 herdr 소켓과 하네스가 이 PC 에 남긴 파일뿐입니다.
 
 먼저 herdr 소켓입니다. `session.snapshot` 으로 어느 pane 에 어떤 에이전트가 있는지, 상태가 무엇인지, 세션 id 가 무엇인지 읽습니다. 조작도 같은 소켓으로 보냅니다(`agent.prompt`, `pane.send_input`, `workspace.create`, `agent.start` …).
 
@@ -182,6 +188,12 @@ tailscale serve --bg --https=4780 http://127.0.0.1:4780
 
 Claude Code 의 로그에는 쓴 토큰만 있고 컨텍스트 창 크기는 없습니다. herdr 웹 UI 의 statusLine 기록을 켜 두었으면 그것이 세션마다 남기는 창 크기(`~/.herdr/statusline-context/`)를 읽어 상태 창에 비율과 막대를 함께 보여 주고, 없으면 토큰 수만 보여 줍니다.
 
+사용량도 남아 있는 것만 읽습니다. 30초에 한 번 파일 시각을 보고 바뀐 것만 다시 읽으며, 계정 메일이나 id 는 화면으로 보내지 않습니다.
+
+- Claude Code: herdr 웹 UI 의 statusLine 기록이 남기는 `~/.herdr/statusline-last.json`(5시간·7일 창). 요금제 이름은 `~/.claude.json` 의 계정 정보에서 읽고, 두 파일의 계정이 같을 때만 보여 줍니다
+- Codex: 세션 로그의 `token_count` 행에 실려 오는 `rate_limits`(창과 요금제). 가장 최근에 쓴 세션의 것을 씁니다
+- Antigravity: statusLine 스크립트가 받은 값을 `/tmp/agy-statusline-<uid>/last-payload.json` 에 남겨 둘 때만 읽습니다. Antigravity 가 스스로 남기는 파일이 아니라서, 그런 스크립트를 쓰지 않으면 뜨지 않습니다
+
 그 밖의 하네스는 herdr 가 알려 주는 제목과 상태만으로 캐릭터가 섭니다. 로그까지 읽게 하려면 `server/adapters/` 에 어댑터를 하나 추가하면 됩니다.
 
 herdr 에 붙어 있는 동안에는 herdr 의 에이전트만 보여 줍니다. herdr 밖의 세션(다른 터미널, 데스크톱 앱)에는 월드에서 말을 걸 수도, 확인 처리를 할 수도 없어서입니다. herdr 가 꺼져 있을 때는 최근 30분 안에 움직인 로그로 세션을 찾고, 상태는 로그 시각으로 추정합니다(`AGENT_WORLD_OUTSIDE=1` 이면 herdr 가 켜져 있어도 함께 보여 줍니다).
@@ -192,12 +204,14 @@ herdr 에 붙어 있는 동안에는 herdr 의 에이전트만 보여 줍니다.
 server/   Bun 서버. herdr RPC 와 로그 tail 을 맡고, 스냅샷을 SSE 로 보낸다
   control.ts  조작 엔드포인트(지시·키 입력·터미널 미러·만들기·닫기)
   models.ts   하네스별 모델 목록, 띄울 때의 모델 인자, 떠 있는 세션을 그 세션에만 바꾸기
+  usage.ts    하네스별 요금제와 한도 사용량(하네스가 남긴 파일에서)
   adapters/   하네스별 로그 리더
   text.ts     서버 메시지(한국어·영어)
   key.ts      접속 열쇠, 이 사용자만 읽을 수 있는 상태 파일
   push.ts     화면을 닫아 둔 동안의 알림(Web Push)
 web/      three.js 장면과 HUD
   detail.ts   상태 창(에이전트·셸·집), term.ts 터미널 미러, build.ts 만들기·닫기 대화상자
+  usage.ts    위 막대의 사용량 단추와 사용량 창
   world/      섬·집터(environment), 캐릭터(characters), 배우(actor), 배치(layout), 이름표 층(labels)
   app/        홈 화면 설치용 매니페스트와 아이콘, 알림을 받는 서비스 워커(sw.js)
   i18n.ts     t() 와 언어 전환. 영어 번역은 locale/en.ts
@@ -210,6 +224,8 @@ docs/     홈페이지(index.html)와 스크린샷
 - `bun run probe`: 서버를 띄우지 않고 지금 스냅샷을 표로 출력합니다
 - `bun run url`: 이 herdr 세션에 떠 있는 서버의 주소를 출력합니다(열쇠 포함. 서버가 `~/.local/state/agent-world/server*.json` 에 적어 둔 값을 읽습니다)
 - `bun run i18n`: 화면의 문장마다 영어 번역이 있는지 검사합니다. 화면에 문장을 추가할 때는 `t("…")` 로 감싸고 `web/locale/en.ts` 에 번역을 적어 주세요
+
+사용량을 가상 값으로 시험할 때는 Claude Code 쪽 파일을 `AGENT_WORLD_CLAUDE_LIMITS`, Antigravity 쪽 파일을 `AGENT_WORLD_AGY_PAYLOAD` 로 바꿔 줍니다(Claude Code 는 `CLAUDE_CONFIG_DIR/.claude.json` 의 계정과 맞아야 뜹니다). `CLAUDE_CONFIG_DIR`·`CODEX_HOME`·`AGY_HOME` 을 빈 폴더로 돌린 서버는 이 PC 의 실제 사용량을 읽지 않습니다.
 
 조작 기능을 시험할 때는 쓰고 있는 herdr 말고 이름 붙은 테스트 세션을 씁니다. 쓰던 세션에 시험용 지시가 들어가면 곤란하니까요.
 

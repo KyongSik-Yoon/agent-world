@@ -6,6 +6,7 @@ import { type Action, DetailPanel, workspaceKey } from "./detail.ts";
 import { STATUS_VAR, h } from "./dom.ts";
 import { STATUS_LABEL, STATUS_ORDER, bubbleText, needsAttention, statusAge } from "./format.ts";
 import { lang, t } from "./i18n.ts";
+import { UsageChip } from "./usage.ts";
 
 function matches(a: AgentView, query: string): boolean {
   if (!query) return true;
@@ -124,6 +125,7 @@ export class Hud {
   private readonly search = document.getElementById("search") as HTMLInputElement;
   private readonly toasts = document.getElementById("toasts")!;
   private readonly panel: DetailPanel;
+  private readonly usage = new UsageChip();
 
   constructor(private readonly callbacks: HudCallbacks) {
     this.panel = new DetailPanel(this.detail, {
@@ -174,6 +176,7 @@ export class Hud {
 
   update(snapshot: WorldSnapshot): void {
     this.snapshot = snapshot;
+    this.usage.update(snapshot.usage ?? []);
     const id = this.selectedId;
     const alive = id === null || snapshot.agents.some((a) => a.id === id) || snapshot.panes.some((p) => p.id === id) || snapshot.workspaces.some((w) => workspaceKey(w.id) === id);
     // 고른 것이 사라졌으면 고르기를 푼다 — 장면과 메인도 함께 알도록 바깥을 거친다.

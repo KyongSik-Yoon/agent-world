@@ -39,6 +39,7 @@ export const en: Record<string, string> = {
   "{n}분": "{n}m",
   "{h}시간 {m}분": "{h}h {m}m",
   "{n}일": "{n}d",
+  "{n}시간": "{n}h",
   "{time}째": "for {time}",
 
   // ── 터미널 ──
@@ -308,4 +309,17 @@ export const en: Record<string, string> = {
   "이름·스페이스·모델 찾기 ( / )": "Search name, workspace, model ( / )",
   "에이전트 상태": "Agent status",
   "연결 중…": "Connecting…",
+
+  // ── 사용량 ──
+  "하네스별 요금제와 한도 사용량": "Plan and limit usage per harness",
+  "사용량": "Usage",
+  "한도": "Limit",
+  "외부 모델": "Third-party",
+  "초기화됨": "reset",
+  "{time} 뒤 초기화": "resets in {time}",
+  "{when} 에 초기화": "Resets {when}",
+  "{when} 기준": "as of {when}",
+  "{n}% 사용": "{n}% used",
+  "{n}% 남음": "{n}% left",
+  "각 하네스가 이 PC 에 남긴 값입니다. 다른 기기에서 쓴 만큼은 그 하네스를 여기서 다시 쓸 때 반영됩니다.": "Read from what each harness left on this machine. Usage from other devices shows up the next time that harness runs here.",
 };

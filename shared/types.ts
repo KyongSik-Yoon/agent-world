@@ -146,6 +146,31 @@ export interface PaneView {
   rows?: number;
 }
 
+/** 한도 창 하나(5시간, 7일 …)에서 쓴 만큼. */
+export interface UsageWindow {
+  /** 창의 길이(분). 하네스가 알려 주지 않으면 없다. */
+  minutes?: number;
+  /** 한 하네스 안에서 한도가 따로 도는 묶음(Antigravity 의 gemini·3p). */
+  group?: string;
+  /** 쓴 비율, 0–100 의 정수. */
+  usedPct: number;
+  /** 창이 초기화되는 시각(ms). 모르면 없다. */
+  resetsAt?: number;
+  /** 읽은 뒤에 초기화 시각이 지나 0 으로 돌아간 창. */
+  reset?: boolean;
+}
+
+/** 하네스 하나의 요금제와 한도 사용량. 계정을 가리키는 것(메일·id)은 싣지 않는다. */
+export interface UsageView {
+  /** AgentView.vendor 와 같은 이름(claude, codex, agy). */
+  vendor: string;
+  /** 하네스가 부르는 요금제 이름 그대로. */
+  plan?: string;
+  windows: UsageWindow[];
+  /** 방금 읽은 값이 아니면 그 값이 적힌 시각(ms). */
+  asOf?: number;
+}
+
 export interface WorldSnapshot {
   at: number;
   /** herdr 소켓에 닿았는지. false 면 로그만으로 만든 스냅샷이다. */
@@ -160,6 +185,8 @@ export interface WorldSnapshot {
   tabs: TabView[];
   panes: PaneView[];
   agents: AgentView[];
+  /** 하네스별 사용량. 남긴 것이 없는 하네스는 빠진다. */
+  usage: UsageView[];
 }
 
 /**

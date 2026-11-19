@@ -35,6 +35,7 @@ opening `?lang=en`, or by setting `AGENT_WORLD_LANG=en`.
 | Answer a question or permission request | When an agent needs input, the real dialog appears at the top of the status window. Press the number or key it shows with the quick-key row. |
 | Use the terminal directly | `` ` `` opens it large. While it is open, keystrokes go straight to the pane. `Scrollback` shows earlier output; for agents with no scrollback (Claude Code in fullscreen mode) it sends PageUp/PageDown to page the app itself, and closing returns it to the live screen. Shift+Esc closes it. |
 | Switch model or effort | `Switch…` at the end of the model row, for Claude Code and Codex sessions. It applies to that session only; sessions you start later keep the harness defaults (the slash commands would change those too, so the world uses Claude Code's "this session only" picker option and Codex's `/model … --reasoning=…`). Not while the agent is working, waiting on a question, or has unsent text in its input. Antigravity has no session-only switch, so its model is picked at start. |
+| See plans and usage | The top bar shows a logo and a percentage per harness — the most-used of its limit windows (5h, 7d …), orange from 70% and red from 90%. Click it for the plan name and, per window, how much is used, how much is left and when it resets. When the bar is narrow only the most-used harness stays. Nothing is fetched: these are the values each harness left on this machine, so usage from other devices shows up the next time that harness runs here, and a harness you have not used for a while is dimmed with the time of its reading. |
 | Mark a result as seen | Read a finished agent's status window and move on, and it is marked as seen and walks home (`D` does it at once; undo from the toast). |
 | Widen the status window | Drag its left edge. The width is remembered; double-click to reset. |
 | Build a house | `＋ New house` (`B`) — folder, name, worktree or not, the agent to add with its model and effort, and its first prompt, in one go. The model and effort go in as launch flags (`--model`, `-m` …), so they apply to that session only. |
@@ -173,7 +174,7 @@ raw `--tcp` forwarding should not be used because the sender cannot be identifie
 
 ## How it knows
 
-It does not hook into the harnesses. It reads two things.
+It does not hook into the harnesses. It reads the herdr socket and the files the harnesses leave on this machine.
 
 - **The herdr socket** — `session.snapshot` tells it which pane runs which agent, its status and its session id.
   Control goes through the same socket (`agent.prompt`, `pane.send_input`, `workspace.create`, `agent.start` …).
@@ -191,6 +192,15 @@ Claude Code's log has the tokens used but not the size of the context window. If
 capture is installed, the window size it leaves per session (`~/.herdr/statusline-context/`) is read so the status
 window shows a percentage and a bar; without it, only the token count is shown.
 
+Usage is read the same way, from what is already there. File times are checked every 30 seconds and only a changed
+file is read again; account emails and ids are never sent to the page.
+
+| Harness | Plan and usage from |
+| --- | --- |
+| Claude Code | `~/.herdr/statusline-last.json`, left by the herdr web UI's status-line capture (5h and 7d windows). The plan name comes from the account in `~/.claude.json`, and usage is shown only when both files name the same account. |
+| Codex | `rate_limits` on the `token_count` rows of the session log (windows and plan), from the most recently used session. |
+| Antigravity | `/tmp/agy-statusline-<uid>/last-payload.json`, only if your status-line script leaves what it receives there. Antigravity does not write this file itself, so without such a script it does not appear. |
+
 While attached to herdr it shows herdr's agents only, because sessions outside herdr (other terminals, desktop
 apps) cannot be talked to or marked as seen from here. When herdr is not running it finds sessions from logs that
 moved in the last 30 minutes and estimates their status from log times (`AGENT_WORLD_OUTSIDE=1` shows them even
@@ -203,12 +213,14 @@ under `server/adapters/` to read their logs.
 server/   Bun server — herdr RPC, log tailing, snapshots pushed over SSE
   control.ts  control endpoints (prompts, keys, terminal mirror, create, close)
   models.ts   model lists per harness, launch flags, session-only model switches
+  usage.ts    plan and limit usage per harness, from the files the harnesses leave
   adapters/   log readers per harness
   text.ts     server messages in both languages
   key.ts      the access key and owner-only state files
   push.ts     notifications while the page is closed (Web Push)
 web/      three.js scene and HUD
   detail.ts   status window (agent, shell, house), term.ts terminal mirror, build.ts create/close dialogs
+  usage.ts    the usage button in the top bar and its window
   world/      island and plots (environment), characters, actors, layout, label layer (labels)
   app/        manifest and icons for installing to the home screen, the service worker that receives notifications (sw.js)
   i18n.ts     t() and the language switch; locale/en.ts holds the English strings
@@ -220,6 +232,11 @@ docs/     the homepage (index.html) and screenshots
 
 `bun run probe` prints the current snapshot as a table without starting the server. `bun run url` prints the address
 (with the key) of the server running for this herdr session. `bun run i18n` checks that every UI string has an English entry.
+
+To try the usage button with made-up values, point `AGENT_WORLD_CLAUDE_LIMITS` at a Claude Code limits file and
+`AGENT_WORLD_AGY_PAYLOAD` at an Antigravity payload (Claude Code's shows only when the account matches
+`CLAUDE_CONFIG_DIR/.claude.json`). A server started with `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `AGY_HOME` pointing at
+empty folders reads none of this machine's real usage.
 
 To test control features, use a named test session instead of the herdr you are working in:
 

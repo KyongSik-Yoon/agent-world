@@ -15,6 +15,7 @@ import { asText, type Text } from "./text.ts";
 import { NameStore, SeenStore } from "./seen.ts";
 import { activityText, currentPending, oneLine, refOf, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
+import { UsageWatch } from "./usage.ts";
 
 const HARNESSES: Harness[] = [claude, agy, codex];
 
@@ -108,6 +109,7 @@ export class World {
   private readonly switched = new Map<string, { model?: string; effort?: string; base?: { model?: string; effort?: string; session?: string } }>();
   /** pane → 그 pane 에서 읽고 있는 맨 위 세션, 그리고 하네스가 모르는 세션을 받기 시작한 시각. */
   private readonly mainOf = new Map<string, { id: string; unknownSince?: number }>();
+  private readonly usage = new UsageWatch();
 
   /** outside: herdr 에 붙어 있는 동안에도 herdr 밖 세션을 보여 준다. */
   constructor(
@@ -484,6 +486,7 @@ export class World {
       tabs,
       panes,
       agents,
+      usage: this.usage.current(() => [...this.tracked.values()].filter((t) => t.harness.vendor === "codex").map((t) => t.path)),
     };
   }
 
