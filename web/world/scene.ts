@@ -200,7 +200,7 @@ export class WorldScene {
       this.downAt = { x: e.clientX, y: e.clientY };
     });
     el.addEventListener("pointerup", (e) => this.onPointerUp(e));
-    el.addEventListener("pointerleave", () => this.setHover(null));
+    el.addEventListener("pointerleave", (e) => e.pointerType !== "touch" && this.setHover(null));
 
     // 조작하는 동안에는 화면 주사율 그대로, 가만히 두면 느긋하게 그린다.
     const touched = (e: Event): void => {
@@ -680,7 +680,7 @@ export class WorldScene {
   }
 
   private onPointerMove(e: PointerEvent): void {
-    if (e.buttons !== 0) return;
+    if (e.buttons !== 0 || e.pointerType === "touch") return;
     this.setHover(this.pick(e));
   }
 

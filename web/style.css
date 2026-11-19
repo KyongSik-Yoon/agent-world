@@ -816,9 +816,15 @@ kbd {
   cursor: pointer;
 }
 
-.row:hover,
 .row.hovered {
   background: var(--soft);
+}
+
+/* 터치 화면의 :hover 는 손을 뗀 뒤에도 남는다 — 밀고 지나간 줄이 눌린 채로 보이지 않게 마우스에서만. */
+@media (hover: hover) {
+  .row:hover {
+    background: var(--soft);
+  }
 }
 
 .row.selected {
@@ -2865,8 +2871,10 @@ dialog.dlg input[type="checkbox"] {
   display: none;
 }
 
-.compose .attach:hover {
-  background: var(--soft-2);
+@media (hover: hover) {
+  .compose .attach:hover {
+    background: var(--soft-2);
+  }
 }
 
 /* 스킬 고르기. 입력창 위로 펴서 빠른 키 줄을 덮는다(고르는 동안에는 쓰지 않는다). */
@@ -3450,7 +3458,8 @@ dialog.dlg .warn {
     width: 18px;
     height: 18px;
   }
-  .compose { --compose-h: 42px; }
+  /* 안쪽 칸(＋·글·보내기)이 아래 .btn 의 손가락 높이 36px 과 같아지게 — 낮으면 ＋ 만 보내기보다 낮게 선다. */
+  .compose { --compose-h: 44px; }
   .shot { width: 60px; height: 60px; }
   .shot button { width: 24px; height: 24px; line-height: 24px; font-size: 12px; }
 

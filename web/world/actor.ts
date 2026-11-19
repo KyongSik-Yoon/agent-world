@@ -189,8 +189,8 @@ export class Actor {
       e.stopPropagation();
       onSelect(this.view.id);
     });
-    this.tag.addEventListener("pointerenter", () => onHover(this.view.id));
-    this.tag.addEventListener("pointerleave", () => onHover(null));
+    this.tag.addEventListener("pointerenter", (e) => e.pointerType !== "touch" && onHover(this.view.id));
+    this.tag.addEventListener("pointerleave", (e) => e.pointerType !== "touch" && onHover(null));
     this.anchor.position.y = this.rig.height;
     this.group.add(this.anchor);
     labels.attach({

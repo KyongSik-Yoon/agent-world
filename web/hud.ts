@@ -316,8 +316,9 @@ export class Hud {
       row.append(brandTile(a.vendor, 26), h("span", { class: "title" }), h("span", { class: "age" }), h("span", { class: "sub" }));
       const id = a.id;
       row.addEventListener("click", () => this.callbacks.onSelect(id));
-      row.addEventListener("pointerenter", () => this.callbacks.onHover(id));
-      row.addEventListener("pointerleave", () => this.callbacks.onHover(null));
+      // 손가락에는 올려놓기가 없다. 목록을 밀려고 댄 손가락이 그 주민의 이름표를 펴 하던 일이 월드에 비치지 않게 한다.
+      row.addEventListener("pointerenter", (e) => e.pointerType !== "touch" && this.callbacks.onHover(id));
+      row.addEventListener("pointerleave", (e) => e.pointerType !== "touch" && this.callbacks.onHover(null));
       this.rows.set(a.id, row);
     }
     row.dataset.status = a.status;
