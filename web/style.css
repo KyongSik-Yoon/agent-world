@@ -1663,17 +1663,20 @@ kbd {
  * overflow: hidden 이어도 레이아웃 폭을 늘려 화면 전체를 다시 배치한다(390 → 581px 로 잰 적 있다).
  */
 #toasts {
+  /* 머리줄 바로 아래에 뜬다. 어느 머리줄인지와 옆 창을 피하는 자리는 띄울 때 잰다(hud.ts placeToasts). */
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 52px;
+  top: 66px;
   padding: 0 8px;
   overflow-x: clip;
   display: flex;
-  flex-direction: column;
+  /* 새 알림이 머리줄 쪽(위)에 오고 먼저 온 것은 아래로 밀린다. */
+  flex-direction: column-reverse;
   gap: 6px;
   align-items: center;
-  z-index: 30;
+  /* 터미널 크게 보기(60)보다 위 — 터미널에서 보낸 입력이 실패했다는 알림이 그 뒤에 가려지지 않게. */
+  z-index: 70;
   pointer-events: none;
 }
 
@@ -1682,7 +1685,11 @@ kbd {
   display: flex;
   align-items: center;
   gap: 9px;
-  max-width: 520px;
+  /*
+   * 본문이 한 줄(nowrap)이라 알림의 최소 폭이 글 전체 길이가 된다. 담는 칸(휴대폰 화면, 좁은 창의 상태 창 폭)에서
+   * 자르고 넘치는 글은 말줄임으로 접는다 — 칸을 넘으면 색 띠와 제목이 잘려 나간다.
+   */
+  max-width: min(520px, 100%);
   padding: 8px 14px;
   border: 1px solid var(--line);
   border-left: 4px solid var(--c, var(--accent));
@@ -1694,7 +1701,7 @@ kbd {
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
-  animation: rise 0.25s ease-out;
+  animation: drop 0.25s ease-out;
 }
 
 .toast b {
@@ -1708,10 +1715,10 @@ kbd {
   color: var(--ink-2);
 }
 
-@keyframes rise {
+@keyframes drop {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(-8px);
   }
 }
 
@@ -3185,19 +3192,6 @@ dialog.dlg .warn {
     border-radius: 0;
     background: var(--panel-solid);
     z-index: 30;
-  }
-
-  /* 상태 창이 열려 있으면 입력 도크 위에 띄운다 — 다음 말을 치는 입력창과 단추를 덮지 않게(--dock-h 는 detail.ts). */
-  #toasts {
-    bottom: calc(12px + env(safe-area-inset-bottom) + var(--dock-h, 0px));
-  }
-
-  /*
-   * 본문이 한 줄(nowrap)이라 알림의 최소 폭이 글 전체 길이가 된다. 상한을 풀면 긴 글에서 화면 양옆으로 빠져나가고
-   * 페이지까지 넓어지므로, 담는 칸 폭에서 자르고 넘치는 글은 말줄임으로 접는다.
-   */
-  .toast {
-    max-width: 100%;
   }
 
   /* 입력란 글자가 16px 보다 작으면 iOS 가 화면을 확대한다. */

@@ -210,8 +210,6 @@ export class DetailPanel {
     this.attachBtn.addEventListener("click", () => picker.click());
     this.dock.append(this.quick, this.shotsEl, h("div", { class: "compose" }, this.attachBtn, this.input, this.sendBtn), picker, this.note);
     this.root.replaceChildren(this.head, this.body, this.dock, this.grip());
-    // 휴대폰에서는 알림이 화면 맨 아래에 떠 입력창을 덮는다. 도크 높이를 알려 그 위로 띄우게 한다(style.css #toasts).
-    new ResizeObserver(() => document.documentElement.style.setProperty("--dock-h", `${this.dock.offsetHeight}px`)).observe(this.dock);
     this.preview.el.classList.add("preview");
     this.preview.el.title = t("눌러서 크게 보기");
     this.preview.el.addEventListener("click", () => {

@@ -24,6 +24,9 @@ function matches(a: AgentView, query: string): boolean {
  * 알림을 ms 뒤에 치우고, 그 전에도 옆으로 밀면 치운다. 누르고 있는 동안에는 시간을 세지 않는다 — 읽는 중에 사라지지 않게.
  * 옆으로 조금이라도 끌었으면 손을 뗄 때의 누르기(click)는 버린다. 위아래로 끄는 것은 화면 스크롤에 맡긴다(touch-action: pan-y).
  */
+/** 목록과 상태 창 사이가 이보다 좁으면 알림을 그 사이에 두지 않는다. */
+const TOAST_ROOM_PX = 360;
+
 function swipeAway(el: HTMLElement, ms: number): void {
   let deadline = performance.now() + ms;
   let timer = setTimeout(() => el.remove(), ms);
@@ -124,6 +127,8 @@ export class Hud {
   private readonly nextBtn = document.getElementById("btn-next")!;
   private readonly search = document.getElementById("search") as HTMLInputElement;
   private readonly toasts = document.getElementById("toasts")!;
+  private readonly topbar = document.getElementById("topbar")!;
+  private readonly roster = document.getElementById("roster")!;
   private readonly panel: DetailPanel;
   private readonly usage = new UsageChip();
 
@@ -139,6 +144,11 @@ export class Hud {
     });
     // 시간 문구("3분 전")는 스냅샷이 오지 않아도 흘러야 한다.
     setInterval(() => this.render(), 15_000);
+    // 알림이 떠 있는 동안 머리줄이나 옆 창의 자리가 바뀌면(창 폭, 상태 창 여닫기·폭 조절) 따라 옮긴다.
+    const moved = new ResizeObserver(() => {
+      if (this.toasts.childElementCount > 0) this.placeToasts();
+    });
+    for (const el of [this.topbar, this.roster, this.detail]) moved.observe(el);
   }
 
   get selected(): AgentView | undefined {
@@ -164,6 +174,7 @@ export class Hud {
   /** 터미널 크게 보기가 열려 상태 창이 덮였다. */
   setCovered(covered: boolean): void {
     this.panel.setCovered(covered);
+    if (this.toasts.childElementCount > 0) this.placeToasts();
   }
 
   focusComposer(): boolean {
@@ -318,6 +329,46 @@ export class Hud {
     return row;
   }
 
+  /**
+   * 알림은 지금 맨 위에 있는 화면의 머리줄 바로 아래에 뜬다. 아래쪽은 입력창(상태 창의 도크, 터미널의 입력 줄)과
+   * 방금 온 글이 있는 자리라 덮지 않는다. 머리줄의 높이는 화면마다 달라(두 줄로 접히는 휴대폰 위 막대, 상태 창 머리,
+   * 터미널 머리) 띄울 때 잰다. 데스크톱에서는 목록과 상태 창 사이, 월드 위에 둔다.
+   */
+  private placeToasts(): void {
+    const vw = window.innerWidth;
+    const shown = (el: Element | null): DOMRect | null => {
+      const r = el?.getBoundingClientRect();
+      return r && r.width > 0 && r.right > 0 && r.left < vw ? r : null;
+    };
+    let top = this.topbar.getBoundingClientRect().bottom;
+    let left = 0;
+    let right = 0;
+    const term = shown(document.getElementById("term-overlay"));
+    const detail = shown(this.detail);
+    if (term) {
+      top = document.querySelector("#term-overlay header")!.getBoundingClientRect().bottom;
+      left = term.left;
+      right = vw - term.right;
+    } else if (detail && detail.width >= vw - 1) {
+      // 휴대폰: 상태 창이 화면 전체를 쓴다.
+      top = this.detail.querySelector(".d-head")!.getBoundingClientRect().bottom;
+    } else {
+      const roster = shown(this.roster);
+      const l = roster && roster.width < vw / 2 ? roster.right : 0;
+      const r = detail ? vw - detail.left : 0;
+      if (vw - l - r >= TOAST_ROOM_PX) {
+        left = l;
+        right = r;
+      } else if (detail) {
+        // 두 창 사이가 좁으면 상태 창 안, 그 머리 아래에 둔다 — 머리의 단추와 목록의 찾기 칸을 덮지 않게.
+        top = this.detail.querySelector(".d-head")!.getBoundingClientRect().bottom;
+        left = detail.left;
+        right = vw - detail.right;
+      }
+    }
+    Object.assign(this.toasts.style, { top: `${Math.round(top) + 8}px`, left: `${Math.round(left)}px`, right: `${Math.round(right)}px` });
+  }
+
   toast(title: string, text: string, color: string, onClick?: () => void): void {
     const el = h("div", { class: "toast" }, h("b", {}, title), h("span", {}, text));
     el.style.setProperty("--c", color);
@@ -325,6 +376,7 @@ export class Hud {
       onClick?.();
       el.remove();
     });
+    this.placeToasts();
     this.toasts.append(el);
     while (this.toasts.childElementCount > 4) this.toasts.firstElementChild?.remove();
     swipeAway(el, 7000);
@@ -339,6 +391,7 @@ export class Hud {
       undo();
       el.remove();
     });
+    this.placeToasts();
     this.toasts.append(el);
     while (this.toasts.childElementCount > 4) this.toasts.firstElementChild?.remove();
     swipeAway(el, 6000);
