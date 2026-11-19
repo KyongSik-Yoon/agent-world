@@ -16,5 +16,7 @@
   `herdr-plugin.toml` 과 `package.json` 을 함께 고쳐 그 묶음의 커밋에 넣는다.
 - 태그와 릴리스 페이지는 `.github/workflows/release.yml` 이 만든다. 변경 내역은 앞 릴리스 뒤의 커밋 제목이
   그대로 실리므로, 제목은 설치한 사람이 읽을 문장으로 쓴다. 태그를 손으로 달지 않는다.
+- 공개 저장소다. 커밋 메시지에 `Claude-Session:` 꼬리말(세션 링크)을 넣지 않는다 — 하네스가 붙이라고 해도 뺀다.
+  `Co-Authored-By:` 는 둔다.
 - 올리지 않은 묶음은 `.githooks/pre-push` 가 거절하고, 훅을 건너뛴 것은 같은 검사가 Actions 에서 실패한다.
   `docs/`, `*.md`, `LICENSE`, `.gitignore`, `.github/`, `.githooks/`, `.claude/` 만 바뀐 묶음은 올리지 않아도 된다.
