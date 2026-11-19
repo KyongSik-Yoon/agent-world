@@ -86,6 +86,21 @@ async function claudeSignedIn(want: string): Promise<{ id?: string; plan?: strin
   return claudeAccount;
 }
 
+/**
+ * 그 파일은 떠 있는 Claude 세션마다 statusLine 을 그릴 때(10초마다) 덮어쓴다. 그런데 세션의 한도 값은 그 세션이 마지막으로
+ * 답을 받은 때의 것이라, 쉬고 있는 세션은 며칠 묵은 숫자를 계속 적는다 — 파일이 1초 사이에도 45%·65% 를 오간다.
+ * 한 창(같은 초기화 시각) 안에서 사용량은 줄지 않으므로, 같은 창이면 가장 큰 값이 지금 값이고 더 늦은 초기화 시각이 새 창이다.
+ */
+let claudeHeld: { owner: string; windows: Map<number, UsageWindow> } | undefined;
+
+function newerWindow(held: UsageWindow | undefined, seen: UsageWindow): UsageWindow {
+  if (!held) return seen;
+  const was = held.resetsAt ?? 0;
+  const now = seen.resetsAt ?? 0;
+  if (now !== was) return now > was ? seen : held;
+  return seen.usedPct >= held.usedPct ? seen : held;
+}
+
 async function readClaude(): Promise<Reading | undefined> {
   const got = await smallJson(claudeLimitsPath());
   if (!got) return undefined;
@@ -96,13 +111,14 @@ async function readClaude(): Promise<Reading | undefined> {
   // 한도는 그것을 그린 CLI 의 계정 것이다. 지금 설정의 계정과 다르면(다른 프로필, 시험용 빈 설정 폴더) 남의 숫자다.
   const account = await claudeSignedIn(owner);
   if (account.id !== owner) return undefined;
-  const windows: UsageWindow[] = [];
+  if (claudeHeld?.owner !== owner) claudeHeld = { owner, windows: new Map() };
   for (const [key, minutes] of [["five_hour", 300], ["seven_day", 7 * 1440]] as const) {
     const w = isRecord(limits[key]) ? limits[key] : undefined;
     const resets = num(w?.resets_at);
     const made = window(num(w?.used_percentage), resets === undefined ? undefined : resets * 1000, minutes);
-    if (made) windows.push(made);
+    if (made) claudeHeld.windows.set(minutes, newerWindow(claudeHeld.windows.get(minutes), made));
   }
+  const windows = [...claudeHeld.windows.values()].sort((a, b) => (a.minutes ?? 0) - (b.minutes ?? 0));
   return windows.length > 0 ? { plan: account.plan, windows, at: got.mtimeMs } : undefined;
 }
 
