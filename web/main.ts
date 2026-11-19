@@ -553,6 +553,9 @@ document.getElementById("detail")!.addEventListener("click", (e) => {
 // 남은 것이 있으면 다시 얹는다. 단추로 다 닫았으면 얹어 둔 칸을 스스로 걷어, 다음 뒤로 가기가 헛돌지 않게 한다.
 // 닫을 수 없는 대화상자(열쇠 묻기, data-stay)는 세지 않는다 — 뒤로 가기에 갇히지 않고 앱을 떠날 수 있게.
 const BACK_GUARD = "agent-world.back";
+/** 가운데 무대를 세우려면 두 창 사이와 창 높이가 이만큼은 돼야 한다(px). */
+const STAGE_MIN_WIDTH = 520;
+const STAGE_MIN_HEIGHT = 680;
 const phoneLayout = matchMedia("(max-width: 760px)");
 /** 지금 기록 칸이 우리가 얹은 지킴 칸인가. */
 const onGuard = (): boolean => (history.state as Record<string, unknown> | null)?.[BACK_GUARD] === true;
@@ -602,15 +605,27 @@ if (onGuard()) history.replaceState(null, "");
   const rosterEl = document.getElementById("roster")!;
   const detailEl = document.getElementById("detail")!;
   const phone = matchMedia("(max-width: 760px)");
+  const stageEl = document.getElementById("stage")!;
   const syncInsets = (): void => {
-    if (phone.matches) return scene.setInsets(0, 0);
-    const detail = detailEl.hidden ? 0 : window.innerWidth - detailEl.getBoundingClientRect().left;
-    scene.setInsets(rosterEl.getBoundingClientRect().right, Math.max(0, detail));
+    if (phone.matches) {
+      hud.setStageRoom(false);
+      return scene.setInsets(0, 0);
+    }
+    const left = rosterEl.getBoundingClientRect().right;
+    const right = Math.max(0, detailEl.hidden ? 0 : window.innerWidth - detailEl.getBoundingClientRect().left);
+    // 무대는 두 창 사이에 선다. 사이가 좁거나 창이 낮으면 세우지 않는다 — 장면을 다 가리고 화면도 읽기 어렵다.
+    stageEl.style.setProperty("--stage-left", `${left}px`);
+    stageEl.style.setProperty("--stage-right", `${right}px`);
+    hud.setStageRoom(window.innerWidth - left - right >= STAGE_MIN_WIDTH && window.innerHeight >= STAGE_MIN_HEIGHT);
+    const bottom = stageEl.hidden ? 0 : Math.max(0, window.innerHeight - stageEl.getBoundingClientRect().top);
+    scene.setInsets(left, right, bottom);
   };
   const watch = new ResizeObserver(syncInsets);
   watch.observe(rosterEl);
   watch.observe(detailEl);
+  watch.observe(stageEl);
   new MutationObserver(syncInsets).observe(detailEl, { attributes: true, attributeFilter: ["hidden"] });
+  new MutationObserver(syncInsets).observe(stageEl, { attributes: true, attributeFilter: ["hidden"] });
   phone.addEventListener("change", syncInsets);
   window.addEventListener("resize", syncInsets);
   syncInsets();

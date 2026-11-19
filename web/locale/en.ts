@@ -299,6 +299,8 @@ export const en: Record<string, string> = {
   "활동 로그": "Activity",
   "터미널 화면": "Terminal",
   "숨기기": "Hide",
+  "가운데 화면 접기": "Hide the centre terminal",
+  "가운데에 띄우기": "Show in centre",
   "보기": "Show",
 
   // ── 상태 창: 셸·집 ──

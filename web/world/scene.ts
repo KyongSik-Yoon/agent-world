@@ -8,7 +8,7 @@ import { t } from "../i18n.ts";
 import { Actor, PICK_LAYER } from "./actor.ts";
 import { Environment, type Theme } from "./environment.ts";
 import { labels } from "./labels.ts";
-import { buildLayout, groupLots, lotsKey, shellSpot, type Layout } from "./layout.ts";
+import { buildLayout, groupLots, lotsKey, shellSpot, type Layout, type Plot } from "./layout.ts";
 
 export interface SceneCallbacks {
   onSelect(id: string | null): void;
@@ -53,6 +53,20 @@ const VIEW_TURNS = [0, 25, -25, 50, -50, 80, -80, 115, -115, 150, -150, 180];
 /** 캐릭터가 보이는지 확인하는 높이들 — 발치, 몸통, 머리. */
 const VIEW_HEIGHTS = [0.35, 0.9, 1.4];
 const UP = new THREE.Vector3(0, 1, 0);
+/** 집터 중심에서 마당 끝(대문 앞, 쉼터)까지의 거리 — 본채 기준. 별채는 Plot.scale 만큼 줄어든다. */
+const YARD_REACH = 5;
+/** 광장 한가운데에서 완료한 캐릭터들이 서는 바깥 고리까지. */
+const PLAZA_REACH = 9;
+/** 자리를 비출 때의 거리: 홀로 선 집(reach 5)이 21 — 문패를 눌러 집을 볼 때의 거리와 같다. */
+const STAGE_BASE = 13.5;
+/** 집터 전체를 한 화면에 담는 한계. 이보다 넓으면 고른 캐릭터의 집 하나만 비춘다. */
+const LOT_REACH_MAX = 10;
+const STAGE_PER_REACH = 1.5;
+/** 작은 별채를 비출 때도 이보다 다가가지 않는다 — 이웃한 일터와 동거인이 같이 보이는 거리. */
+const STAGE_MIN = 21;
+/** 고른 것이 "이미 보인다"고 칠 때 빈 자리의 가장자리에서 떨어져 있어야 하는 거리(px)와 위쪽 막대 아래의 여유. */
+const FREE_MARGIN = 56;
+const FREE_TOP = 120;
 /** 걷는 캐릭터가 없을 때 그림자 지도를 다시 그리는 간격. */
 const SHADOW_MS = 20;
 
@@ -68,6 +82,7 @@ export class WorldScene {
   /** 고른 캐릭터까지 시야가 트였는지 보는 광선. */
   private readonly sight = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
+  private readonly probe = new THREE.Vector3();
   private readonly clock = new THREE.Clock();
   private layout: Layout = buildLayout([]);
   /** 지금 지어 둔 무대의 스페이스 구성. 아직 한 번도 짓지 않았으면 null — 스페이스가 하나도 없어도 섬은 지어야 한다. */
@@ -82,7 +97,7 @@ export class WorldScene {
    * position 이 있으면 바라보는 방향까지 그 자리로 되돌린다(고르기 전 시점으로 돌아갈 때).
    * at 은 떠난 시각(performance.now). 옮겨 가는 양은 그 뒤에 흐른 시간만큼만 센다 — 아래 frame() 참고.
    */
-  private flight: { target: THREE.Vector3; distance: number; position?: THREE.Vector3; at: number } | null = null;
+  private flight: { target: THREE.Vector3; distance: number; position?: THREE.Vector3; at: number; fixed?: boolean } | null = null;
   /** 무언가를 고르기 직전의 시점 — 고르기를 풀면 여기로 돌아간다. */
   private home: { target: THREE.Vector3; position: THREE.Vector3 } | null = null;
   /**
@@ -128,9 +143,11 @@ export class WorldScene {
    * 화면 좌우를 덮고 있는 패널의 폭(px) — 목록과 상태 창. 장면의 한가운데가 창의 한가운데가 아니라 패널 사이
    * 빈 자리의 한가운데에 오도록 시야를 그만큼 옆으로 민다. 창이 좁을수록(화면 절반에 띄운 창) 차이가 크다.
    */
-  private inset = { left: 0, right: 0 };
+  private inset = { left: 0, right: 0, bottom: 0 };
   /** 지금 시야가 옆으로 밀려 있는 정도(px). inset 을 부드럽게 따라간다. */
   private shiftX = 0;
+  /** 가운데 아래의 무대(터미널 화면)가 덮은 만큼 시야를 위로 올린 정도(px). */
+  private shiftY = 0;
 
   constructor(
     private readonly container: HTMLElement,
@@ -214,13 +231,14 @@ export class WorldScene {
     requestAnimationFrame(this.tick);
   }
 
-  /** 좌우 패널이 덮은 폭을 알려 준다. 시야는 다음 프레임들에 걸쳐 부드럽게 옮겨 간다. */
-  setInsets(left: number, right: number): void {
-    if (left === this.inset.left && right === this.inset.right) return;
-    this.inset = { left, right };
+  /** 좌우 패널이 덮은 폭과 가운데 아래 무대가 덮은 높이를 알려 준다. 시야는 다음 프레임들에 걸쳐 부드럽게 옮겨 간다. */
+  setInsets(left: number, right: number, bottom = 0): void {
+    if (left === this.inset.left && right === this.inset.right && bottom === this.inset.bottom) return;
+    this.inset = { left, right, bottom };
     if (this.layoutKey === null) {
       // 아직 아무것도 그리기 전이면 미끄러져 들어오지 않고 처음부터 제자리에서 시작한다.
       this.shiftX = (left - right) / 2;
+      this.shiftY = bottom / 2;
       this.applyShift();
       return;
     }
@@ -240,8 +258,8 @@ export class WorldScene {
   private applyShift(): void {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
-    if (Math.abs(this.shiftX) < 0.5) this.camera.clearViewOffset();
-    else this.camera.setViewOffset(w, h, -this.shiftX, 0, w, h);
+    if (Math.abs(this.shiftX) < 0.5 && Math.abs(this.shiftY) < 0.5) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(w, h, -this.shiftX, this.shiftY, w, h);
     this.labelsDirty = Math.max(this.labelsDirty, 1);
   }
 
@@ -433,14 +451,84 @@ export class WorldScene {
     for (const [actorId, actor] of this.actors) actor.selected = actorId === id;
     const actor = id ? this.actors.get(id) : undefined;
     if (actor && fly) {
-      const target = actor.group.position.clone().setY(0.9);
-      const distance = Math.min(this.distance(), 17);
-      this.flight = { target, distance, position: this.clearView(actor, target, distance), at: performance.now() };
+      this.showStage(this.stageOf(actor), actor);
     } else if (id && fly) {
       const shell = this.shells.get(id);
-      if (shell) this.flight = { target: shell.position.clone().setY(0.8), distance: Math.min(this.distance(), 17), at: performance.now() };
+      if (shell) this.showStage(this.stageAt(this.plotNear(shell.position)), undefined, shell.position);
       else if (id.startsWith("ws:")) this.flyToPlot(id.slice(3));
     }
+  }
+
+  /**
+   * 고른 캐릭터가 있는(있게 될) 자리 — 그 집터 전체나 광장 — 와 그것이 다 들어오는 거리.
+   *
+   * 캐릭터 하나에 바짝 다가가지 않고 사는 곳을 비춘다. 한 사람만 크게 보이는 화면은 옆 창들이 이미 말하는 것을 되풀이할
+   * 뿐이고, 고를 때마다 카메라가 섬을 가로질러 다가갔다 따라다녀 어지러웠다. 집터를 비추면 같은 집의 다른 주민을 골라도
+   * 카메라는 그대로다. 걷는 중이면 가고 있는 곳을 비춘다 — 따라가지 않아도 캐릭터가 화면 안으로 걸어 들어온다.
+   */
+  private stageOf(actor: Actor): { target: THREE.Vector3; distance: number; reach: number } {
+    const plot = actor.view.status === "done" ? undefined : this.layout.plots.get(actor.view.workspaceId);
+    return this.stageAt(plot);
+  }
+
+  private stageAt(plot: Plot | undefined): { target: THREE.Vector3; distance: number; reach: number } {
+    let target = new THREE.Vector3(0, 0.8, 0);
+    // 광장의 바깥 고리까지.
+    let reach = PLAZA_REACH;
+    if (plot) {
+      const span = (houses: readonly Plot[]): void => {
+        target = houses.reduce((sum, house) => sum.add(house.center), new THREE.Vector3()).divideScalar(houses.length).setY(0.8);
+        reach = Math.max(...houses.map((house) => house.center.distanceTo(target) + YARD_REACH * house.scale));
+      };
+      span(this.layout.lots.find((lot) => lot.houses.includes(plot))?.houses ?? [plot]);
+      // 별채가 여럿 늘어선 집터는 다 담으면 캐릭터가 점이 된다 — 그때는 그 집만 비춘다.
+      if (reach > LOT_REACH_MAX) span([plot]);
+    }
+    // 패널과 무대에 덮이지 않은 자리가 좁을수록 같은 것을 담으려면 더 물러서야 한다.
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    const free = Math.min((w - this.inset.left - this.inset.right) / w / 0.5, (h - this.inset.bottom) / h / 0.7);
+    const distance = Math.max(STAGE_MIN, STAGE_BASE + reach * STAGE_PER_REACH) / Math.min(1, Math.max(free, 0.55));
+    return { target, distance: Math.min(distance, this.controls.maxDistance), reach };
+  }
+
+  private plotNear(at: THREE.Vector3): Plot | undefined {
+    let best: Plot | undefined;
+    for (const plot of this.layout.plots.values()) if (!best || plot.center.distanceTo(at) < best.center.distanceTo(at)) best = plot;
+    return best;
+  }
+
+  /** 이 자리가 패널과 무대에 덮이지 않은 화면 안쪽에 보이는가. */
+  private inFreeView(at: THREE.Vector3): boolean {
+    const p = this.probe.copy(at).setY(0.9).project(this.camera);
+    if (p.z > 1) return false;
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    const x = (p.x * 0.5 + 0.5) * w;
+    const y = (0.5 - p.y * 0.5) * h;
+    return x > this.inset.left + FREE_MARGIN && x < w - this.inset.right - FREE_MARGIN && y > FREE_TOP && y < h - this.inset.bottom - FREE_MARGIN;
+  }
+
+  /**
+   * 자리를 비춘다. 이미 그 자리를 보고 있고 고른 것이 가려지지 않았으면 카메라를 움직이지 않는다.
+   * 무대(터미널 화면)가 열리며 시야가 위로 올라가는 중이면 그 뒤의 자리로 따진다 — 지금은 보여도 곧 무대 밑으로 들어간다.
+   */
+  private showStage(stage: { target: THREE.Vector3; distance: number; reach: number }, actor?: Actor, at: THREE.Vector3 = actor!.group.position): void {
+    const heading = this.flight?.fixed ? this.flight : null;
+    const now = performance.now();
+    if (heading && heading.target.distanceTo(stage.target) < 0.5) {
+      // 같은 자리로 가는 중이다 — 가던 길을 그대로 간다.
+      return;
+    }
+    const distance = this.distance();
+    const settled = Math.abs(this.shiftY - this.inset.bottom / 2) < 1 && Math.abs(this.shiftX - (this.inset.left - this.inset.right) / 2) < 1;
+    const here = !this.flight && settled && this.controls.target.distanceTo(stage.target) < stage.reach && distance <= stage.distance * 1.35 && this.inFreeView(at);
+    if (here) {
+      const position = actor ? this.clearView(actor, this.controls.target, distance) : undefined;
+      if (position) this.flight = { target: this.controls.target.clone(), distance, position, at: now, fixed: true };
+      return;
+    }
+    this.flight = { target: stage.target, distance: stage.distance, position: actor ? this.clearView(actor, stage.target, stage.distance) : undefined, at: now, fixed: true };
   }
 
   /**
@@ -573,7 +661,7 @@ export class WorldScene {
 
   private flyToPlot(workspaceId: string): void {
     const plot = this.layout.plots.get(workspaceId);
-    if (plot) this.flight = { target: plot.center.clone().setY(0.8), distance: 21, at: performance.now() };
+    if (plot) this.flight = { target: plot.center.clone().setY(0.8), distance: 21, at: performance.now(), fixed: true };
   }
 
   private pick(e: PointerEvent): string | null {
@@ -716,7 +804,8 @@ export class WorldScene {
     }
 
     // 고른 에이전트가 걸어가면 카메라의 목표도 같이 간다.
-    const selected = this.selectedId && !this.released ? this.actors.get(this.selectedId) : undefined;
+    // 집터나 광장을 비추러 가는 길(fixed)은 캐릭터를 따라가지 않고, 닿으면 끝난다.
+    const selected = this.selectedId && !this.released && !this.flight?.fixed ? this.actors.get(this.selectedId) : undefined;
     if (selected && this.flight) this.flight.target.copy(selected.group.position).setY(0.9);
     this.following = selected?.transit ?? false;
     // 카메라가 옮겨 가는 양은 떠난 뒤에 흐른 시간으로만 센다. 곁눈질 화면(초당 3장)에서 상태가 바뀌어 떠나면 첫 장의
@@ -741,9 +830,13 @@ export class WorldScene {
 
     // 패널이 열리고 닫히면 시야의 한가운데를 빈 자리 쪽으로 부드럽게 옮긴다.
     const wantShift = (this.inset.left - this.inset.right) / 2;
-    if (Math.abs(wantShift - this.shiftX) > 0.25) {
-      this.shiftX += (wantShift - this.shiftX) * (1 - Math.exp(-dt * 7));
+    const wantLift = this.inset.bottom / 2;
+    if (Math.abs(wantShift - this.shiftX) > 0.25 || Math.abs(wantLift - this.shiftY) > 0.25) {
+      const k = 1 - Math.exp(-dt * 7);
+      this.shiftX += (wantShift - this.shiftX) * k;
+      this.shiftY += (wantLift - this.shiftY) * k;
       if (Math.abs(wantShift - this.shiftX) <= 0.25) this.shiftX = wantShift;
+      if (Math.abs(wantLift - this.shiftY) <= 0.25) this.shiftY = wantLift;
       this.applyShift();
     }
 

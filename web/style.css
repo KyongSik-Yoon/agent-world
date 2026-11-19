@@ -2027,6 +2027,89 @@ kbd {
   cursor: zoom-in;
 }
 
+/*
+ * 가운데 아래의 무대 — 넓은 화면에서 고른 주민의 터미널 화면이 좌우 창 사이에 선다(detail.ts 의 syncStage).
+ * 자리는 main.ts 가 두 창의 끝을 재서 넘긴다. 유리(backdrop-filter)를 쓰지 않는다: 그 밑의 장면이 매 프레임 바뀌어,
+ * 흐리게 깔면 이 넓이를 프레임마다 다시 걸러야 한다.
+ */
+#stage {
+  position: absolute;
+  left: calc(var(--stage-left, 316px) + 12px);
+  right: calc(var(--stage-right, 424px) + 12px);
+  bottom: 44px;
+  height: clamp(210px, 34vh, 400px);
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--term-bg);
+  box-shadow: var(--shadow);
+  /* 안의 화면이 흘러도 바깥의 배치와 칠하기를 건드리지 않는다. */
+  contain: strict;
+}
+
+#stage[hidden] {
+  display: none;
+}
+
+#stage header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 12px;
+  background: var(--panel-solid);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+
+#stage header > .ico {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--ink-3);
+}
+
+#stage .names {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  margin-right: auto;
+  white-space: nowrap;
+}
+
+#stage .names b {
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+}
+
+#stage .names span {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+#stage header .btn {
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+
+#stage .body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+#stage .term.preview {
+  flex: 1;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  font-size: 12px;
+}
+
 #term-overlay {
   position: fixed;
   inset: 18px;

@@ -1092,6 +1092,13 @@ export class TermScreen {
     style.letterSpacing = `${fit.spacing}px`;
   }
 
+  /** 다른 자리로 옮겨 붙어 글자 크기가 달라졌다 — 칸 눈금을 다시 맞추고 아래에 붙인다. */
+  refit(): void {
+    this.tune();
+    this.redraw();
+    this.restoreScroll();
+  }
+
   /** 맨 위로 올리고 아래에 붙이기를 푼다 — 앱 화면을 넘겨 새로 드러난 지난 출력부터 보이게. */
   toTop(): void {
     this.pinned = false;

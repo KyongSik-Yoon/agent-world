@@ -60,6 +60,7 @@ const QUICK_KEYS: Array<{ label: string; title: string; icon?: IconName; caption
  * 흔들린다(휴대폰 폭에서 0.4초마다 302↔320px). 넘치면 상자는 상한에 머물고 아래에 붙은 채 위쪽만 밀린다.
  */
 const PREVIEW_LINES = 32;
+const STAGE_OFF_KEY = "agent-world.stage-off";
 /** 미리보기가 이만큼(px) 넘게 보이면 다시 그릴 때 그것을 제자리에 붙든다(pinPoint). 상자 높이의 절반쯤이다. */
 const PIN_SCREEN_PX = 160;
 /** 원문을 펼쳐 볼 수 있는 활동 — 생각은 원문이 로그에 남지 않는다. */
@@ -153,10 +154,37 @@ export class DetailPanel {
   );
   private busy = false;
 
+  /**
+   * 가운데 아래의 무대. 넓은 화면에서는 고른 주민의 터미널 화면을 상태 창 안의 접힌 구획 대신 여기에 띄운다 —
+   * 좌우 창 사이의 빈 자리에 "지금 무엇을 하고 있는지"가 흐른다. 화면을 읽는 것은 미리보기 하나뿐이라(같은 TermScreen 을
+   * 옮겨 붙인다) 상태 창에서 펼쳐 볼 때와 드는 값이 같다.
+   */
+  private readonly stageTitle = h("b", {});
+  private readonly stageSub = h("span", {});
+  private readonly stageBody = h("div", { class: "body" });
+  /** 무대를 놓을 자리가 화면에 있다(main 이 창 크기를 보고 알려 준다). */
+  private stageRoom = false;
+  /** 사용자가 무대를 접어 두었다 — 이 브라우저에 기억한다. */
+  private stageOff = stored(STAGE_OFF_KEY) === "1";
+  /** 탭이 가려져 있다 — 보이지 않는 화면을 읽지 않는다. */
+  private asleep = document.hidden;
+
   constructor(
     private readonly root: HTMLElement,
     private readonly callbacks: DetailCallbacks,
+    private readonly stage?: HTMLElement,
   ) {
+    if (stage) {
+      const fold = h("button", { class: "btn icon", type: "button", title: t("가운데 화면 접기"), "aria-label": t("가운데 화면 접기") }, icon("close"));
+      fold.addEventListener("click", () => this.setStageOff(true));
+      const big = this.button(t("크게 보기"), () => this.preview.pane && this.callbacks.act({ type: "terminal", paneId: this.preview.pane }), { cls: "btn", icon: "expand" });
+      stage.replaceChildren(h("header", {}, icon("terminal"), h("div", { class: "names" }, this.stageTitle, this.stageSub), big, fold), this.stageBody);
+    }
+    document.addEventListener("visibilitychange", () => {
+      this.asleep = document.hidden;
+      if (this.asleep) this.preview.stop();
+      else this.rerender();
+    });
     // 키 단추는 한 묶음으로 남는 폭을 나눠 쓰고, 터미널 단추는 그 옆에 제 폭으로 선다.
     const keys = h("div", { class: "keys" });
     for (const key of QUICK_KEYS) {
@@ -329,6 +357,39 @@ export class DetailPanel {
     this.input.style.height = `${this.input.scrollHeight + this.input.offsetHeight - this.input.clientHeight}px`;
   }
 
+  /** 무대를 놓을 자리가 생겼거나 없어졌다. */
+  setStageRoom(room: boolean): void {
+    if (room === this.stageRoom) return;
+    this.stageRoom = room;
+    this.rerender();
+  }
+
+  private setStageOff(off: boolean): void {
+    this.stageOff = off;
+    store(STAGE_OFF_KEY, off ? "1" : null);
+    this.rerender();
+  }
+
+  /** 터미널 화면을 무대에 띄우는 중인가. */
+  private get staged(): boolean {
+    return this.stage !== undefined && this.stageRoom && !this.stageOff;
+  }
+
+  /** 미리보기를 무대에 올리거나 내린다. 글자 크기가 자리마다 달라 칸 눈금을 다시 맞춘다. */
+  private syncStage(on: boolean): void {
+    if (!this.stage) return;
+    const was = this.preview.el.parentElement === this.stageBody;
+    if (on && !was) this.stageBody.append(this.preview.el);
+    else if (!on && was) this.preview.el.remove();
+    if (this.stage.hidden === on) this.stage.hidden = !on;
+    if (on !== this.onStage) {
+      this.onStage = on;
+      this.preview.refit();
+    }
+  }
+
+  private onStage = false;
+
   setCovered(covered: boolean): void {
     this.covered = covered;
     if (covered) this.preview.stop();
@@ -388,8 +449,11 @@ export class DetailPanel {
       this.root.hidden = true;
       this.setDock(null);
       this.preview.stop();
+      this.syncStage(false);
       return;
     }
+    // 확인 필요일 때는 질문 카드가 미리보기를 제 안에 품는다 — 답하는 단추 곁에 있어야 한다.
+    this.syncStage(this.staged && wantPreview !== null && !this.body.contains(this.preview.el));
     this.root.hidden = false;
     this.body.scrollTop = top;
     if (pin) {
@@ -407,7 +471,7 @@ export class DetailPanel {
       this.preview.fitFooter = fitFooter;
       this.preview.redraw();
     }
-    if (wantPreview && !this.covered) this.preview.start(wantPreview);
+    if (wantPreview && !this.covered && !this.asleep) this.preview.start(wantPreview);
     else this.preview.stop();
     this.preview.restoreScroll();
 
@@ -592,6 +656,8 @@ export class DetailPanel {
     if (tile instanceof HTMLElement) tile.title = harness;
     else tile.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "title")).textContent = harness;
     this.setHead(tile, a.title, a.name ? `${where} · ${a.name}` : where);
+    this.stageTitle.textContent = a.title;
+    this.stageSub.textContent = where;
 
     const source = a.statusSource === "herdr" ? t("herdr 가 알려준 상태") : a.statusSource === "card" ? t("질문 카드가 답을 기다리는 중") : a.statusSource === "prompt" ? t("보낸 첫 지시를 시작하는 중") : t("로그 시각으로 추정한 상태");
     const badge = h("span", { class: "badge", title: source }, a.seen ? t("확인함") : STATUS_LABEL[a.status]);
@@ -618,12 +684,12 @@ export class DetailPanel {
       ["actions", this.actions(a)],
       ["prompt", a.lastPrompt ? this.textSection(t("마지막 지시"), a.lastPrompt, "prompt") : null],
       ["reply", a.lastReply ? this.textSection(t("마지막 응답"), a.lastReply, "reply") : null],
-      ["screen", a.paneId && !blocked ? this.screenSection(a.paneId) : null],
+      ["screen", a.paneId && !blocked && !this.staged ? this.screenSection(a.paneId) : null],
       ["log", a.recent.length > 0 ? this.logSection(a) : null],
     ];
     for (const [k, el] of keyed) if (el) el.dataset.k = k;
     this.setBody(...keyed.map(([, el]) => el));
-    return a.paneId && (blocked || this.open.screen) ? a.paneId : null;
+    return a.paneId && (blocked || this.open.screen || this.staged) ? a.paneId : null;
   }
 
   /**
@@ -940,6 +1006,7 @@ export class DetailPanel {
       "h3",
       {},
       t("터미널 화면"),
+      this.stageButton(),
       this.button(t("숨기기"), () => {
         this.open.screen = false;
         this.rerender();
@@ -947,6 +1014,12 @@ export class DetailPanel {
       this.button(t("크게 보기"), () => this.callbacks.act({ type: "terminal", paneId }), { cls: "", icon: "expand" }),
     );
     return h("section", {}, head, this.preview.el);
+  }
+
+  /** 접어 둔 무대를 다시 여는 단추. 무대를 놓을 자리가 없는 화면에서는 없다. */
+  private stageButton(): HTMLElement | null {
+    if (!this.stage || !this.stageRoom || !this.stageOff) return null;
+    return this.button(t("가운데에 띄우기"), () => this.setStageOff(false), { cls: "" });
   }
 
   private rerender(): void {
@@ -989,7 +1062,9 @@ export class DetailPanel {
         ),
       );
     }
-    parts.push(h("section", {}, h("h3", {}, t("터미널 화면")), this.preview.el));
+    this.stageTitle.textContent = p.label || p.title || t("터미널");
+    this.stageSub.textContent = ws ? ws.label : p.workspaceId;
+    if (!this.staged) parts.push(h("section", {}, h("h3", {}, t("터미널 화면"), this.stageButton()), this.preview.el));
     this.setBody(...parts);
     return p.id;
   }

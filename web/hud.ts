@@ -136,7 +136,7 @@ export class Hud {
     this.panel = new DetailPanel(this.detail, {
       act: (action) => this.callbacks.onAction(action),
       toast: (title, text, color) => this.toast(title, text, color),
-    });
+    }, document.getElementById("stage") ?? undefined);
     this.search.addEventListener("input", () => {
       this.query = this.search.value.trim();
       this.applyFilter();
@@ -169,6 +169,11 @@ export class Hud {
 
   get latest(): WorldSnapshot | undefined {
     return this.snapshot;
+  }
+
+  /** 가운데 아래에 무대(터미널 화면)를 놓을 자리가 있는지. */
+  setStageRoom(room: boolean): void {
+    this.panel.setStageRoom(room);
   }
 
   /** 터미널 크게 보기가 열려 상태 창이 덮였다. */
