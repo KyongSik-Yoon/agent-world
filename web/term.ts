@@ -71,11 +71,87 @@ function installGlyphFonts(): void {
   document.head.append(style);
 }
 
+/**
+ * 칸 눈금. 줄은 글 조각·상자(한글, 기호)·직접 그리는 칸이 섞여 흐르는데, 브라우저는 조각마다 폭을 1/64 기기 픽셀 눈금에
+ * 맞춘다 — 글 조각은 올리고 상자는 버린다. 글꼴의 글자 폭이 그 눈금에 딱 떨어지지 않으면(대개 그렇다) 조각 수만큼 오차가
+ * 쌓여, 같은 칸의 세로선이 줄마다 다른 픽셀에 그어진다(304칸 화면에서 기기 픽셀 0.4–2.2 — 선이 자글자글해 보인다).
+ *
+ * 그래서 이 글자 크기에서 글자 하나가 실제로 차지하는 폭을 재고, 가장 가까운 눈금을 칸 폭(--cell)으로 삼아 상자는 그 폭으로,
+ * 글은 자간(letter-spacing)으로 그 폭에 맞춘다. 그러면 어느 칸의 자리도 "칸 번호 × 칸 폭"으로만 정해진다.
+ * 자간은 눈금에서 살짝(2e-5px) 모자라게 둔다 — 올림이 정확히 눈금으로 돌아오고, 300칸을 이어도 한 눈금에 못 미친다.
+ */
+interface CellFit {
+  /** 글자 크기(px). snap 이면 칸이 기기 픽셀의 정수배가 되도록 고친 값. */
+  size: number;
+  /** 칸 폭(px). */
+  cell: number;
+  /** 글자 사이에 더할 간격(px). */
+  spacing: number;
+}
+
+const cellFits = new Map<string, CellFit>();
+/** 잰 값이 달라질 수 있는 일(글꼴이 늦게 옴, 화면 배율 바뀜)이 생기면 화면들이 다시 맞춘다. */
+const cellChanged = new EventTarget();
+const PROBE_CHARS = 4000;
+
+/** 이 글자 크기에서 글자 하나의 폭(px). 긴 글 한 줄의 끝자리를 재서 나눈다 — 글자 하나를 재면 눈금 오차가 그대로 실린다. */
+function advanceAt(sizePx: number): number {
+  const probe = document.createElement("div");
+  probe.className = "term";
+  probe.style.cssText = `position:absolute;left:-99999px;top:0;visibility:hidden;padding:0;overflow:visible;letter-spacing:0;font-size:${sizePx}px`;
+  probe.append("0".repeat(PROBE_CHARS));
+  const end = probe.appendChild(document.createElement("span"));
+  end.style.cssText = "display:inline-block;width:0";
+  document.body.append(probe);
+  const width = end.getBoundingClientRect().left - probe.getBoundingClientRect().left;
+  probe.remove();
+  return width / PROBE_CHARS;
+}
+
+/**
+ * 이 글자 크기의 칸 눈금. snap 이면 글자 크기를 조금 줄여(하한 아래로는 키워) 칸을 기기 픽셀의 정수배로 만든다 — 세로선이
+ * 칸마다 같은 굵기로 그어진다. 글자 크기를 우리가 정하는 크게 보기에서 쓴다.
+ */
+function cellFit(sizePx: number, snap: boolean, minPx = 0): CellFit | undefined {
+  const dpr = devicePixelRatio || 1;
+  const key = `${sizePx.toFixed(3)}|${snap ? minPx : "-"}|${dpr}`;
+  let fit = cellFits.get(key);
+  if (fit) return fit;
+  let size = sizePx;
+  let advance = advanceAt(size) * dpr;
+  if (!(advance > 0)) return undefined;
+  let cell = Math.round(advance * 64) / 64;
+  if (snap) {
+    let whole = Math.max(1, Math.floor(advance + 0.001));
+    if ((size * whole) / advance < minPx - 0.01) whole += 1;
+    size = (size * whole) / advance;
+    advance = advanceAt(size) * dpr;
+    // 고친 크기에서 다시 잰 폭이 정수 칸에서 멀면(글꼴이 크기에 비례하지 않는다) 그 크기의 눈금을 그대로 쓴다.
+    cell = Math.abs(advance - whole) < 0.05 ? whole : Math.round(advance * 64) / 64;
+  }
+  // 칸 폭은 눈금보다 아주 조금 크게 적는다 — px 로 적은 값이 기기 픽셀로 바뀌며 눈금 바로 아래로 떨어지면 한 눈금이 버려진다.
+  fit = { size, cell: (cell + 1e-5) / dpr, spacing: (cell - advance) / dpr - 2e-5 };
+  // 창 폭을 끌어 바꾸는 동안에는 크기마다 하나씩 쌓인다.
+  if (cellFits.size > 200) cellFits.clear();
+  cellFits.set(key, fit);
+  return fit;
+}
+
 if (typeof document !== "undefined") {
   installGlyphFonts();
   if (document.body) fitWide();
   else addEventListener("DOMContentLoaded", fitWide, { once: true });
-  document.fonts?.addEventListener("loadingdone", fitWide);
+  document.fonts?.addEventListener("loadingdone", () => {
+    fitWide();
+    cellFits.clear();
+    cellChanged.dispatchEvent(new Event("change"));
+  });
+  let dpr = devicePixelRatio;
+  addEventListener("resize", () => {
+    if (devicePixelRatio === dpr) return;
+    dpr = devicePixelRatio;
+    cellChanged.dispatchEvent(new Event("change"));
+  });
 }
 
 const CUBE = [0, 95, 135, 175, 215, 255];
@@ -213,7 +289,7 @@ function cells(text: string, into: HTMLElement): void {
           run += 1;
           i += 1;
         }
-        if (run > 1) block.style.width = `calc(${run}ch + 1px)`;
+        if (run > 1) block.style.width = `calc(${run} * var(--cell, 1ch) + 1px)`;
       }
       // 글자는 남겨 둔다 — 골라 복사하면 원래 글자가 나온다. 보이지만 않는다(CSS).
       block.textContent = cell.repeat(run);
@@ -918,6 +994,10 @@ export class TermScreen {
   private footerSeen = { pane: "", width: 0, cols: 0 };
   /** 지난 그리기의 상자 묶음 결과(묶음 줄들의 key → 결과). 이번에 쓴 것만 남긴다. */
   private boxForms = new Map<string, BoxForm>();
+  /** 크게 보기가 정해 준 글자 크기(px)와 칸을 기기 픽셀에 맞출지. 없으면 스타일시트의 크기를 쓴다. */
+  private font: { px: number; snap: boolean; min: number } | undefined;
+  /** 칸 눈금을 아직 맞추지 않았다 — 문서에 붙은 뒤 첫 그리기에서 맞춘다. */
+  private untuned = true;
 
   constructor(private readonly options: ScreenOptions = {}) {
     this.el.className = "term";
@@ -933,6 +1013,7 @@ export class TermScreen {
       if (this.flowing && this.fitFooter) this.redraw();
     }).observe(this.el);
     this.el.textContent = t("화면을 읽는 중…");
+    cellChanged.addEventListener("change", () => this.tune());
     // 아래에 붙이기를 멈추는 것은 사용자가 직접 올렸을 때뿐이다. 브라우저도 스스로 스크롤 이벤트를 낸다(화면 자판이
     // 열리고 닫힐 때, 위쪽 줄 높이가 바뀌어 보던 자리를 지킬 때) — 그것까지 "올려 읽는 중"으로 알면 휴대폰에서 상태줄이
     // 입력칸 밑에 숨은 채 남았다.
@@ -976,6 +1057,33 @@ export class TermScreen {
     this.el.classList.toggle("flow", on);
     this.rows = [];
     this.redraw();
+  }
+
+  /** 글자 크기를 정한다(크게 보기). snap 이면 칸이 기기 픽셀의 정수배가 되게 조금 고친다 — min 아래로는 내리지 않는다. */
+  setFont(px: number, snap: boolean, min = 0): void {
+    this.font = { px, snap, min };
+    this.tune();
+  }
+
+  /** 지금 글자 크기의 칸 눈금을 맞춘다(cellFit). 문서에 붙어 있어야 잴 수 있다. */
+  private tune(): void {
+    if (!this.el.isConnected) {
+      this.untuned = true;
+      return;
+    }
+    this.untuned = false;
+    const style = this.el.style;
+    const px = this.font?.px ?? (style.removeProperty("font-size"), parseFloat(getComputedStyle(this.el).fontSize));
+    const fit = px > 0 ? cellFit(px, this.font?.snap ?? false, this.font?.min) : undefined;
+    if (!fit) {
+      if (this.font) style.fontSize = `${this.font.px.toFixed(2)}px`;
+      style.removeProperty("--cell");
+      style.removeProperty("letter-spacing");
+      return;
+    }
+    if (this.font) style.fontSize = `${fit.size}px`;
+    style.setProperty("--cell", `${fit.cell}px`);
+    style.letterSpacing = `${fit.spacing}px`;
   }
 
   /** 맨 위로 올리고 아래에 붙이기를 푼다 — 앱 화면을 넘겨 새로 드러난 지난 출력부터 보이게. */
@@ -1142,6 +1250,7 @@ export class TermScreen {
   private draw(raw: readonly string[]): void {
     const { tail } = this.options;
     const reflow = this.flowing;
+    if (this.untuned) this.tune();
     // 앞서 그린 줄 가운데 글과 스타일이 같은 것은 요소를 그대로 쓴다. 글자를 치면 그 한 줄만 다시 만든다(큰 화면에서
     // 0.3ms — 전부 새로 만들면 20ms 안팎). 화면이 통째로 밀릴 때는 줄을 다시 써도 배치 값이 그대로라 덕을 보지 못한다.
     const pool = new Map<string, Row[]>();
@@ -1640,8 +1749,9 @@ export class TermOverlay {
     const width = this.body.clientWidth - 28;
     // 칸을 다 넣으려다 글자가 깨알이 되느니, 읽을 만한 크기로 두고 가로로 민다.
     // 칸 수가 적은 pane 은 글자를 조금 키우고(읽기 좋은 데까지만), 그래도 남는 폭은 양옆에 고르게 둔다(스타일시트).
-    const size = flow ? FLOW_FONT_PX : Math.max(MIN_FONT_PX, Math.min(MAX_FONT_PX, width / (this.cols * 0.6)));
-    this.screen.el.style.fontSize = `${size.toFixed(2)}px`;
+    // 그렇게 고른 크기에서 칸이 기기 픽셀의 정수배가 되도록 조금 줄인다(setFont) — 세로선이 줄마다·칸마다 같은 자리에 그어진다.
+    if (flow) this.screen.setFont(FLOW_FONT_PX, false);
+    else this.screen.setFont(Math.max(MIN_FONT_PX, Math.min(MAX_FONT_PX, width / (this.cols * 0.6))), true, MIN_FONT_PX);
     this.screen.el.style.setProperty("--cols", String(this.cols));
     // 글자 크기가 바뀌면 화면 높이도 바뀐다 — 아래에 붙어 있었으면 다시 붙인다.
     this.screen.restoreScroll();

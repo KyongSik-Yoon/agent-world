@@ -1861,6 +1861,14 @@ kbd {
   min-height: 1.22em;
 }
 
+/* 칸 폭(--cell)과 자간은 term.ts 의 cellFit 이 이 화면의 글자 크기에서 재어 건다 — 어느 칸이든 자리가 "칸 번호 × 칸 폭"이
+   되어 세로선이 줄마다 같은 픽셀에 그어진다. 제 크기를 따로 정하는 줄(표, 상태줄)은 그 값이 맞지 않으므로 글꼴의 폭으로 돌아간다. */
+.term.flow .tl.grid,
+.term.flow .tl.fit {
+  --cell: 1ch;
+  letter-spacing: normal;
+}
+
 /* herdr 가 화면 읽기에 답하지 않는 동안: 보이는 것은 멈춘 화면이다. */
 .term.stalled > * {
   opacity: 0.45;
@@ -1945,20 +1953,23 @@ kbd {
 .term .w1,
 .term .w2 {
   display: inline-block;
-  width: 1ch;
+  width: var(--cell, 1ch);
   text-align: center;
   white-space: nowrap;
 }
 
 .term .w2 {
-  width: 2ch;
+  width: calc(2 * var(--cell, 1ch));
 }
 
 /* 블록 문자는 글꼴 대신 칸 전체(1칸 × 줄 높이)를 배경으로 칠한다(cells.ts). 글자는 복사용으로만 남기고 감춘다.
    사방으로 0.5px 씩 덮어, 칸·줄 경계가 소수점 픽셀에 걸려도 실선 틈이 생기지 않게 한다(차지하는 자리는 1칸 그대로). */
 .term .blk {
   display: inline-block;
-  width: calc(1ch + 1px);
+  /* 배경색이 깔린 글 조각은 글꼴의 위아래 여백만큼 줄 밖으로 번진다. 아랫줄의 그 배경이 윗줄 칸의 아래 끝을 덮어, 세로로
+     이어지는 블록(스크롤 막대, 로고) 사이에 실금이 갔다 — 그린 칸은 모든 줄의 배경보다 나중에 칠한다. */
+  position: relative;
+  width: calc(var(--cell, 1ch) + 1px);
   height: calc(1.22em + 1px);
   margin: -0.5px;
   vertical-align: top;
@@ -1967,7 +1978,7 @@ kbd {
 }
 
 .term .blk.shade {
-  width: 1ch;
+  width: var(--cell, 1ch);
   height: 1.22em;
   margin: 0;
 }
@@ -2071,7 +2082,7 @@ body[data-covered] :is(#world, #topbar, #roster, #detail) * {
 #term-overlay .term {
   height: 100%;
   /* 화면의 칸 수보다 창이 넓으면 남는 폭을 양옆에 나눠, 내용이 왼쪽 구석에 몰리지 않게 한다. */
-  padding: 12px max(14px, calc((100% - var(--cols, 120) * 1ch) / 2));
+  padding: 12px max(14px, calc((100% - var(--cols, 120) * var(--cell, 1ch)) / 2));
 }
 
 #term-overlay:focus-within {
