@@ -493,10 +493,25 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
     // ── 만들기 ───────────────────────────────────────────────────────────────────────────────────
     "/api/workspace": mutate(async (body) => herdrCreateWorkspace(await directory(text(body, "cwd", 4096)), text(body, "label").trim() || undefined)),
     "/api/worktree": mutate(async (body) => {
-      const workspaceId = text(body, "workspaceId");
-      const cwd = text(body, "cwd", 4096);
+      let workspaceId = text(body, "workspaceId");
+      let cwd = text(body, "cwd", 4096);
+      if (workspaceId) {
+        await need("workspace", workspaceId);
+        // herdr 는 워크트리를 저장소의 본체 스페이스에서만 새로 연다(별채에서 시작하면 linked_worktree_source).
+        // 별채에서 '워크트리 추가'를 누르면 같은 저장소의 본체 스페이스로, 본체가 닫혀 있으면 저장소 경로로 바꿔 보낸다.
+        const spaces = (await herdrSnapshot()).workspaces;
+        const from = spaces.find((w) => w.workspace_id === workspaceId)?.worktree;
+        if (from?.is_linked_worktree && from.repo_key) {
+          const main = spaces.find((w) => w.worktree?.repo_key === from.repo_key && w.worktree?.is_linked_worktree === false);
+          if (main) workspaceId = main.workspace_id;
+          else if (from.repo_root) {
+            workspaceId = "";
+            cwd = from.repo_root;
+          }
+        }
+      }
       return herdrCreateWorktree({
-        workspaceId: workspaceId ? await need("workspace", workspaceId) : undefined,
+        workspaceId: workspaceId || undefined,
         cwd: workspaceId ? undefined : await directory(cwd),
         branch: gitName(text(body, "branch")),
         base: gitName(text(body, "base")),

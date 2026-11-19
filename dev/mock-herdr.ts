@@ -150,7 +150,8 @@ async function handle(method: string, p: Record<string, unknown>): Promise<unkno
       const workspace: State["workspaces"][number] = { workspace_id: id, number: s.workspaces.length + 1, label: "" };
       if (method === "worktree.create") {
         // 진짜 herdr 처럼 원본 스페이스(또는 cwd)의 저장소에 묶인 워크트리를 만든다.
-        const from = s.workspaces.find((w) => w.workspace_id === p.workspace_id)?.worktree as { repo_root?: string; repo_name?: string; repo_key?: string } | undefined;
+        const from = s.workspaces.find((w) => w.workspace_id === p.workspace_id)?.worktree as { repo_root?: string; repo_name?: string; repo_key?: string; is_linked_worktree?: boolean } | undefined;
+        if (from?.is_linked_worktree) fail("linked_worktree_source", "New and open worktree actions start from the repo parent workspace.");
         const root = from?.repo_root ?? String(p.cwd ?? `/mock/${id}`);
         const name = from?.repo_name ?? root.split("/").pop()!;
         const branch = typeof p.branch === "string" ? p.branch : `worktree-${id}`;
