@@ -2816,6 +2816,18 @@ dialog.dlg input[type="checkbox"] {
   height: 20px;
 }
 
+/* 목록 줄(같은 저장소의 집) 안에서는 셸·브랜드 칸과 같은 크기로 — 줄의 첫 칸이 26px 이다. */
+.prow > .house-tile {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+
+.prow > .house-tile .ico {
+  width: 15px;
+  height: 15px;
+}
+
 .prow {
   display: grid;
   grid-template-columns: 26px 1fr;
