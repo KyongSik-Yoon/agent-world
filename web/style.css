@@ -1408,6 +1408,8 @@ kbd {
   color: var(--blocked);
 }
 
+/* 단추 줄은 평소에는 바탕 없이 창과 같은 유리 위에 있고, 위에 붙어 원문이 밑으로 지나갈 때만 바탕을 깐다.
+   늘 불투명한 바탕을 깔면 반투명한 창 안에서 그 줄만 하얀(밤에는 짙은) 띠로 떠 보였다. */
 .log-detail .log-bar {
   position: sticky;
   top: 0;
@@ -1417,7 +1419,23 @@ kbd {
   gap: 12px;
   margin-bottom: 2px;
   padding: 4px 0 2px;
+}
+
+/* 붙은 동안(detail.ts 의 stuckWatch)은 단추 둘만 감싼 알약으로 오른쪽 위에 띄운다. 폭 전체를 불투명하게 칠하면
+   뒤의 장면에 따라 색이 바뀌는 유리 창 안에서 어떤 색으로도 띠가 튄다. 글은 알약 옆으로 그대로 지나간다. */
+.log-detail .log-bar.stuck {
+  width: max-content;
+  margin-left: auto;
+  padding: 5px 12px 4px;
+  border-radius: 999px;
   background: var(--panel-solid);
+  box-shadow: 0 0 0 1px var(--line), 0 2px 10px rgba(10, 20, 50, 0.14);
+  translate: -6px 6px;
+}
+
+.log-detail .log-top {
+  display: block;
+  height: 0;
 }
 
 /* 섹션 머리의 복사 단추와 같은 모양. 누를 자리는 넓히고 바깥 여백을 그만큼 뺀다. */

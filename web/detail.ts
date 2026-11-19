@@ -133,6 +133,19 @@ export class DetailPanel {
   private logRevealKey: string | null = null;
   /** 펼치거나 접으려고 누른 줄과 그 줄이 있던 높이 — 다음 다시 그리기는 이 줄을 붙든다(pinPoint 대신). */
   private logPin: { key: string; top: number } | null = null;
+  /**
+   * 펼친 원문의 단추 줄이 위에 붙었는지 본다 — 원문 맨 위의 표식이 창 위 끝을 넘어가면 붙은 것이다. 붙은 동안만
+   * 바탕을 깔아, 평소에는 창의 유리와 같은 색으로 보인다(CSS 의 scroll-state 는 Bun 의 CSS 묶기가 읽지 못한다).
+   */
+  private readonly stuckWatch = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        const stuck = !e.isIntersecting && e.rootBounds !== null && e.boundingClientRect.top < e.rootBounds.top;
+        e.target.nextElementSibling?.classList.toggle("stuck", stuck);
+      }
+    },
+    { root: this.body },
+  );
   private busy = false;
 
   constructor(
@@ -352,6 +365,7 @@ export class DetailPanel {
       this.sent = null;
       this.logOpen = null;
       this.logText.clear();
+      this.stuckWatch.disconnect();
     }
     this.snapshot = snapshot;
     this.selectedId = selectedId;
@@ -878,7 +892,9 @@ export class DetailPanel {
       this.button(t("복사"), () => this.copy(raw, what), { cls: "", icon: "copy", title: t("이 원문을 클립보드에 복사합니다") }),
       this.button(t("접기"), () => this.toggleLog(agentId, item, n), { cls: "" }),
     );
-    got.el = h("li", { class: "log-detail" }, bar, body);
+    const mark = h("i", { class: "log-top" });
+    this.stuckWatch.observe(mark);
+    got.el = h("li", { class: "log-detail" }, mark, bar, body);
     return got.el;
   }
 
