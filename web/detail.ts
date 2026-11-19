@@ -131,6 +131,8 @@ export class DetailPanel {
   /** 접은 뒤 보이는 자리로 데려올 줄(다시 그린 다음에 쓴다). */
   private logReveal: HTMLElement | null = null;
   private logRevealKey: string | null = null;
+  /** 펼치거나 접으려고 누른 줄과 그 줄이 있던 높이 — 다음 다시 그리기는 이 줄을 붙든다(pinPoint 대신). */
+  private logPin: { key: string; top: number } | null = null;
   private busy = false;
 
   constructor(
@@ -341,7 +343,10 @@ export class DetailPanel {
     const top = selectedId === this.selectedId ? this.body.scrollTop : 0;
     // 보던 자리를 붙든다. 스크롤 값만 되돌리면 그 위의 덩어리(바뀐 응답 글, 맨 위에 새 줄이 붙은 활동 로그)의 높이가
     // 바뀐 만큼 보던 글이 위아래로 밀린다. 펼친 원문은 옛 본문에서 빠져나가기 전에, 짓기 전에 잰다.
-    const pin = selectedId === this.selectedId ? this.pinPoint() : undefined;
+    // 활동 로그의 줄을 눌러 다시 그릴 때는 누른 그 줄을 붙든다. 다른 원문을 펼쳐 둔 채 누르면 pinPoint 는 그 원문을
+    // 고르는데, 이번에 접혀 빠지므로 기댈 데가 없어져 스크롤이 맨 위로 끌려갔다.
+    const pin: { node?: Element; key?: string; top: number } | undefined = selectedId === this.selectedId ? (this.logPin ?? this.pinPoint()) : undefined;
+    this.logPin = null;
     if (selectedId !== this.selectedId) {
       this.open.prompt = this.open.reply = this.open.screen = false;
       this.sent = null;
@@ -827,6 +832,9 @@ export class DetailPanel {
 
   private toggleLog(agentId: string, item: Activity, n: number): void {
     const ref = logKey(item, n);
+    const key = `log:${ref}`;
+    const row = [...this.body.querySelectorAll<HTMLElement>("[data-k]")].find((e) => e.dataset.k === key);
+    if (row) this.logPin = { key, top: row.getBoundingClientRect().top };
     if (this.logOpen === ref) this.logRevealKey = ref;
     this.logOpen = this.logOpen === ref ? null : ref;
     const got = this.logText.get(ref);
