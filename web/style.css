@@ -1721,6 +1721,33 @@ kbd {
   font-size: clamp(8px, calc((100cqi - 24px) / (var(--fit-cols, 55) * 0.62)), 1em);
 }
 
+/* 넘쳐서 접는 글 상자의 줄(term.ts 의 renderPanel): 왼쪽 세로선 칸과 글 칸을 나눠, 접힌 줄이 세로선 안쪽에서 이어지고
+   세로선은 접힌 높이만큼 내려온다. 목록이면 머리(1. •) 뒤 글자에 맞춰 들여 쓴다. */
+.term.flow .tl.panel {
+  display: flex;
+}
+
+.term.flow .tl.panel > .hang {
+  display: flex;
+  flex: none;
+  white-space: pre;
+}
+
+.term.flow .tl.panel > .hang .blk {
+  height: calc(100% + 1px);
+}
+
+.term.flow .tl.panel > .body {
+  flex: 1;
+  min-width: 0;
+  padding-left: calc(var(--mark, 0) * 1ch);
+  text-indent: calc(var(--mark, 0) * -1ch);
+}
+
+.term.flow .tl.panel > .body * {
+  text-indent: 0;
+}
+
 /* 입력창 아래의 상태줄·안내줄과 배너 줄: 접지 않고 한 줄씩 폭에 맞춰 줄인다. 읽을 수 있는 8px 밑으로는 줄이지 않고, 그래도
    넘치는 끝은 잘라 … 로 둔다 — 넘친 줄이 화면 전체를 가로로 밀게 두면 위의 글까지 함께 밀린다. */
 .term.flow .tl.fit {

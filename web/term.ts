@@ -288,8 +288,8 @@ interface BoxForm {
   lines: string[] | null;
   cols: number;
   table: boolean;
-  /** 오른쪽 테두리까지 뗀 줄들(본문 크기로 넘칠 때). 처음 쓸 때 만든다. */
-  panel?: string[];
+  /** 오른쪽 테두리까지 떼고 넘긴 줄을 이어 붙인 줄들(본문 크기로 넘칠 때). 앞줄에 붙은 줄은 null. 처음 쓸 때 만든다. */
+  panel?: Array<string | null>;
 }
 
 function boxForm(group: readonly Row[]): BoxForm {
@@ -592,6 +592,135 @@ export function dropRightBorder(line: string): string {
     gap = "";
   }
   return out + gap.replace(/ /g, "");
+}
+
+/** 접는 글 상자 줄의 머리: 왼쪽 세로선과 그 뒤 공백. 접힌 줄은 이 칸 뒤에서 이어진다(모두 한 칸 글자라 길이가 칸 수다). */
+const PANEL_HEAD = /^ *[\u2502\u2503\u2551] */;
+/** 목록 머리(1. • - 등). 접힌 줄은 머리 뒤 글자에 맞춰 들여 쓴다. */
+const LIST_MARK = /^(?:[-*\u2022\u25E6\u25AA\u2023]|\d{1,3}[.)]) +/;
+/** 오른쪽 테두리 글자. */
+const RIGHT_BORDER = /[\u2502\u2503\u2551\u256E\u256F\u2510\u2518\u2557\u255D]$/;
+/** 글 상자 줄로 그린 Row 의 key 머리 — 같은 줄을 보통 줄로 그린 것과 섞이지 않게. */
+const PANEL_KEY = "panel\n";
+
+const plain = (line: string): string => line.replace(ESCAPE, "");
+/** 세로선 칸이 이보다 넓으면(깊이 들여 쓴 줄) 나누지 않는다 — 휴대폰 폭에서 글 칸이 한두 글자로 좁아진다. */
+const PANEL_HANG_MAX = 24;
+
+/** 줄에서 from 칸 뒤 첫 글자와 마지막 글자의 색·흐림. 넘긴 줄이면 앞줄 끝과 다음 줄 첫 글자가 같은 글이라 같다. */
+function edgeLooks(line: string, from: number): [string, string] {
+  let style: Style = {};
+  let col = 0;
+  let first = "";
+  let last = "";
+  for (const [t] of line.matchAll(ANSI_TOKEN)) {
+    if (t.startsWith("\x1b")) {
+      const sgr = /^\x1b\[([0-9;:]*)m$/.exec(t);
+      if (sgr) style = applySgr(style, (sgr[1] || "0").split(/[;:]/).map((x) => Number(x) || 0));
+      continue;
+    }
+    if (t !== " " && !RIGHT_BORDER.test(t)) {
+      const look = `${style.fg ?? ""}|${style.dim ? 1 : 0}`;
+      if (col >= from && !first) first = look;
+      last = look;
+    }
+    if (!JOINS.test(t)) col += WIDE.test(t) ? 2 : 1;
+  }
+  return [first, last];
+}
+
+/** 줄을 앞 n 칸과 나머지로 가른다. 색상 코드는 칸을 따라간다. */
+export function splitColumns(line: string, n: number): [string, string] {
+  let head = "";
+  let tail = "";
+  let col = 0;
+  for (const [t] of line.matchAll(ANSI_TOKEN)) {
+    if (col < n) head += t;
+    else tail += t;
+    if (!t.startsWith("\x1b") && !JOINS.test(t)) col += WIDE.test(t) ? 2 : 1;
+  }
+  return [head, tail];
+}
+
+/**
+ * 넘쳐서 접을 글 상자의 줄들: 오른쪽 테두리를 뗀 shownLines(빈 칸 구간을 뗀 줄)에서, 상자 폭 때문에 다음 줄로 넘긴 글은 앞줄에 다시 이어 붙인다(붙은 줄은 null).
+ * 넘긴 줄인지는 줄바꿈 규칙대로 가린다 — 다음 줄의 첫 낱말이 앞줄 끝 한 칸 뒤에 들어갈 자리가 없었고, 같은 들여쓰기로
+ * 이어지며(목록이면 머리 뒤 글자에 맞춰), 목록 머리로 시작하지 않을 때. 그대로 두면 좁은 화면에서 넓은 상자의 줄 끝마다
+ * 한두 낱말짜리 줄이 생긴다. 넘겼는지는 빈 칸을 떼기 전의 줄(lines)에서 잰다 — 뗀 줄에서는 상자 폭이 가장 긴 줄에 맞춰
+ * 줄어, 짧은 줄도 끝에 닿은 것처럼 보인다.
+ */
+export function panelLines(lines: readonly string[], shownLines: readonly string[] = lines): Array<string | null> {
+  const out: Array<string | null> = [];
+  let open = -1;
+  let indent = 0;
+  let end = 0;
+  let edge = 0;
+  let tail = "";
+  lines.forEach((line, i) => {
+    const shown = dropRightBorder(shownLines[i]!);
+    const text = plain(line).trimEnd();
+    const head = PANEL_HEAD.exec(text);
+    if (!head || !RIGHT_BORDER.test(text)) {
+      out.push(shown);
+      open = -1;
+      return;
+    }
+    const hang = head[0].length;
+    const body = text.slice(hang, -1).trimEnd();
+    const mark = LIST_MARK.exec(body)?.[0].length ?? 0;
+    const border = displayCols(text) - 1;
+    const bodyEnd = hang + displayCols(body);
+    const word = displayCols(body.split(" ")[0]!);
+    // 색·흐림이 바뀌면 다른 글이다 — 미리보기를 끊은 자리의 "Show all · N more lines", 꽉 찬 제목 밑의 부제.
+    const [first, last] = edgeLooks(line, hang);
+    if (open >= 0 && body && !mark && hang === indent && end + 1 + word > edge && first === tail) {
+      const [lead, rest] = splitColumns(shown, PANEL_HEAD.exec(plain(shown))?.[0].length ?? 0);
+      out[open] += ` ${lead.match(/\x1b[^a-zA-Z]*[a-zA-Z]/g)?.join("") ?? ""}${rest}`;
+      out.push(null);
+    } else {
+      out.push(shown);
+      open = body ? out.length - 1 : -1;
+      indent = hang + mark;
+    }
+    end = bodyEnd;
+    // 상자 안쪽은 테두리 앞의 한 칸(여백) 전까지다.
+    edge = border - 1;
+    tail = last;
+  });
+  return out;
+}
+
+/**
+ * 글 상자의 한 줄을 세로선 칸과 글 칸으로 나눠 그린다. 접힌 줄이 세로선 밖(맨 왼쪽)으로 나가지 않고 글 칸 안에서 이어지며,
+ * 세로선은 접힌 줄 높이만큼 내려온다(스타일시트의 .tl.panel).
+ */
+function renderPanel(raw: string, start: Style): Row {
+  const head = PANEL_HEAD.exec(plain(raw));
+  if (!head || head[0].length > PANEL_HANG_MAX) {
+    const row = renderLine(raw, start, true);
+    return { ...row, key: PANEL_KEY + row.key };
+  }
+  const [lead, rest] = splitColumns(raw, head[0].length);
+  const left = renderLine(lead, start, true);
+  const right = renderLine(rest, left.end, true);
+  const node = document.createElement("div");
+  node.className = "tl panel";
+  const hang = document.createElement("span");
+  hang.className = "hang";
+  for (const child of [...left.node.childNodes]) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      const wrap = document.createElement("span");
+      wrap.append(child);
+      hang.append(wrap);
+    } else hang.append(child);
+  }
+  const body = document.createElement("span");
+  body.className = "body";
+  body.append(...right.node.childNodes);
+  const mark = LIST_MARK.exec(right.text)?.[0].length ?? 0;
+  if (mark) body.style.setProperty("--mark", String(mark));
+  node.append(hang, body);
+  return { key: PANEL_KEY + styleKey(start) + raw, node, text: left.text + right.text, bgLogo: false, end: right.end, line: raw, start };
 }
 
 /** 줄에서 drop 으로 표시한 칸의 글자를 뗀다. 색상 코드는 그대로 둔다. */
@@ -923,9 +1052,9 @@ export class TermScreen {
   }
 
   /** 고쳐 쓴 줄을 그린다. 그려 둔 같은 줄이 있으면 그 요소를 쓰고, 새로 그린 줄은 다음 그리기에서 쓰도록 rows 에 넣는다. */
-  private reline(row: Row, line: string, pool: Map<string, Row[]>): Row {
-    const key = styleKey(row.start) + line;
-    const next = key === row.key ? row : (pool.get(key)?.pop() ?? renderLine(line, row.start, true));
+  private reline(row: Row, line: string, pool: Map<string, Row[]>, panel = false): Row {
+    const key = (panel ? PANEL_KEY : "") + styleKey(row.start) + line;
+    const next = key === row.key ? row : (pool.get(key)?.pop() ?? (panel ? renderPanel(line, row.start) : renderLine(line, row.start, true)));
     if (next !== row) this.rows.push(next);
     return next;
   }
@@ -959,6 +1088,8 @@ export class TermScreen {
     }
     // 상태줄이 하한 크기에서도 넘쳐 끝이 잘리면(넓은 pane 을 좁은 곳에서 볼 때) 줄이지 않고 펴서 접는다.
     let unfolded = false;
+    /** 앞줄에 이어 붙여 그리지 않을 줄. */
+    let gone: Set<number> | undefined;
     if (reflow && footerAt >= 0 && footerAt < rows.length) {
       const open = this.unfoldFooter(rows.slice(footerAt), pool);
       if (open) {
@@ -999,10 +1130,14 @@ export class TermScreen {
         bodyCols ||= Math.max(1, (this.el.clientWidth - 24) / (parseFloat(getComputedStyle(this.el).fontSize) * 0.62));
         const fits = form.table || form.cols <= bodyCols;
         if (fits) kept.push([from, to]);
-        const lines = fits ? form.lines : (form.panel ??= (form.lines ?? group.map((r) => r.line)).map(dropRightBorder));
+        const lines = fits ? form.lines : (form.panel ??= panelLines(group.map((r) => r.line), form.lines ?? undefined));
         if (!lines) continue;
         if (rows === this.rows) rows = rows.slice();
-        group.forEach((row, i) => (rows[from + i] = this.reline(row, lines[i]!, pool)));
+        group.forEach((row, i) => {
+          const line = lines[i];
+          if (line === null) (gone ??= new Set()).add(from + i);
+          else rows[from + i] = this.reline(row, line!, pool, !fits);
+        });
       }
       this.boxForms = forms;
       for (const [from, to] of kept) applyGroup(from, to, false, true);
@@ -1022,6 +1157,8 @@ export class TermScreen {
         }
       });
     }
+    const drop = gone;
+    if (drop) rows = rows.filter((_, i) => !drop.has(i));
     const stick = this.back === 0 || this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40;
     // 남는 줄은 붙어 있는 채로 두고, 빠진 줄만 떼고 새 줄만 끼운다.
     const keep = new Set<Node>(rows.map((r) => r.node));
