@@ -1,7 +1,7 @@
 // 만들고 정리하는 일: 집 짓기(스페이스·워크트리), 새 주민(에이전트 시작), 새 탭, 나누기, 이름 바꾸기, 닫기.
 //
 // 닫기는 herdr 의 API 가 TUI 처럼 되묻지 않으므로, 여기서 무엇이 함께 꺼지는지 보여 주고 확인을 받는다.
-import type { AgentView, ModelCatalog, WorldSnapshot } from "../shared/types.ts";
+import type { AgentView, ModelCatalog, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
 import { ApiError, get, post } from "./api.ts";
 import { brandFor } from "./brands.ts";
 import { type TargetKind, workspaceKey } from "./detail.ts";
@@ -451,7 +451,8 @@ export class Builder {
 
   // ── 집 짓기 ────────────────────────────────────────────────────────────────────────────────
 
-  newHouse(): void {
+  /** 집 짓기. from 을 주면 그 스페이스의 저장소에 워크트리 별채를 짓는다(폴더를 다시 고르지 않는다). */
+  newHouse(from?: WorkspaceView): void {
     const dirs = dirCombo();
     const cwd = dirs.input;
     const label = h("input", { type: "text", autocomplete: "off", placeholder: t("비워 두면 herdr 가 폴더 이름으로 붙입니다") });
@@ -466,22 +467,28 @@ export class Builder {
       field(t("기준 (base)"), base),
       h("label", { class: "check" }, trust, t("이 저장소를 신뢰합니다 (herdr 가 요구할 때만 켜세요)")),
     );
-    wtBox.hidden = true;
+    wtBox.hidden = !from;
+    worktree.checked = Boolean(from);
     worktree.addEventListener("change", () => {
       wtBox.hidden = !worktree.checked;
     });
 
     const agent = this.agentFields(true);
     let made: Created | undefined;
+    const where = from
+      ? [field(t("집 이름"), label), wtBox]
+      : [
+          field(t("폴더"), dirs.box, t("이 폴더에서 셸이 열립니다")),
+          dirs.list,
+          field(t("집 이름"), label),
+          h("label", { class: "check" }, worktree, t("워크트리로 — 새 브랜치를 따로 체크아웃해서 엽니다")),
+          wtBox,
+        ];
     const dlg = this.dialog(
-      t("집 짓기"),
+      from ? t("워크트리 별채 — {repo}", { repo: from.repo ?? from.label }) : t("집 짓기"),
       t("짓기"),
       [
-        field(t("폴더"), dirs.box, t("이 폴더에서 셸이 열립니다")),
-        dirs.list,
-        field(t("집 이름"), label),
-        h("label", { class: "check" }, worktree, t("워크트리로 — 새 브랜치를 따로 체크아웃해서 엽니다")),
-        wtBox,
+        ...where,
         h("hr", {}),
         ...agent.fields,
       ],
@@ -490,7 +497,9 @@ export class Builder {
         if (made) step(t("이미 지은 스페이스를 이어서 씁니다"));
         else {
           step(worktree.checked ? t("워크트리를 만들고 스페이스를 여는 중…") : t("스페이스를 여는 중…"));
-          made = worktree.checked
+          made = from
+            ? await post<Created>("/api/worktree", { workspaceId: from.id, branch: branch.value, base: base.value, label: label.value, trust: trust.checked })
+            : worktree.checked
             ? await post<Created>("/api/worktree", { cwd: cwd.value, branch: branch.value, base: base.value, label: label.value, trust: trust.checked })
             : await post<Created>("/api/workspace", { cwd: cwd.value, label: label.value });
         }
@@ -501,11 +510,15 @@ export class Builder {
         if (agent.chosen()) await agent.start(paneId, step);
         await this.waitFor((s) => (s.workspaces.some((w) => w.id === workspaceId) ? true : undefined), 4000);
         this.deps.select(agent.chosen() ? paneId : workspaceKey(workspaceId));
-        this.deps.toast(t("집을 지었습니다"), label.value || cwd.value, "var(--done)");
+        if (from) this.deps.toast(t("별채를 지었습니다"), label.value || branch.value || (from.repo ?? from.label), "var(--done)");
+        else this.deps.toast(t("집을 지었습니다"), label.value || cwd.value, "var(--done)");
       },
     );
-    dirs.attach(dlg);
-    cwd.focus();
+    if (from) branch.focus();
+    else {
+      dirs.attach(dlg);
+      cwd.focus();
+    }
   }
 
   // ── 새 주민 ────────────────────────────────────────────────────────────────────────────────

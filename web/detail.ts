@@ -22,6 +22,7 @@ export type Action =
   | { type: "approve-plan"; agent: AgentView }
   | { type: "new-agent"; workspaceId: string; paneId?: string }
   | { type: "new-tab"; workspaceId: string }
+  | { type: "new-worktree"; workspace: WorkspaceView }
   | { type: "split"; paneId: string; direction: "right" | "down" }
   | { type: "rename"; kind: TargetKind; id: string; current: string; what: string }
   | { type: "model"; agent: AgentView }
@@ -1017,6 +1018,9 @@ export class DetailPanel {
             { class: "actions" },
             this.button(t("새 주민"), () => this.callbacks.act({ type: "new-agent", workspaceId: ws.id }), { cls: "btn primary", icon: "plus", title: t("이 집에 에이전트를 하나 더 들입니다") }),
             this.button(t("새 탭"), () => this.callbacks.act({ type: "new-tab", workspaceId: ws.id }), { icon: "plus", title: t("셸만 있는 새 탭을 엽니다") }),
+            ...(ws.worktree?.repoKey
+              ? [this.button(t("워크트리 추가"), () => this.callbacks.act({ type: "new-worktree", workspace: ws }), { icon: "plus", title: t("이 저장소에 새 브랜치를 따로 체크아웃해 별채로 짓습니다") })]
+              : []),
           ),
           h(
             "div",
@@ -1034,6 +1038,17 @@ export class DetailPanel {
       el.addEventListener("click", () => this.callbacks.act({ type: "select", id }));
       return el;
     };
+    // 같은 저장소의 본채·별채 — 섬에서 한 집터에 모여 있는 집들.
+    const repoKey = ws.worktree?.repoKey;
+    const kin = repoKey ? snap.workspaces.filter((w) => w.id !== ws.id && w.worktree?.repoKey === repoKey) : [];
+    if (kin.length > 0) {
+      const section = h("section", {}, h("h3", {}, t("같은 저장소")));
+      for (const w of kin) {
+        const sub2 = w.worktree?.linked ? `${t("워크트리")}${w.worktree.path ? ` · ${shortPath(w.worktree.path)}` : ""}` : t("본체");
+        section.append(row(h("span", { class: "house-tile" }, icon("house")), `${w.number} · ${w.label}`, sub2, workspaceKey(w.id)));
+      }
+      parts.push(section);
+    }
     if (ws.managed) {
       const wsTabs = snap.tabs.filter((tb) => tb.workspaceId === ws.id);
       for (const [i, tab] of wsTabs.entries()) {

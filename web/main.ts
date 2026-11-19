@@ -173,6 +173,9 @@ function act(action: Action): void {
     case "new-tab":
       void builder.newTab(action.workspaceId);
       break;
+    case "new-worktree":
+      builder.newHouse(action.workspace);
+      break;
     case "split":
       void builder.split(action.paneId, action.direction);
       break;
