@@ -33,6 +33,31 @@ const ticks: Tick[] = [
   { every: 450, at: 0, count: 0, run: flip("data-beat-nudge") },
 ];
 
+/**
+ * 장면의 다음 프레임에 얹어 할 일들. 제 requestAnimationFrame 으로 그리면 장면이 쉬는 사이에 화면을 한 장 더 내보낸다 —
+ * 곁눈질 화면(초당 3장)에서 0.4초마다 바뀌는 터미널 미리보기가 그렇게 출력을 두 배로 늘렸다.
+ */
+const riders = new Set<() => void>();
+let stranded: ReturnType<typeof setTimeout> | undefined;
+/** 장면이 이만큼 그리지 않으면(덮였거나 멈췄다) 기다리지 않고 따로 그린다. 곁눈질 화면의 간격(333ms)보다 길다. */
+const RIDE_WAIT_MS = 700;
+
+function flush(): void {
+  clearTimeout(stranded);
+  stranded = undefined;
+  if (riders.size === 0) return;
+  const run = [...riders];
+  riders.clear();
+  for (const fn of run) fn();
+}
+
+/** 장면의 다음 프레임 안에서 fn 을 부른다. 돌려주는 함수로 무른다. */
+export function rideFrame(fn: () => void): () => void {
+  riders.add(fn);
+  stranded ??= setTimeout(() => requestAnimationFrame(flush), RIDE_WAIT_MS);
+  return () => riders.delete(fn);
+}
+
 const stillness = matchMedia("(prefers-reduced-motion: reduce)");
 
 /**
@@ -42,6 +67,7 @@ const stillness = matchMedia("(prefers-reduced-motion: reduce)");
  * 세 프레임, 어떤 칸은 네 프레임 동안 보여 걸음이 절뚝인다. 반 프레임 일찍 넘겨, 늘 가장 가까운 프레임에서 넘어가게 한다.
  */
 export function beat(now: number, frameMs: number): void {
+  flush();
   if (stillness.matches) {
     for (const tick of ticks) if (tick.count % 2 === 1) tick.run((tick.count = 0));
     return;

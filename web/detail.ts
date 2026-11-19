@@ -119,7 +119,7 @@ export class DetailPanel {
   /** 보낼 말에 붙인 이미지들. id 는 서버가 맡아 준 뒤에 생긴다. */
   private readonly shotsEl = h("div", { class: "shots", hidden: "" });
   private shots: Array<{ id?: string; url: string; el: HTMLElement }> = [];
-  private readonly preview = new TermScreen({ tail: PREVIEW_LINES });
+  private readonly preview = new TermScreen({ tail: PREVIEW_LINES, ride: true });
   /** 터미널 크게 보기에 덮여 있다 — 같은 화면을 두 번 읽지 않도록 미리보기를 쉰다. */
   private covered = false;
   private snapshot: WorldSnapshot | undefined;

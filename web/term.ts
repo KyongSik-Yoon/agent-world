@@ -3,6 +3,7 @@
 // herdr 는 화면을 "지금 보이는 그대로"의 줄들로 준다 — 커서 이동이 없고 색·굵기 코드만 있다. 그래서
 // 터미널 에뮬레이터 없이 줄마다 span 으로 그리면 된다. 표와 테두리가 어긋나지 않도록 한글 같은
 // 전각 문자는 2칸, 글꼴에 없을 법한 기호는 1칸 너비의 상자에 넣는다.
+import { rideFrame } from "./beat.ts";
 import { get, sendInput, headers } from "./api.ts";
 import { withKey } from "./key.ts";
 import { drawnClass } from "./cells.ts";
@@ -430,6 +431,8 @@ export interface ScreenOptions {
   tail?: number;
   /** 흐르는 출력을 촘촘히 따라간다(크게 보기). 없으면 조용할 때의 간격으로 읽고, 입력 직후에만 서두른다. */
   live?: boolean;
+  /** 장면이 그리는 프레임에 얹어 그린다(beat.ts 의 rideFrame) — 장면 곁에 늘 떠 있는 미리보기가 화면 출력을 따로 늘리지 않게. */
+  ride?: boolean;
 }
 
 /**
@@ -986,6 +989,8 @@ export class TermScreen {
   private raw: string[] | undefined;
   private rows: Row[] = [];
   private frame = 0;
+  /** 장면의 프레임에 얹어 둔 그리기를 무르는 함수. */
+  private unride: (() => void) | undefined;
   /** 이 시각까지는 다시 그리지 않는다. */
   private restUntil = 0;
   private restTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1185,7 +1190,9 @@ export class TermScreen {
     this.el.classList.remove("stalled");
     this.source?.close();
     this.source = undefined;
-    cancelAnimationFrame(this.frame);
+    if (this.unride) this.unride();
+    else cancelAnimationFrame(this.frame);
+    this.unride = undefined;
     this.frame = 0;
     clearTimeout(this.restTimer);
     this.restTimer = undefined;
@@ -1217,8 +1224,9 @@ export class TermScreen {
       }, rest);
       return;
     }
-    this.frame = requestAnimationFrame(() => {
+    const draw = (): void => {
       this.frame = 0;
+      this.unride = undefined;
       if (!this.raw) return;
       const began = performance.now();
       this.draw(this.raw);
@@ -1226,7 +1234,11 @@ export class TermScreen {
       void this.el.offsetHeight;
       const now = performance.now();
       this.restUntil = now + Math.min(DRAW_REST_MAX_MS, (now - began) * DRAW_REST);
-    });
+    };
+    if (this.options.ride) {
+      this.frame = 1;
+      this.unride = rideFrame(draw);
+    } else this.frame = requestAnimationFrame(draw);
   }
 
   /**
