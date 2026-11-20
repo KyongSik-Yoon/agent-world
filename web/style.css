@@ -1970,6 +1970,21 @@ kbd {
   text-indent: 0;
 }
 
+/* 접어 보이는 상태줄에서 로고가 걸친 줄 묶음(term.ts 의 mascot): 로고 칸은 줄마다 그대로 쌓고, 글은 그 오른쪽에서 접는다. */
+.term.flow .tl.mascot {
+  display: flex;
+}
+
+.term.flow .tl.mascot > .mascot-art {
+  flex: none;
+  white-space: pre;
+}
+
+.term.flow .tl.mascot > .mascot-text {
+  flex: 1;
+  min-width: 0;
+}
+
 /* 입력창 아래의 상태줄·안내줄과 배너 줄: 접지 않고 한 줄씩 폭에 맞춰 줄인다. 읽을 수 있는 8px 밑으로는 줄이지 않고, 그래도
    넘치는 끝은 잘라 … 로 둔다 — 넘친 줄이 화면 전체를 가로로 밀게 두면 위의 글까지 함께 밀린다. */
 .term.flow .tl.fit {

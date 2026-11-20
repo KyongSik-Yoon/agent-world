@@ -572,6 +572,27 @@ function logoCols(text: string): number {
 }
 
 /**
+ * 로고 줄에 붙은 줄에서 그림이 끝나는 칸. 움직이는 컷은 블록이 아닌 글자(팔로 그린 · ~)를 그림 양옆에 붙이므로 logoCols 가
+ * 로고로 보지 않는다 — 블록 하나뿐인 줄(발끝)도 마찬가지다. 로고 줄 곁에서는 마지막 블록에 붙은 글자까지를 그림으로 친다.
+ */
+function artCols(text: string): number {
+  const head = [...text].slice(0, 16);
+  let last = -1;
+  let count = 0;
+  head.forEach((ch, i) => {
+    if (STATUS_LOGO_CHAR.test(ch)) {
+      last = i;
+      count += 1;
+    }
+  });
+  if (count < 1) return 0;
+  while (last + 1 < head.length && head[last + 1]!.trim() !== "") last += 1;
+  return last + 1;
+}
+
+const MASCOT_KEY = "mascot\n";
+
+/**
  * 상태줄 한 줄을 접어 보일 수 있게 편다: 앞의 cut 칸(로고)을 떼고, 오른쪽 정렬을 위한 긴 공백을 세 칸으로 줄인다.
  * 색상 코드는 하나도 버리지 않는다 — 줄이 끝날 때의 스타일이 원래와 같아야 다음 줄이 제 색으로 이어진다.
  */
@@ -1014,7 +1035,7 @@ export class TermScreen {
   private pinned = true;
   private savedTop = 0;
   /** 이 pane 을 이 폭에서 그리는 동안 본 가장 넓은 상태줄의 칸 수(unfoldFooter). */
-  private footerSeen = { pane: "", width: 0, cols: 0 };
+  private footerSeen = { pane: "", width: 0, cols: 0, cut: 0 };
   /** 지난 그리기의 상자 묶음 결과(묶음 줄들의 key → 결과). 이번에 쓴 것만 남긴다. */
   private boxForms = new Map<string, BoxForm>();
   /** 크게 보기가 정해 준 글자 크기(px)와 칸을 기기 픽셀에 맞출지. 없으면 스타일시트의 크기를 쓴다. */
@@ -1261,25 +1282,80 @@ export class TermScreen {
 
   /**
    * 상태줄 묶음이 폭에 맞춰 하한(8px)까지 줄여도 넘치면, 펴서 본문 크기로 접어 보일 줄들을 돌려준다. 넘치지 않으면 null.
-   * 줄여 한 줄에 넣으면 컨텍스트 비율처럼 뒤쪽 값이 잘린다. 접으면 여러 줄짜리 로고가 흩어지므로 로고 칸은 뗀다.
+   * 줄여 한 줄에 넣으면 컨텍스트 비율처럼 뒤쪽 값이 잘린다. 줄마다 접으면 여러 줄짜리 로고가 흩어지므로, 로고가 걸친 줄들은
+   * 한 덩이로 묶어 로고 칸을 왼쪽에 그대로 세우고 글만 그 오른쪽에서 접는다.
    */
   private unfoldFooter(footer: Row[], pool: Map<string, Row[]>): Row[] | null {
     const width = this.el.clientWidth - 24;
     // 넘치는지는 이 pane·이 폭에서 본 가장 넓은 상태줄로 가린다. 그때그때의 폭으로 가리면 경계에 걸린 상태줄이 숫자 한 자리
     // (컨텍스트 3% ↔ 13%)에 한 줄로 줄였다 펴서 접었다를 오가며 높이가 바뀐다.
-    if (this.footerSeen.pane !== this.paneId || this.footerSeen.width !== width) this.footerSeen = { pane: this.paneId, width, cols: 0 };
+    if (this.footerSeen.pane !== this.paneId || this.footerSeen.width !== width) this.footerSeen = { pane: this.paneId, width, cols: 0, cut: 0 };
     const cols = (this.footerSeen.cols = Math.max(this.footerSeen.cols, ...footer.map((r) => rowCols(r, true))));
     if (width <= 0 || cols * FIT_MIN_PX * 0.62 <= width) return null;
-    const cut = Math.max(0, ...footer.map((r) => (r.logo ??= logoCols(r.text))));
-    const out: Row[] = [];
-    for (const row of footer) {
-      const at = row.logo! > 0 ? cut : 0;
-      if (row.unfold?.cut !== at) row.unfold = { cut: at, line: unfoldLine(row.line, at) };
-      const next = this.reline(row, row.unfold.line, pool);
-      // 로고만 있던 줄은 비어 버린다 — 빈 줄로 남기지 않는다.
-      if (next.text.trim() !== "") out.push(next);
+    const logos = footer.map((r) => (r.logo ??= logoCols(r.text)));
+    let from = logos.findIndex((n) => n > 0);
+    // 그림이 화면 밖으로 나간 컷(로고 칸이 통째로 빈다)에서도 같은 자리에 묶어, 글이 한 컷 동안 넓어졌다 돌아오지 않게 한다.
+    const seen = this.footerSeen.cut;
+    if (from < 0 && seen > 0) from = footer.findIndex((r) => r.text.trim() !== "" && splitColumns(r.text, seen)[0].trim() === "");
+    if (from < 0) return footer.map((row) => this.unfolded(row, 0, pool)).filter((r) => r.text.trim() !== "");
+    let to = from + 1;
+    let cut = Math.max(...logos) || seen;
+    // 로고가 걸친 줄들: 로고 줄에 붙어 있고, 로고 칸이 비었거나(글만 있는 줄) 그림이 든 줄(팔을 붙인 컷).
+    const joins = (row: Row): boolean => {
+      if (row.text.trim() === "") return false;
+      const art = artCols(row.text);
+      if (art > 0) cut = Math.max(cut, art);
+      return art > 0 || splitColumns(row.text, cut)[0].trim() === "";
+    };
+    for (let i = from; i < footer.length; i += 1) {
+      if (logos[i]! > 0 || joins(footer[i]!)) to = i + 1;
+      else break;
     }
-    return out;
+    while (from > 0 && joins(footer[from - 1]!)) from -= 1;
+    // 로고 칸의 폭은 그림이 아니라 글이 시작하는 칸으로 정한다 — 그림은 컷마다 폭이 달라도 글은 늘 같은 칸에서 시작하므로,
+    // 그림에 맞추면 글이 컷마다 좌우로 흔들린다.
+    let start = Infinity;
+    for (const row of footer.slice(from, to)) {
+      const art = Math.max(row.logo!, artCols(row.text));
+      const at = art + (/\S/.exec(splitColumns(row.text, art)[1])?.index ?? Infinity);
+      start = Math.min(start, at);
+    }
+    if (start !== Infinity) cut = Math.max(cut, start);
+    this.footerSeen.cut = cut;
+    const out: Row[] = [];
+    for (let i = 0; i < from; i += 1) out.push(this.unfolded(footer[i]!, 0, pool));
+    out.push(this.mascot(footer.slice(from, to), cut, pool));
+    for (let i = to; i < footer.length; i += 1) out.push(this.unfolded(footer[i]!, 0, pool));
+    return out.filter((r) => r.text.trim() !== "");
+  }
+
+  private unfolded(row: Row, cut: number, pool: Map<string, Row[]>): Row {
+    if (row.unfold?.cut !== cut) row.unfold = { cut, line: unfoldLine(row.line, cut) };
+    return this.reline(row, row.unfold.line, pool);
+  }
+
+  /** 로고가 걸친 상태줄들을 한 줄로 묶는다: 왼쪽은 줄마다의 로고 칸(접지 않음), 오른쪽은 줄마다의 글(접음). */
+  private mascot(band: Row[], cut: number, pool: Map<string, Row[]>): Row {
+    const key = `${MASCOT_KEY}${cut}\n${band.map((r) => r.key).join("\n")}`;
+    const last = band[band.length - 1]!;
+    let row = pool.get(key)?.pop();
+    if (!row) {
+      const node = document.createElement("div");
+      node.className = "tl mascot";
+      const art = document.createElement("span");
+      art.className = "mascot-art";
+      const side = document.createElement("span");
+      side.className = "mascot-text";
+      for (const r of band) {
+        art.append(renderLine(splitColumns(r.line, cut)[0], r.start, false).node);
+        const text = renderLine(unfoldLine(r.line, cut).replace(/^((?:\x1b\[[0-9;:]*m)*) +/, "$1"), r.start, true);
+        if (text.text.trim() !== "") side.append(text.node);
+      }
+      node.append(art, side);
+      row = { key, node, text: band.map((r) => r.text).join("\n"), bgLogo: false, end: last.end, line: last.line, start: band[0]!.start };
+    }
+    this.rows.push(row);
+    return row;
   }
 
   /** 고쳐 쓴 줄을 그린다. 그려 둔 같은 줄이 있으면 그 요소를 쓰고, 새로 그린 줄은 다음 그리기에서 쓰도록 rows 에 넣는다. */
