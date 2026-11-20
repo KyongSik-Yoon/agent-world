@@ -344,7 +344,7 @@ export const en: Record<string, string> = {
   // ── 접속 열쇠 ──
   "접속 열쇠가 필요합니다": "An access key is needed",
   "이 브라우저는 아직 이 Agent World 의 열쇠를 모릅니다. 열쇠가 붙은 주소로 한 번 열면 그 뒤로는 기억합니다.": "This browser does not know this Agent World's key yet. Open the address that carries the key once, and it is remembered from then on.",
-  "herdr 플러그인이면 명령 팔레트의 “Agent World: open in browser” 로 열고, 직접 띄웠으면 서버를 띄운 터미널이나 `bun run url` 이 찍는 주소로 엽니다.": "With the herdr plugin, use “Agent World: open in browser” from the command palette. If you started it yourself, open the address printed in that terminal or by `bun run url`.",
+  "herdr 플러그인이면 “Agent World: open in browser” 동작(묶어 둔 키, 또는 herdr pane 에서 `herdr plugin action invoke open --plugin kyongsik-yoon.agent-world`)으로 열고, 직접 띄웠으면 서버를 띄운 터미널이나 `bun run url` 이 찍는 주소로 엽니다.": "With the herdr plugin, run the “Agent World: open in browser” action (your bound key, or `herdr plugin action invoke open --plugin kyongsik-yoon.agent-world` in a herdr pane). If you started it yourself, open the address printed in that terminal or by `bun run url`.",
   "또는 여기에 붙여 넣기": "Or paste it here",
   "열쇠 또는 열쇠가 든 주소": "The key, or the address that carries it",
   "열기": "Open",

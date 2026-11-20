@@ -1,12 +1,13 @@
 # Agent World 를 herdr 플러그인으로 돌리는 매니페스트.
 #
-# herdr 가 시작할 때 서버를 띄우고(이미 떠 있으면 그대로 둔다), 명령 팔레트에서 브라우저로 열거나 끌 수 있게 한다.
+# herdr 가 시작할 때 서버를 띄우고(이미 떠 있으면 그대로 둔다), 동작(open·info·restart·stop)으로 브라우저로 열거나 끌 수 있게 한다.
+# herdr 에는 동작을 모아 보여 주는 팔레트가 없어서, 사용자가 config.toml 의 [[keys.command]] 로 키를 묶는다(README).
 # 서버는 herdr 가 넘겨 주는 HERDR_SOCKET_PATH 의 세션에 붙는다. 설정은 `herdr plugin config-dir kyongsik-yoon.agent-world`
 # 가 찍는 폴더의 `env` 파일에 `AGENT_WORLD_LANG=en` 처럼 적는다(scripts/plugin.ts 머리말 참고).
 
 id = "kyongsik-yoon.agent-world"
 name = "Agent World"
-version = "0.6.7"
+version = "0.6.8"
 min_herdr_version = "0.9.5"
 description = "A 3D village for your coding agents: see who is working, done or waiting on you, talk to them, answer prompts and build new workspaces from the browser."
 platforms = ["linux", "macos"]

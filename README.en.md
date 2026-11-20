@@ -126,14 +126,33 @@ herdr plugin install KyongSik-Yoon/agent-world
 
 It needs [Bun](https://bun.sh) (checked on 1.4.4). Once installed, herdr starts the server whenever herdr starts
 (and leaves it alone if one is already running for that session). The server stops by itself a minute after its herdr
-session ends. The command palette gets four actions.
+session ends. It adds four actions.
 
-| Action | What it does |
-| --- | --- |
-| `Agent World: open in browser` | Starts it if needed and opens it in the browser, handing over the access key. |
-| `Agent World: show address` | Shows the keyed address in a popup — for the first visit from another browser such as a phone (`o` open · `r` restart · `s` stop). |
-| `Agent World: restart` | Stops and starts it again — after an update or a config change. |
-| `Agent World: stop` | Stops the server for this herdr session. |
+| Action | id | What it does |
+| --- | --- | --- |
+| `Agent World: open in browser` | `open` | Starts it if needed and opens it in the browser, handing over the access key. |
+| `Agent World: show address` | `info` | Shows the keyed address in a popup — for the first visit from another browser such as a phone (`o` open · `r` restart · `s` stop). |
+| `Agent World: restart` | `restart` | Stops and starts it again — after an update or a config change. |
+| `Agent World: stop` | `stop` | Stops the server for this herdr session. |
+
+herdr has no command palette that lists plugin actions. Bind the ones you use in `~/.config/herdr/config.toml`, then
+run `herdr server reload-config`. These two keys don't clash with herdr's defaults:
+
+```toml
+[[keys.command]]
+key = "prefix+shift+o"
+type = "plugin_action"
+command = "kyongsik-yoon.agent-world.open"
+description = "Agent World: open in browser"
+
+[[keys.command]]
+key = "prefix+i"
+type = "plugin_action"
+command = "kyongsik-yoon.agent-world.info"
+description = "Agent World: show address"
+```
+
+Run an unbound action from inside a herdr pane with `herdr plugin action invoke restart --plugin kyongsik-yoon.agent-world`.
 
 The server attaches to that herdr session. The default session is at `http://127.0.0.1:4780`; a named session gets
 its own fixed port (see `AGENT_WORLD_PORT` below). To configure it, put the environment variables below as

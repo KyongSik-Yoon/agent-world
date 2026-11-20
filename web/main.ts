@@ -644,7 +644,7 @@ function askForKey(): void {
     { method: "dialog" },
     h("h2", {}, t("접속 열쇠가 필요합니다")),
     h("p", {}, t("이 브라우저는 아직 이 Agent World 의 열쇠를 모릅니다. 열쇠가 붙은 주소로 한 번 열면 그 뒤로는 기억합니다.")),
-    h("p", {}, t("herdr 플러그인이면 명령 팔레트의 “Agent World: open in browser” 로 열고, 직접 띄웠으면 서버를 띄운 터미널이나 `bun run url` 이 찍는 주소로 엽니다.")),
+    h("p", {}, t("herdr 플러그인이면 “Agent World: open in browser” 동작(묶어 둔 키, 또는 herdr pane 에서 `herdr plugin action invoke open --plugin kyongsik-yoon.agent-world`)으로 열고, 직접 띄웠으면 서버를 띄운 터미널이나 `bun run url` 이 찍는 주소로 엽니다.")),
     h("label", { class: "field" }, h("span", {}, t("또는 여기에 붙여 넣기")), input),
     error,
     h("div", { class: "dlg-actions" }, h("button", { class: "btn primary", type: "submit" }, t("열기"))),

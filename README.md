@@ -10,7 +10,7 @@ herdr 에 띄워 둔 코딩 에이전트를 3D 마을로 보여 주는 로컬 �
 herdr plugin install KyongSik-Yoon/agent-world
 ```
 
-[Bun](https://bun.sh)만 깔려 있으면 설치는 이것으로 끝입니다(1.4.4 에서 확인했습니다). herdr 명령 팔레트에서 `Agent World: open in browser` 를 고르면 브라우저로 열립니다.
+[Bun](https://bun.sh)만 깔려 있으면 설치는 이것으로 끝입니다(1.4.4 에서 확인했습니다). `Agent World: open in browser` 동작을 부르면 브라우저로 열립니다. herdr 에는 플러그인 동작을 모아 보여 주는 팔레트가 없으니, 처음 한 번 키를 묶어 둡니다([herdr 플러그인으로 쓰기](#herdr-플러그인으로-쓰기)).
 
 스크린샷은 실제 세션이 아니라 가상의 프로젝트를 흉내 낸 시험용 세션(`dev/mock-herdr.ts`)에서 찍었습니다.
 
@@ -116,12 +116,30 @@ pane·탭·집을 닫을 때는 함께 꺼지는 에이전트를 먼저 보여 �
 
 ## herdr 플러그인으로 쓰기
 
-설치하면 herdr 가 시작할 때마다 서버를 띄워 둡니다(같은 세션에 이미 떠 있으면 그대로 둡니다). herdr 세션이 끝나고 1분이 지나면 서버도 스스로 꺼집니다. 명령 팔레트에는 동작 네 가지가 생깁니다.
+설치하면 herdr 가 시작할 때마다 서버를 띄워 둡니다(같은 세션에 이미 떠 있으면 그대로 둡니다). herdr 세션이 끝나고 1분이 지나면 서버도 스스로 꺼집니다. 동작은 네 가지입니다(괄호 안은 동작 id).
 
-- `Agent World: open in browser`: 서버가 떠 있지 않으면 띄우고 브라우저로 엽니다. 접속 열쇠도 함께 넘깁니다
-- `Agent World: show address`: 열쇠가 붙은 주소를 팝업으로 보여 줍니다. 휴대폰 같은 다른 브라우저에서 처음 열 때 씁니다(`o` 열기 · `r` 다시 띄우기 · `s` 끄기)
-- `Agent World: restart`: 껐다가 다시 띄웁니다. 업데이트했거나 설정을 바꾼 뒤에 씁니다
-- `Agent World: stop`: 이 herdr 세션의 서버를 끕니다
+- `Agent World: open in browser`(`open`): 서버가 떠 있지 않으면 띄우고 브라우저로 엽니다. 접속 열쇠도 함께 넘깁니다
+- `Agent World: show address`(`info`): 열쇠가 붙은 주소를 팝업으로 보여 줍니다. 휴대폰 같은 다른 브라우저에서 처음 열 때 씁니다(`o` 열기 · `r` 다시 띄우기 · `s` 끄기)
+- `Agent World: restart`(`restart`): 껐다가 다시 띄웁니다. 업데이트했거나 설정을 바꾼 뒤에 씁니다
+- `Agent World: stop`(`stop`): 이 herdr 세션의 서버를 끕니다
+
+herdr 에는 플러그인 동작을 모아 보여 주는 명령 팔레트가 없습니다. 자주 쓰는 동작은 `~/.config/herdr/config.toml` 에 키를 묶고 `herdr server reload-config` 를 합니다. 아래 두 키는 herdr 기본 키와 겹치지 않습니다.
+
+```toml
+[[keys.command]]
+key = "prefix+shift+o"
+type = "plugin_action"
+command = "kyongsik-yoon.agent-world.open"
+description = "Agent World: open in browser"
+
+[[keys.command]]
+key = "prefix+i"
+type = "plugin_action"
+command = "kyongsik-yoon.agent-world.info"
+description = "Agent World: show address"
+```
+
+묶지 않은 동작은 herdr pane 안에서 `herdr plugin action invoke restart --plugin kyongsik-yoon.agent-world` 처럼 바로 부릅니다.
 
 서버는 그 herdr 세션에 붙습니다. 기본 세션은 `http://127.0.0.1:4780` 이고, 이름 붙은 세션은 세션마다 다른 포트를 씁니다(아래 `AGENT_WORLD_PORT`).
 
