@@ -1,0 +1,20 @@
+# 화면 성능 린트(dev/perf/lint.ts). 훅을 건너뛴 push 도 여기서 걸린다.
+# 프레임 검사(bun run perf)는 GPU 가 있는 PC 에서만 돌아 여기서는 린트만 본다. 릴리스와 따로 돌아, 실패해도 릴리스를 막지 않는다.
+name: perf-lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - name: 화면 성능 린트
+        run: bun dev/perf/lint.ts

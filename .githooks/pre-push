@@ -1,12 +1,36 @@
 #!/bin/sh
-# main 으로 올리는 묶음이 버전을 올렸는지 본다(scripts/check-version-bump.sh). 다른 브랜치와 태그는 보지 않는다.
+# main 으로 올리는 묶음을 본다. 다른 브랜치와 태그는 보지 않는다.
+#   1. 버전을 올렸는지(scripts/check-version-bump.sh)
+#   2. 화면 성능 린트(dev/perf/lint.ts) — 올리는 커밋의 내용으로 돌린다(작업 폴더가 아니라)
+#   3. web/ 이 바뀌었으면 그 web/ 트리로 프레임 검사(bun run perf)를 통과한 기록이 있는지
 # 켜기: git config core.hooksPath .githooks  (.claude/settings.json 이 세션을 열 때마다 맞춰 둔다)
 zero=0000000000000000000000000000000000000000
+root=$(git rev-parse --show-toplevel)
 while read -r _local_ref local_sha remote_ref remote_sha; do
   [ "$remote_ref" = refs/heads/main ] || continue
   [ "$local_sha" != "$zero" ] || continue
   # 원격의 끝을 모르면(새 브랜치이거나 아직 받지 않았으면) 넘긴다. 뒤처진 push 는 git 이 스스로 거절한다.
   [ "$remote_sha" != "$zero" ] && git cat-file -e "$remote_sha^{commit}" 2>/dev/null || continue
-  sh "$(git rev-parse --show-toplevel)/scripts/check-version-bump.sh" "$remote_sha" "$local_sha" || exit 1
+  sh "$root/scripts/check-version-bump.sh" "$remote_sha" "$local_sha" || exit 1
+
+  if git cat-file -e "$local_sha:dev/perf/lint.ts" 2>/dev/null; then
+    tmp=$(mktemp -d)
+    git archive "$local_sha" web dev/perf/lint.ts | tar -x -C "$tmp"
+    sh "$root/scripts/with-bun.sh" "$tmp/dev/perf/lint.ts" >&2
+    status=$?
+    rm -rf "$tmp"
+    [ "$status" = 0 ] || exit 1
+  fi
+
+  if ! git diff --quiet "$remote_sha" "$local_sha" -- web; then
+    tree=$(git rev-parse "$local_sha:web")
+    stamp="$(git rev-parse --path-format=absolute --git-common-dir)/agent-world-perf/$tree"
+    if [ ! -f "$stamp" ]; then
+      echo "프레임 검사: web/ 이 바뀐 묶음인데, 이 web/ 트리로 통과한 기록이 없다." >&2
+      echo "  bun run perf        # 커밋한 뒤 돌린다. 2분 남짓, 통과하면 기록이 남는다" >&2
+      echo "  읽는 법: .claude/skills/ui-perf/SKILL.md" >&2
+      exit 1
+    fi
+  fi
 done
 exit 0

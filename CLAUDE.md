@@ -10,6 +10,13 @@
   로그 폴더(`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `AGY_HOME`)와 `XDG_STATE_HOME` 도 임시 폴더로 돌려, 실제 작업 내용과 사용량이 그림에 들어가지 않게 한다.
   위 막대의 사용량에 가상 값을 넣으려면 `AGENT_WORLD_CLAUDE_LIMITS`·`AGENT_WORLD_CLAUDE_USAGE`·`AGENT_WORLD_AGY_PAYLOAD` 와 가상 로그의 `rate_limits` 를 쓴다(README 의 개발).
 
+## 화면 성능
+
+- web/ 을 바꾸면 커밋한 뒤 `bun run perf` 를 돌리고 결과 표를 보고에 붙인다. main 으로 가는 push 는 그 web/ 트리의 통과 기록과
+  `bun run perf:lint` 를 `.githooks/pre-push` 가 확인한다. 장면·이름표·CSS 처럼 비용에 닿는 변경이면 `--compare` 로 앞 판과도 비교한다.
+- 움직임은 장면 프레임에 얹는다(`web/beat.ts`, `web/world/labels.ts`). CSS 애니메이션·이름표 transition·따로 도는 rAF 를 더하지 않는다.
+  린트 예외(`perf-ok: <이유>`)는 쉬지 않고 돌지 않는 까닭을 쓸 때만 단다. 읽는 법과 측정 함정은 `.claude/skills/ui-perf/SKILL.md`.
+
 ## 버전과 릴리스
 
 - `main` 에 올리는 묶음마다 버전을 올린다. `sh scripts/bump-version.sh`(patch, 큰 기능 묶음은 `minor`)로

@@ -246,13 +246,14 @@ web/      three.js 장면과 HUD
   i18n.ts     t() 와 언어 전환. 영어 번역은 locale/en.ts
 shared/   서버와 화면이 함께 쓰는 스냅샷 타입
 scripts/  plugin.ts. herdr 플러그인으로 실행될 때의 시작·정지·열기
-dev/      mock-herdr.ts(실제 herdr 없이 화면을 시험하는 가짜 소켓), i18n-check.ts,
+dev/      mock-herdr.ts(실제 herdr 없이 화면을 시험하는 가짜 소켓), i18n-check.ts, perf/(화면 성능 린트·프레임 검사),
           reap-orphan-bun.sh(끝난 Claude Code 세션이 이 저장소에 남긴 bun 을 다음 세션을 열 때 거둔다)
 docs/     홈페이지(index.html)와 스크린샷
 ```
 
 - `bun run probe`: 서버를 띄우지 않고 지금 스냅샷을 표로 출력합니다
 - `bun run url`: 이 herdr 세션에 떠 있는 서버의 주소를 출력합니다(열쇠 포함. 서버가 `~/.local/state/agent-world/server*.json` 에 적어 둔 값을 읽습니다)
+- `bun run perf:lint`·`bun run perf`: 화면 성능을 검사합니다. 린트는 끝없이 도는 CSS 애니메이션 같은 것을 코드에서 찾고, 프레임 검사는 가상 세션을 GPU 헤드리스 크롬으로 돌려 화면이 장면보다 많이 나가지 않는지 봅니다(`--compare` 로 앞 판과 비용 비교). web/ 을 바꾼 묶음은 프레임 검사를 통과해야 main 에 올라갑니다
 - `bun run i18n`: 화면의 문장마다 영어 번역이 있는지 검사합니다. 화면에 문장을 추가할 때는 `t("…")` 로 감싸고 `web/locale/en.ts` 에 번역을 적어 주세요
 
 사용량을 가상 값으로 시험할 때는 Claude Code 쪽 파일을 `AGENT_WORLD_CLAUDE_LIMITS`(모델별 한도는 `AGENT_WORLD_CLAUDE_USAGE`), Antigravity 쪽 파일을 `AGENT_WORLD_AGY_PAYLOAD` 로 바꿔 줍니다(Claude Code 는 `CLAUDE_CONFIG_DIR/.claude.json` 의 계정과 맞아야 뜹니다). `CLAUDE_CONFIG_DIR`·`CODEX_HOME`·`AGY_HOME` 을 빈 폴더로 돌린 서버는 이 PC 의 실제 사용량을 읽지 않습니다.

@@ -270,13 +270,17 @@ web/      three.js scene and HUD
   i18n.ts     t() and the language switch; locale/en.ts holds the English strings
 shared/   snapshot types used by both sides
 scripts/  plugin.ts — start/stop/open when run as a herdr plugin
-dev/      mock-herdr.ts — a fake herdr socket for testing the UI; i18n-check.ts;
+dev/      mock-herdr.ts — a fake herdr socket for testing the UI; i18n-check.ts; perf/ — UI performance lint and frame check;
           reap-orphan-bun.sh — on session start, stops bun processes that ended Claude Code sessions left in this repo
 docs/     the homepage (index.html) and screenshots
 ```
 
 `bun run probe` prints the current snapshot as a table without starting the server. `bun run url` prints the address
 (with the key) of the server running for this herdr session. `bun run i18n` checks that every UI string has an English entry.
+`bun run perf:lint` and `bun run perf` check UI performance: the lint looks for things like endless CSS animations in the
+code, and the frame check runs the mock session in a GPU headless Chrome and verifies the page never presents more frames
+than the scene draws (`--compare` measures cost against an earlier version). Changes to web/ reach main only after the
+frame check passes.
 
 To try the usage button with made-up values, point `AGENT_WORLD_CLAUDE_LIMITS` at a Claude Code limits file (and
 `AGENT_WORLD_CLAUDE_USAGE` at a usage API response for per-model limits),
