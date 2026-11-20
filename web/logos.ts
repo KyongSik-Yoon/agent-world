@@ -79,6 +79,7 @@ const AGY = `
  * 떨어지면 찍히지 않으므로(원본은 31%·65%) 가장 가까운 칸의 시각(31.25%·62.5%)으로 옮겨 두었다.
  * 프레임을 구울 때만 쓴다: --t 로 시각을 정하고 멈춰 둔 채 그린다.
  */
+// perf-ok-block: 멈춰 둔 채(paused) 그림 띠로 굽는 데만 쓴다 — 화면에서 돌지 않는다(beat.ts 가 칸을 넘긴다)
 const MOTION: Record<string, string> = {
   claude: `
 *{animation-play-state:paused!important}
@@ -111,6 +112,7 @@ const MOTION: Record<string, string> = {
 @keyframes sheen{0%{transform:translateX(0)}48%,100%{transform:translateX(244px)}}
 @keyframes mote{0%{transform:translateY(4px);opacity:0}30%{opacity:.85}100%{transform:translateY(-24px);opacity:0}}`,
 };
+// perf-ok-end
 
 interface Logo {
   /** 타일을 채우도록 둘레의 빈 곳을 조금 잘라 본다(좌표계는 그대로다). */

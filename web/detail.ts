@@ -238,6 +238,7 @@ export class DetailPanel {
       const width = entry?.contentRect.width ?? 0;
       if (width === inputWidth) return;
       inputWidth = width;
+      // perf-ok: 입력창 폭이 바뀐 때 한 번 — 도는 것이 아니다
       requestAnimationFrame(() => this.fitInput());
     }).observe(this.input);
     this.input.addEventListener("keydown", (e) => {
@@ -335,6 +336,7 @@ export class DetailPanel {
       drag.moved = true;
       // 창은 오른쪽에 붙어 있으니 왼쪽으로 끈 만큼 넓어진다.
       next = Math.round(drag.width + drag.x - e.clientX);
+      // perf-ok: 상태 창 폭을 끄는 동안만, 포인터 움직임을 한 장으로 모은다
       frame ||= requestAnimationFrame(() => {
         frame = 0;
         this.root.style.setProperty("--detail-w", `${next}px`);
@@ -348,6 +350,7 @@ export class DetailPanel {
       // 누르기만 한 것은 폭을 정한 것이 아니다(두 번 누르기의 되돌림을 덮어쓰지 않게).
       if (!moved) return;
       // 한계에 걸려 실제로 그려진 폭을 적어 둔다 — 끈 거리가 아니라.
+      // perf-ok: 끌기를 놓은 뒤 한 번 잰다
       requestAnimationFrame(() => {
         const width = Math.round(this.root.getBoundingClientRect().width);
         this.root.style.setProperty("--detail-w", `${width}px`);

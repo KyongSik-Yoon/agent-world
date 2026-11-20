@@ -1242,6 +1242,7 @@ export class TermScreen {
     if (this.options.ride) {
       this.frame = 1;
       this.unride = rideFrame(draw);
+    // perf-ok: 크게 보기는 장면이 덮여 멈춘 동안이라 얹을 장면 프레임이 없다
     } else this.frame = requestAnimationFrame(draw);
   }
 

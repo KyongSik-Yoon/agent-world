@@ -104,6 +104,7 @@ input {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  /* perf-ok: 목록·위쪽 막대의 유리. 끄면 GPU 프로세스가 8%p 덜 쓰지만(2026-11-20, 헤드리스 끌기) 모양이 바뀐다 */
   backdrop-filter: blur(16px) saturate(1.3);
 }
 
@@ -120,6 +121,7 @@ input {
   user-select: none;
   /* 자리가 막혀 비켜 올라서는 것은 labels.ts 가 장면의 프레임마다 칸째로 옮긴다 — transition 은 장면이 쉬는 박자에도
      화면을 따로 내보낸다. 이름표째로 옮긴다 — 조각만 옮기면 눌리는 영역이 제자리에 남아 남의 이름표를 가린다. */
+  /* perf-ok: 상태가 바뀌거나 올려놓을 때 한 번 0.25초 — 끄는 동안 쉬지 않고 도는 것이 아니다 */
   transition: opacity 0.25s;
 }
 
@@ -3155,6 +3157,7 @@ dialog.dlg {
 
 dialog.dlg::backdrop {
   background: rgba(10, 14, 30, 0.42);
+  /* perf-ok: 대화 창이 떠 있는 동안만 */
   backdrop-filter: blur(3px);
 }
 
