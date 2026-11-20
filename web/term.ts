@@ -230,7 +230,7 @@ function css(s: Style): string {
   // 다음 줄 배경이 윗줄 글자 위에 그려진다 — Claude Code 캐릭터의 눈(검은 배경)이 머리 위 띠와 눈 사이 선으로 번진다.
   // 위아래 여백(padding)으로 칠할 자리를 넓혀 두고(줄 배치는 그대로), 가운데에 줄 높이 + 1px 띠를 깐다(이웃 줄과 0.5px
   // 겹쳐 소수점 경계에 틈이 없다 — 블록 문자 칸과 같다).
-  if (bg) out += `background:linear-gradient(${bg},${bg}) 0 50%/100% calc(1.22em + 1px) no-repeat;padding:0.2em 0;`;
+  if (bg) out += `background:linear-gradient(${bg},${bg}) 0 50%/100% calc(var(--term-line, 1.22) * 1em + 1px) no-repeat;padding:0.2em 0;`;
   if (s.bold) out += "font-weight:var(--term-bold,700);";
   if (s.dim) out += "opacity:.62;";
   if (s.italic) out += "font-style:italic;";
@@ -973,8 +973,15 @@ const FLOW_MEDIA = "(max-width: 760px) and (orientation: portrait)";
  * 맞춰 키우면 더 커 보여, 사용자가 크다며 10px 을 골랐다.
  */
 const FLOW_FONT_PX = MIN_FONT_PX;
-/** 줄 높이(글자 크기의 배수). 스타일시트의 .term 과 같다. */
+/** 줄 높이(글자 크기의 배수). 스타일시트의 .term 의 --term-line 과 같다. */
 const LINE_EM = 1.22;
+/**
+ * 크게 보기가 pane 의 줄을 창 높이에 맞추려고 줄 높이를 고칠 수 있는 범위. 칸의 가로세로 비율이 창과 어긋나는 만큼을 자간이
+ * 아니라 줄 간격으로 받는다 — 폭에 맞춘 글자 크기를 그대로 두고도 줄이 다 들어간다. 1.15 아래로 내리면 두 칸에 맞춰 키운
+ * 한글(fitWide, 세로 1.15배까지)이 윗줄·아랫줄에 닿고, 1.3 을 넘기면 줄 사이가 성겨 보인다.
+ */
+const LINE_MIN = 1.15;
+const LINE_MAX = 1.3;
 
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
 export class TermScreen {
@@ -1891,22 +1898,34 @@ export class TermOverlay {
     this.screen.fitFooter = flow;
     this.screen.flow = flow;
     const width = this.body.clientWidth - 28;
-    // pane 화면 전체(칸과 줄 모두)가 창에 들어가는 크기로 맞춘다 — 폭에만 맞추면 줄이 많은 pane 은 창보다 길어, 열자마자
-    // 위아래로 밀어야 첫 줄과 상태줄을 본다. 위아래 여백(12px × 2)은 스타일시트의 #term-overlay .term 과 같다.
+    // pane 화면 전체(칸과 줄 모두)가 창에 들어가게 맞춘다 — 폭에만 맞추면 줄이 많은 pane 은 창보다 길어, 열자마자 위아래로
+    // 밀어야 첫 줄과 상태줄을 본다. 글자 크기는 폭에 맞추고, 줄은 줄 높이를 조금 고쳐(LINE_MIN–LINE_MAX) 높이에 맞춘다.
+    // 가장 낮은 줄 높이로도 넘칠 때만 글자를 줄인다. 위아래 여백(12px × 2)은 스타일시트의 #term-overlay .term 과 같다.
     // 화면 요소의 높이를 쓴다 — 터치 기기에서는 그 밑에 입력란이 함께 선다.
     const height = this.screen.el.clientHeight - 24;
-    const byRows = this.rows > 0 && height > 0 ? height / (this.rows * LINE_EM) : Infinity;
+    const byRows = this.rows > 0 && height > 0 ? height / (this.rows * LINE_MIN) : Infinity;
     // 칸을 다 넣으려다 글자가 깨알이 되느니, 읽을 만한 크기로 두고 가로로 민다.
     // 칸 수가 적은 pane 은 글자를 조금 키우고(읽기 좋은 데까지만), 그래도 남는 폭은 양옆에 고르게 둔다(스타일시트).
     // 그렇게 고른 크기에서 칸이 기기 픽셀의 정수배가 되도록 조금 줄인다(setFont) — 세로선이 줄마다·칸마다 같은 자리에 그어진다.
     if (flow) this.screen.setFont(FLOW_FONT_PX, false);
     else this.screen.setFont(Math.max(MIN_FONT_PX, Math.min(MAX_FONT_PX, width / (this.cols * 0.6), byRows)), true, MIN_FONT_PX);
-    this.screen.el.style.setProperty("--cols", String(this.cols));
-    // 칸을 기기 픽셀에 맞추느라 줄인 만큼 남는 높이는 위아래에 나눠, 남는 폭을 양옆에 두는 것처럼 화면을 가운데 둔다.
-    const size = parseFloat(this.screen.el.style.fontSize);
-    const spare = !flow && this.rows > 0 && size > 0 ? height - this.rows * size * LINE_EM : 0;
-    if (spare > 1) this.screen.el.style.setProperty("--pad-y", `${12 + Math.floor(spare / 2)}px`);
-    else this.screen.el.style.removeProperty("--pad-y");
+    const style = this.screen.el.style;
+    style.setProperty("--cols", String(this.cols));
+    // 줄 높이: 줄이 창 높이를 채우는 값을 기기 픽셀에 맞춰 내림한다(줄마다 같은 높이라 블록 글자의 이음매가 고르다).
+    // 범위 안에서 다 들어가지 않으면(하한 글자 크기에서도 넘치는 작은 창) 본래 줄 높이로 두고 밀어 본다.
+    const size = parseFloat(style.fontSize);
+    const dpr = devicePixelRatio || 1;
+    let line = LINE_EM;
+    if (!flow && this.rows > 0 && size > 0 && height > 0) {
+      const fill = Math.floor((height / this.rows) * dpr) / dpr / size;
+      if (fill >= LINE_MIN - 0.005) line = Math.min(LINE_MAX, fill);
+    }
+    if (line === LINE_EM) style.removeProperty("--term-line");
+    else style.setProperty("--term-line", String(Math.floor(line * 1e4) / 1e4));
+    // 그러고도 남는 높이는 위아래에 나눠, 남는 폭을 양옆에 두는 것처럼 화면을 가운데 둔다.
+    const spare = !flow && this.rows > 0 && size > 0 ? height - this.rows * size * line : 0;
+    if (spare > 1) style.setProperty("--pad-y", `${12 + Math.floor(spare / 2)}px`);
+    else style.removeProperty("--pad-y");
     // 글자 크기가 바뀌면 화면 높이도 바뀐다 — 아래에 붙어 있었으면 다시 붙인다.
     this.screen.restoreScroll();
   }

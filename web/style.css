@@ -1874,7 +1874,10 @@ kbd {
   overflow: auto;
   background: var(--term-bg);
   color: var(--term-fg);
+  /* 줄 높이(글자 크기의 배수). 크게 보기는 pane 의 줄이 창 높이에 맞도록 이 값을 조금 고친다(term.ts 의 fit). */
+  --term-line: 1.22;
   font: 12px/1.22 var(--mono);
+  line-height: var(--term-line);
   /* 터미널(ghostty) 설정의 글꼴이 있으면 그것으로(term.ts 의 installGlyphFonts). */
   font-family: var(--term-mono, var(--mono));
   font-variant-ligatures: none;
@@ -1884,7 +1887,7 @@ kbd {
 }
 
 .term .tl {
-  min-height: 1.22em;
+  min-height: calc(var(--term-line) * 1em);
 }
 
 /* 칸 폭(--cell)과 자간은 term.ts 의 cellFit 이 이 화면의 글자 크기에서 재어 건다 — 어느 칸이든 자리가 "칸 번호 × 칸 폭"이
@@ -1996,7 +1999,7 @@ kbd {
      이어지는 블록(스크롤 막대, 로고) 사이에 실금이 갔다 — 그린 칸은 모든 줄의 배경보다 나중에 칠한다. */
   position: relative;
   width: calc(var(--cell, 1ch) + 1px);
-  height: calc(1.22em + 1px);
+  height: calc(var(--term-line) * 1em + 1px);
   margin: -0.5px;
   vertical-align: top;
   -webkit-text-fill-color: transparent;
@@ -2005,7 +2008,7 @@ kbd {
 
 .term .blk.shade {
   width: var(--cell, 1ch);
-  height: 1.22em;
+  height: calc(var(--term-line) * 1em);
   margin: 0;
 }
 
