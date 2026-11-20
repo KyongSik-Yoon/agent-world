@@ -299,6 +299,8 @@ export class WorldScene {
   setTheme(theme: Theme): void {
     this.env.setTheme(theme);
     (this.scene.fog as THREE.Fog).color.set(FOG[theme]);
+    // 쉬는 중이어도 바뀐 하늘을 다음 프레임에 바로 그린다.
+    this.wake();
   }
 
   /** Space 를 누르고 있는 동안에는 왼쪽 드래그가 회전이 아니라 맵 이동이다(Figma 식). */
@@ -631,12 +633,12 @@ export class WorldScene {
   }
 
   /**
-   * 이 입력이 장면을 움직이는가: 장면 위의 포인터·휠, 글을 치는 중이 아닐 때의 키(단축키·Space 로 밀기), 그리고 누르기.
-   * 누르기는 어디서 눌렀든 친다 — 단추 하나가 장면을 움직이는 일(한눈에 보기, 낮밤 바꾸기, 패널 여닫기)이 많고,
-   * 주사율을 붙들던 것은 누르기가 아니라 포인터가 지나가는 것과 휠, 타이핑이었다.
+   * 이 입력이 장면을 움직이는가: 장면 위의 포인터·휠·누르기, 글을 치는 중이 아닐 때의 키(단축키·Space 로 밀기).
+   * 장면 밖을 누른 것은 치지 않는다 — 휴대폰은 모든 입력이 누르기라, 목록을 넘기거나 위 막대를 누르기만 해도 장면을
+   * 2.5초씩 주사율 그대로 그렸다(휴대폰 크기 실측: 렌더러가 코어의 21% → 44%). 단추가 장면을 움직일 때는 그 일이
+   * 스스로 깨운다: 한눈에 보기와 고르기는 카메라가 옮겨 가는 동안, 패널 여닫기는 setInsets, 낮밤 바꾸기는 setTheme.
    */
   private aimedAtScene(e: Event): boolean {
-    if (e.type === "pointerdown" || e.type === "touchstart") return true;
     const target = e.target instanceof Element ? e.target : null;
     if (e.type === "keydown") return target?.closest("input, textarea, select, [contenteditable], dialog") == null;
     return target !== null && this.container.contains(target);
@@ -672,6 +674,7 @@ export class WorldScene {
     const position = target.clone().addScaledVector(new THREE.Vector3(0, 0.72, 0.7).normalize(), distance);
     if (animate) {
       this.flight = { target, distance, position, at: performance.now() };
+      this.wake();
       return;
     }
     this.controls.target.copy(target);
