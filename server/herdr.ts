@@ -1,4 +1,5 @@
 // herdr 소켓 RPC. 줄 단위 JSON 이고 요청 하나에 연결 하나다(서버가 응답 뒤 연결을 닫는다).
+import { dlopen, FFIType, ptr } from "bun:ffi";
 import { createHash } from "node:crypto";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
@@ -62,17 +63,97 @@ export function herdrAlive(timeoutMs = 3000): Promise<boolean> {
 
 let seq = 0;
 
+/**
+ * 연결과 첫 쓰기를 한 번에 한다(Linux). 돌려주는 것은 요청을 이미 써 넣은 소켓의 fd, 이 길을 못 쓰면 undefined.
+ *
+ * herdr 는 연결을 받자마자 요청을 읽고, 아직 와 있지 않으면 100ms 를 쉰 뒤 다시 읽는다(0.9.5 실측: 연결 뒤 쓰기를 0.5ms 만
+ * 늦춰도 20번 모두 101ms). Bun 의 소켓은 연결이 된 것을 이벤트 루프가 한 번 돈 뒤에야 알려 줘서 그 사이에 herdr 가 먼저
+ * 읽는 일이 4번에 1번쯤 생긴다 — 글자 하나, 화면 읽기 한 번이 0.1초씩 늦는다. connect 와 write 를 시스템 호출로 잇달아
+ * 부르면 herdr 가 깨어나 읽을 때는 요청이 이미 와 있다(100번에 1번쯤만 늦는다).
+ *
+ * 유닉스 소켓의 connect 는 기다리지 않고 바로 끝나므로(받는 쪽 줄이 차 있으면 실패) 이벤트 루프를 붙잡지 않는다.
+ * macOS 는 시험하지 못해 예전 길로 둔다.
+ */
+type FastOpen = (path: string, line: Buffer) => number | undefined;
+/** 시험 삼아 한 번 불러 답을 받은 뒤에만 쓴다(tryFastOpen). */
+let fastOpen: FastOpen | null = null;
+let fastTried = false;
+let closeFd: (fd: number) => void = () => {};
+const FAST_MAX_BYTES = 32 * 1024;
+
+function loadFastOpen(): FastOpen | null {
+  if (process.platform !== "linux") return null;
+  try {
+    const libc = dlopen("libc.so.6", {
+      socket: { args: [FFIType.i32, FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+      connect: { args: [FFIType.i32, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+      write: { args: [FFIType.i32, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+      close: { args: [FFIType.i32], returns: FFIType.i32 },
+    }).symbols;
+    closeFd = (fd) => void libc.close(fd);
+    const AF_UNIX = 1;
+    const SOCK_STREAM = 1;
+    const SOCK_NONBLOCK = 0o4000;
+    const SOCK_CLOEXEC = 0o2000000;
+    return (path, line) => {
+      // sockaddr_un: 2바이트 family 뒤에 108바이트 경로(끝의 0 포함).
+      const name = Buffer.from(path);
+      if (name.length > 107) return undefined;
+      const addr = Buffer.alloc(110);
+      addr.writeUInt16LE(AF_UNIX, 0);
+      name.copy(addr, 2);
+      const fd = libc.socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+      if (fd < 0) return undefined;
+      if (libc.connect(fd, ptr(addr), addr.length) !== 0) {
+        libc.close(fd);
+        return undefined;
+      }
+      const wrote = Number(libc.write(fd, ptr(line), line.length));
+      if (wrote === line.length) return fd;
+      libc.close(fd);
+      // 하나도 못 썼으면 예전 길로 다시 보낸다. 쓰다 만 요청은 줄이 끝나지 않아 herdr 가 실행하지 않지만, 같은 입력이
+      // 두 번 들어갈 여지를 두지 않으려고 다시 보내지 않고 실패로 알린다.
+      if (wrote > 0) throw new HerdrError(L("herdr 에 요청을 다 쓰지 못함", "could not write the whole request to herdr"));
+      return undefined;
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 빠른 길을 처음 한 번 시험한다. 열어 둔 fd 를 Bun 소켓으로 넘겨받는 것(`Bun.connect({ fd })`)은 Bun 의 형 선언에 없는
+ * 기능이라, 이 Bun 에서 되는지 해가 없는 읽기 요청으로 확인한 뒤에만 쓴다. 확인되기 전과 안 되는 곳에서는 예전 길이다.
+ */
+function tryFastOpen(): void {
+  fastTried = true;
+  const open = loadFastOpen();
+  if (!open) return;
+  call("session.snapshot", {}, 3000, open).then(
+    () => {
+      fastOpen = open;
+    },
+    () => {},
+  );
+}
+
 export function herdrRpc<T = unknown>(method: string, params: Record<string, unknown> = {}, timeoutMs = 3000): Promise<T> {
+  if (!fastTried) tryFastOpen();
+  return call(method, params, timeoutMs, fastOpen);
+}
+
+function call<T>(method: string, params: Record<string, unknown>, timeoutMs: number, open: FastOpen | null): Promise<T> {
   return new Promise((resolve, reject) => {
     const id = `agent-world:${++seq}`;
-    const socket = createConnection(herdrSocketPath());
+    const line = `${JSON.stringify({ id, method, params })}\n`;
     const chunks: Buffer[] = [];
     let settled = false;
+    let hangUp = (): void => {};
     const finish = (err: Error | null, value?: T) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      socket.destroy();
+      hangUp();
       if (err) reject(err);
       else resolve(value as T);
     };
@@ -88,13 +169,52 @@ export function herdrRpc<T = unknown>(method: string, params: Record<string, unk
         finish(new HerdrError(L(`herdr ${method} 응답을 읽지 못함: ${(e as Error).message}`, `could not read the herdr ${method} reply: ${(e as Error).message}`)));
       }
     };
-    socket.on("connect", () => socket.write(`${JSON.stringify({ id, method, params })}\n`));
-    socket.on("data", (c: Buffer) => {
-      chunks.push(c);
+    const onData = (c: Buffer) => {
+      chunks.push(Buffer.from(c));
       if (c[c.length - 1] === 0x0a) parse();
-    });
+    };
+    const broken = (e: Error) => finish(new HerdrError(L(`herdr 소켓 연결 실패: ${e.message}`, `could not connect to the herdr socket: ${e.message}`)));
+
+    const bytes = Buffer.from(line);
+    let fd: number | undefined;
+    try {
+      fd = open && bytes.length <= FAST_MAX_BYTES ? open(herdrSocketPath(), bytes) : undefined;
+    } catch (e) {
+      return finish(e as Error);
+    }
+    if (fd !== undefined) {
+      // 요청은 이미 들어갔다 — 여기서부터는 답만 읽는다. 실패해도 예전 길로 다시 보내지 않는다(입력이 두 번 들어간다).
+      const opened = fd;
+      let adopted = false;
+      hangUp = () => {
+        if (!adopted) closeFd(opened);
+      };
+      const options = {
+        fd: opened,
+        socket: {
+          data: (_s: unknown, c: Buffer) => onData(c),
+          end: () => parse(),
+          close: () => parse(),
+          error: (_s: unknown, e: Error) => broken(e),
+        },
+      };
+      Bun.connect(options as unknown as Parameters<typeof Bun.connect>[0]).then(
+        (s) => {
+          adopted = true;
+          hangUp = () => s.terminate();
+          if (settled) s.terminate();
+        },
+        (e: Error) => broken(e),
+      );
+      return;
+    }
+
+    const socket = createConnection(herdrSocketPath());
+    hangUp = () => socket.destroy();
+    socket.on("connect", () => socket.write(line));
+    socket.on("data", onData);
     socket.on("end", parse);
-    socket.on("error", (e) => finish(new HerdrError(L(`herdr 소켓 연결 실패: ${e.message}`, `could not connect to the herdr socket: ${e.message}`))));
+    socket.on("error", broken);
   });
 }
 
