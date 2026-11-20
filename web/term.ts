@@ -826,9 +826,10 @@ export function stackPanes(lines: readonly string[]): string[] | null {
   });
   const { col, start, end } = best;
   if (col < 0 || end - start < Math.max(SPLIT_MIN_ROWS, lines.length * SPLIT_SHARE)) return null;
-  // 상자에 든 큰 표의 안쪽 세로선이다 — 줄마다 테두리로 시작한다.
+  // 상자에 든 큰 표의 안쪽 세로선이다 — 줄마다 테두리로 시작한다. 테두리는 그 세로선 왼쪽에서 찾는다: 왼쪽 창이 빈 줄
+  // (오른쪽 창만 찬 줄)은 공백 뒤 첫 글자가 바로 그 세로선이라, 줄 전체에서 찾으면 나뉜 화면을 표로 잘못 읽는다.
   let boxed = 0;
-  for (let i = start; i < end; i += 1) if (/^\s*[\u2502\u2503\u2551\u251C\u2560\u256D\u2570\u250C\u2514]/.test(texts[i]!)) boxed += 1;
+  for (let i = start; i < end; i += 1) if (/^\s*[\u2502\u2503\u2551\u251C\u2560\u256D\u2570\u250C\u2514]/.test(splitColumns(texts[i]!, col)[0])) boxed += 1;
   if (boxed * 2 > end - start) return null;
   const left: string[] = [];
   const right: string[] = [];
