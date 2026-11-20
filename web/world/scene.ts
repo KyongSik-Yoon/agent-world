@@ -28,11 +28,18 @@ const FOG: Record<Theme, string> = { day: "#CBE7F6", night: "#161B33" };
 const MAX_PIXELS = 3.6e6;
 /**
  * 손대지 않고 켜 둔 동안의 최소 프레임 간격(ms). 종일 띄워 두는 화면이라 평소에는 초당 30장쯤이면 충분하다.
- * 60Hz 화면에서는 두 프레임에 한 번(약 30장)이 되고, 더 느린 주사율에서는 거르지 않는다.
+ * 화면 박자의 배수로 올림하므로 60Hz 에서는 두 박자, 120Hz 에서는 네 박자에 한 번(어느 쪽이든 30장)이 된다.
  */
-const IDLE_FRAME_MS = 24;
-/** 마지막 조작 뒤 이만큼은 화면 주사율 그대로 그린다. */
+const IDLE_FRAME_MS = 33;
+/** 마지막 조작 뒤 이만큼은 조작 중으로 친다. */
 const ACTIVE_MS = 2500;
+/**
+ * 조작 중의 프레임 간격(ms). 60Hz 까지는 화면 주사율 그대로 그리고, 그보다 빠른 화면에서는 박자를 걸러 초당 60장 언저리로
+ * 묶는다(120Hz 는 두 박자에 한 번, 144Hz 는 72장). 60장 밑으로는 내리지 않는다(90Hz 는 거르지 않는다).
+ * 120Hz 실제 창 실측(번갈아 3회): 거르지 않으면 메인 스레드가 차서 초당 73장 남짓을 들쭉날쭉 그리며 크롬이 코어의
+ * 242% 를 썼다. 거르면 57장, 178%. 쉬는 동안(IDLE_FRAME_MS 24 → 33)은 40장 64% → 30장 51%.
+ */
+const ACTIVE_FRAME_MS = 1000 / 60;
 /**
  * 장면 밖에서 온 일(목록의 줄에 올려놓기, 걸러 보기)에 캐릭터가 반응하는 동안 — 커지고 밝아지는 전환이 끝날 때까지 —
  * 주사율 그대로 그리는 시간. 가장 느린 전환(밝기, 시정수 약 170ms)이 눈에 띄지 않을 만큼 가라앉는 데 맞췄다.
@@ -129,6 +136,8 @@ export class WorldScene {
   private parked = false;
   /** 이번 프레임이 앞 프레임에서 곧바로 이어 건 것이다(타이머로 쉬었다 온 것이 아니다). */
   private chained = false;
+  /** 조작 중에 그리지 않고 넘길 남은 박자 수 — 빠른 화면에서 초당 60장 언저리로 묶는다(ACTIVE_FRAME_MS). */
+  private skip = 0;
   /** 이름표 층을 다시 놓아야 하는 프레임 수(스냅샷·크기·고르기가 바뀐 직후). */
   private labelsDirty = 3;
   private readonly lastCamera = new THREE.Matrix4();
@@ -702,7 +711,7 @@ export class WorldScene {
   }
 
   /**
-   * 지금 몇 ms 간격으로 그릴지: 조작 중 0(주사율 그대로), 가만히 두면 30장쯤, 곁눈질 화면이면 3장.
+   * 지금 몇 ms 간격으로 그릴지: 조작 중 0(주사율 그대로, 60Hz 넘는 화면은 박자를 걸러 60장 언저리 — ACTIVE_FRAME_MS), 가만히 두면 30장쯤, 곁눈질 화면이면 3장.
    * 카메라가 옮겨 가는 중(flight)이면 조작 중이다 — 닿으면 flight 는 지워진다.
    */
   private pace(now: number): number {
@@ -729,6 +738,16 @@ export class WorldScene {
     }
     const chained = this.chained;
     this.chained = false;
+    // 걸러 넘기는 박자에서도 rAF 를 이어 건다 — 타이머로 쉬면 박자를 놓쳐 간격이 들쭉날쭉하고, 주사율도 잴 수 없다.
+    // 그리는 것이 없으면 크롬은 화면을 내보내지 않는다.
+    if (chained && this.skip > 0) {
+      this.skip -= 1;
+      if (stamp !== undefined && this.lastStamp > 0) this.sampleRefresh(stamp - this.lastStamp);
+      this.lastStamp = stamp ?? 0;
+      this.chained = true;
+      requestAnimationFrame(this.tick);
+      return;
+    }
     this.frame();
     const now = performance.now();
     const pace = this.pace(now);
@@ -744,9 +763,12 @@ export class WorldScene {
       this.lastStamp = stamp ?? 0;
       this.dueAt = 0;
       this.chained = true;
+      // 60Hz 이하면 0, 120Hz 면 1. 측정 오차(119.9Hz 등)로 한 박자를 덜 거르지 않게 조금 얹어 내림한다.
+      this.skip = Math.max(0, Math.floor(ACTIVE_FRAME_MS / this.refreshMs + 0.05) - 1);
       requestAnimationFrame(this.tick);
       return;
     }
+    this.skip = 0;
     this.lastStamp = 0;
     // 간격을 화면 박자의 배수로 올림한다: 60Hz 에서 24ms → 두 박자(30장), 333ms → 스무 박자(3장).
     const period = Math.ceil((pace - 1) / this.refreshMs) * this.refreshMs;
