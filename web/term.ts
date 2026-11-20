@@ -1129,6 +1129,11 @@ export class TermScreen {
     return this.paneId;
   }
 
+  /** 지금 글자 크기에서 한 줄의 높이(px). */
+  get linePx(): number {
+    return (parseFloat(getComputedStyle(this.el).fontSize) || MIN_FONT_PX) * LINE_EM;
+  }
+
   get scrollback(): number {
     return this.back;
   }
@@ -1469,6 +1474,13 @@ const PAGE_DOWN = "\x1b[6~";
 const PAGE_GAP_MS = 350;
 /** 화면 끝에서 이만큼(px) 더 끌면 앱 화면을 한 쪽 넘긴다. */
 const PAGE_PULL_PX = 48;
+/** 맨 아래로(Ctrl+End) — 휠로 굴린 Claude Code 의 화면을 지금 화면으로 돌린다. */
+const CTRL_END = "\x1b[1;5F";
+/**
+ * 한 번에 보내는 휠 칸 수의 상한. Claude Code 는 몰아서 온 칸을 가속해(실측: 5칸 6줄, 10칸 19줄, 20칸 67줄) 많이 묶을수록
+ * 훌쩍 넘어간다(5칸까지는 거의 그대로다). 보내는 동안 쌓인 칸도 이 두 배까지만 들고 있는다 — 더 쌓아 두면 손을 뗀 뒤에도 한참 굴러간다.
+ */
+const ROLL_MAX = 5;
 
 /** 화면 자판에 없는 키들 — 크게 보기 위쪽에 단추로 둔다(터치 기기에서만 보인다). */
 /** 글자 기호(← ⏎ ⌫ ⇧)는 기기의 글꼴마다 굵기와 높이가 달라 선 아이콘으로 그린다. label 은 읽어 주는 이름이 된다. */
@@ -1524,6 +1536,15 @@ export class TermOverlay {
   /** 앱 화면을 위로 넘긴 횟수. 돌아갈 때(지금 화면으로, 창 닫기) 그만큼 PageDown 을 보낸다. */
   private paged = 0;
   private pagedAt = 0;
+  /**
+   * 휠 신호를 받는 pane(Claude Code)인지 — 굴리거나 끈 만큼 마우스 휠 신호를 보내 앱이 줄 단위로 굴리게 한다. 쪽 단위로
+   * 끊기는 PageUp 보다 손을 잘 따라온다. 이때 paged 는 횟수가 아니라 "올려 두었다"는 표시이고, 돌아갈 때는 Ctrl+End 다.
+   */
+  private wheels = false;
+  /** 아직 보내지 않은 휠 칸 수(양수 위로)와 끝에 닿은 뒤로 굴린 거리 중 한 칸이 못 된 나머지(px). */
+  private rollPending = 0;
+  private rollRest = 0;
+  private rolling = false;
   /** 조합이 끝나기 전에 이미 보낸 앞부분. 뒤늦게 오는 compositionend 에서 떼어 낸다. */
   private sentEarly = "";
   onError: ((message: string) => void) | undefined;
@@ -1629,7 +1650,12 @@ export class TermOverlay {
       const y = e.touches[0]!.clientY;
       // 끝에 닿기 전에 끈 거리는 세지 않는다 — 끝에 닿은 뒤로 더 끈 만큼만.
       if (!(atTop() && y > pullY) && !(atBottom() && y < pullY)) pullY = y;
-      else if (y - pullY > PAGE_PULL_PX) {
+      else if (this.wheels) {
+        const line = this.screen.linePx;
+        const n = Math.trunc((y - pullY) / line);
+        pullY += n * line;
+        this.roll(n);
+      } else if (y - pullY > PAGE_PULL_PX) {
         this.page(1);
         pullY = y;
       } else if (pullY - y > PAGE_PULL_PX) {
@@ -1638,9 +1664,16 @@ export class TermOverlay {
       }
     }, { passive: true });
     el.addEventListener("wheel", (e) => {
-      if (!this.pages) return;
-      if (e.deltaY < 0 && atTop()) this.page(1);
-      else if (e.deltaY > 0 && atBottom()) this.page(-1);
+      if (!this.pages || e.ctrlKey || !(e.deltaY < 0 ? atTop() : e.deltaY > 0 && atBottom())) return;
+      if (!this.wheels) return this.page(e.deltaY < 0 ? 1 : -1);
+      // 굴린 거리를 줄 수로 바꾼다. 방향을 바꾸면 반대쪽으로 모아 둔 나머지는 버린다.
+      const line = this.screen.linePx;
+      const px = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : e.deltaY * line * (e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? Math.max(1, this.rows - 2) : 1);
+      if (px * this.rollRest < 0) this.rollRest = 0;
+      this.rollRest += px;
+      const n = Math.trunc(this.rollRest / line);
+      this.rollRest -= n * line;
+      this.roll(-n);
     }, { passive: true });
 
     this.body.addEventListener("mouseup", () => {
@@ -1739,10 +1772,15 @@ export class TermOverlay {
     this.root.hidden = false;
     this.screen.start(paneId, 0);
     this.pages = undefined;
+    this.wheels = false;
     this.paged = 0;
-    void get<{ page: boolean }>(`/api/term/back?pane=${encodeURIComponent(paneId)}`)
+    this.rollPending = 0;
+    this.rollRest = 0;
+    void get<{ page: boolean; wheel?: boolean }>(`/api/term/back?pane=${encodeURIComponent(paneId)}`)
       .then((r) => {
-        if (this.screen.pane === paneId) this.pages = r.page;
+        if (this.screen.pane !== paneId) return;
+        this.pages = r.page;
+        this.wheels = r.page && r.wheel === true;
       })
       .catch(() => {});
     this.syncBack();
@@ -1793,10 +1831,47 @@ export class TermOverlay {
     this.syncBack();
   }
 
-  /** 넘겨 둔 앱 화면을 맨 아래로 돌린다. 앱이 그새 스스로 내려갔어도 남는 PageDown 은 해가 없다. */
+  /**
+   * 앱 화면을 n 줄 굴린다(양수 위로) — 그만큼의 마우스 휠 신호(SGR)를 앱에 보낸다. 앞서 보낸 것의 답을 기다리는 동안
+   * 들어온 것은 모았다가 한 번에 보낸다(type 과 같은 까닭). 방향을 바꾸면 반대쪽으로 모아 둔 것은 버린다.
+   */
+  private roll(n: number): void {
+    if (n === 0) return;
+    if (n * this.rollPending < 0) this.rollPending = 0;
+    this.rollPending = Math.max(-2 * ROLL_MAX, Math.min(2 * ROLL_MAX, this.rollPending + n));
+    if (this.rolling) return;
+    const pane = this.screen.pane;
+    const next = (): void => {
+      const up = this.rollPending > 0;
+      const count = Math.min(Math.abs(this.rollPending), ROLL_MAX);
+      if (count === 0 || this.screen.pane !== pane || this.root.hidden) {
+        this.rolling = false;
+        return;
+      }
+      this.rollPending -= up ? count : -count;
+      if (up && this.paged === 0) {
+        this.paged = 1;
+        this.syncBack();
+      }
+      // 화면 한가운데(본문 자리)에서 굴린 것으로 보낸다.
+      const at = `${Math.max(1, Math.floor(this.cols / 2))};${Math.max(1, Math.floor((this.rows || 10) / 2))}`;
+      void sendInput(pane, { text: `\x1b[<${up ? 64 : 65};${at}M`.repeat(count), raw: true })
+        .catch((e: Error) => {
+          this.rollPending = 0;
+          this.onError?.(e.message);
+        })
+        .finally(next);
+    };
+    this.rolling = true;
+    next();
+  }
+
+  /** 넘겨 둔 앱 화면을 맨 아래로 돌린다. 앱이 그새 스스로 내려갔어도 남는 PageDown·Ctrl+End 는 해가 없다. */
   private unpage(): void {
+    this.rollPending = 0;
+    this.rollRest = 0;
     if (this.paged <= 0) return;
-    this.send({ text: PAGE_DOWN.repeat(this.paged + 2), raw: true });
+    this.send({ text: this.wheels ? CTRL_END : PAGE_DOWN.repeat(this.paged + 2), raw: true });
     this.paged = 0;
     this.screen.toBottom();
     this.syncBack();

@@ -394,7 +394,10 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
           const visible = (await herdrTerm(paneId, "visible")).split(/\r?\n/).length;
           const recent = (await herdrTerm(paneId, "recent", visible + 1)).split(/\r?\n/).length;
           // 셸처럼 화면이 덜 찬 pane 도 스크롤백이 없을 수 있다 — 넘김 키는 에이전트에게만 보낸다.
-          return json({ scrollback: recent > visible, page: !readonly && recent <= visible && (await world.has("agent", paneId)) });
+          const agent = recent <= visible && !readonly ? (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId)?.agent : undefined;
+          // 휠 신호(SGR 마우스)는 마우스를 받지 않는 앱의 입력창에 글자로 찍힐 수 있다. herdr 는 pane 이 마우스를 켰는지
+          // 알려 주지 않아, 실측한 Claude Code 에만 보낸다(전체 화면이면 줄 단위로 굴리고, 아니면 말없이 버린다).
+          return json({ scrollback: recent > visible, page: Boolean(agent), wheel: /claude/i.test(agent ?? "") });
         } catch (e) {
           return herdrDown(e, req);
         }
