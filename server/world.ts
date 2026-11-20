@@ -17,7 +17,7 @@ import { planMtime, planPathIn, readPlan, type PlanText } from "./plan.ts";
 import { findReview, readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
 import { claudeSkills } from "./skills.ts";
-import { activityText, currentPending, oneLine, refOf, type LogSummary } from "./summary.ts";
+import { activityText, currentPending, markCut, oneLine, refOf, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
 import { UsageWatch } from "./usage.ts";
 
@@ -293,6 +293,8 @@ export class World {
       (view.lastPrompt ? oneLine(view.lastPrompt, 60) : "") ||
       ws?.tokens?.topic ||
       view.workspaceLabel;
+    // 제목이 아직 지어지지 않은 동안에는 지시의 앞머리가 표시 없이 잘린 채 제목 자리에 온다(알림에 "…클로드 캐"로 끊겨 보였다).
+    view.title = markCut(view.title, view.lastPrompt);
 
     // 상태는 herdr 가 정본이다. 하나만 덧쓴다: desk-look·desk-plan 이 엔진 대화상자 대신 띄운 카드는 도구가 도는 중이라
     // herdr 가 working 으로 본다. 그 카드가 답을 기다리는 것을 desk-look 의 표식 파일로 확인했으면 확인 필요로 올린다(asking.ts).

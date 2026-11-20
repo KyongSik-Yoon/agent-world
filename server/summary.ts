@@ -81,6 +81,19 @@ export function clip(text: string, max: number): string {
   return chars.length <= max ? text : `${chars.slice(0, max - 1).join("")}…`;
 }
 
+/**
+ * 제목이 지시의 앞머리를 그대로 자른 것이면 말줄임표를 붙인다. Claude Code 는 제목을 짓기 전까지 터미널 제목에 지시의 앞
+ * 50칸을 표시 없이 잘라 넣는다 — 그대로 보이면 알림과 목록에서 말이 중간에 끊긴 것처럼 읽힌다. 공백은 빼고 견준다
+ * (한 줄로 접을 때 줄바꿈이 사라지기도 한다).
+ */
+export function markCut(title: string, prompt: string | undefined): string {
+  if (!prompt || title.endsWith("…")) return title;
+  const bare = (v: string) => v.replace(/\s+/g, "");
+  const head = bare(title);
+  const whole = bare(prompt);
+  return head.length >= 8 && whole.length > head.length && whole.startsWith(head) ? `${title}…` : title;
+}
+
 /** 여러 줄 텍스트를 말풍선용 한 줄로 줄인다. */
 export function oneLine(text: string, max = MAX_ACTIVITY_CHARS): string {
   return clip(text.replace(/\s+/g, " ").trim(), max);
