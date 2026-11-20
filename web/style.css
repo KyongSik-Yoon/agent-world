@@ -770,6 +770,14 @@ kbd {
   border-color: var(--accent);
 }
 
+/* 목록 맨 아래의 설치한 판. */
+.roster-foot {
+  margin: 0;
+  padding: 4px 14px 10px;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
 #roster-list {
   flex: 1;
   overflow-y: auto;

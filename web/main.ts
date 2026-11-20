@@ -16,9 +16,12 @@ import { ReviewReader } from "./review.ts";
 import { TermOverlay, loadTermTheme } from "./term.ts";
 import type { Theme } from "./world/environment.ts";
 import { WorldScene } from "./world/scene.ts";
+import { version } from "../package.json";
 
 // index.html 에 적힌 글을 지금 말로 — HUD 와 장면을 짓기 전에 한 번.
 localizeStatic();
+// 설치한 판. 페이지는 서버가 같은 트리에서 빌드하므로 서버의 판과 같다.
+document.getElementById("app-version")!.textContent = `Agent World v${version}`;
 
 // 아래 도움말 줄. 글이 <kbd> 로 쪼개져 있어 조각마다 풀 수 없으니, 줄 전체를 t() 문장들로 짓는다.
 {
