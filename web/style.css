@@ -1959,14 +1959,14 @@ kbd {
   height: calc(100% + 1px);
 }
 
-.term.flow .tl.panel > .body {
+.term.flow .tl.panel > .flowed {
   flex: 1;
   min-width: 0;
   padding-left: calc(var(--mark, 0) * 1ch);
   text-indent: calc(var(--mark, 0) * -1ch);
 }
 
-.term.flow .tl.panel > .body * {
+.term.flow .tl.panel > .flowed * {
   text-indent: 0;
 }
 

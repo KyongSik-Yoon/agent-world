@@ -882,7 +882,7 @@ function renderPanel(raw: string, start: Style): Row {
     } else hang.append(child);
   }
   const body = document.createElement("span");
-  body.className = "body";
+  body.className = "flowed";
   body.append(...right.node.childNodes);
   const mark = LIST_MARK.exec(right.text)?.[0].length ?? 0;
   if (mark) body.style.setProperty("--mark", String(mark));
