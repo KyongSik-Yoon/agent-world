@@ -33,6 +33,7 @@ const ICONS = {
   backspace: "M8.5 6h10.5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8.5L3 12zM12.5 10l4 4M16.5 10l-4 4",
   keyboard: "M3.5 6.5h17v11h-17zM7 10h.01M10 10h.01M13 10h.01M16 10h.01M8 14h8",
   chevron: "M9 6l6 6-6 6",
+  fold: "M6 9l6 6 6-6",
   info: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 1 0 0-17zM12 11v5.5M12 7.6v.1",
   play: "M8 5.5v13l10.5-6.5z",
   stop: "M7 7h10v10H7z",

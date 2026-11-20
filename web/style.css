@@ -2101,6 +2101,16 @@ kbd {
   font-size: 11.5px;
 }
 
+/* 접기 단추는 옆의 글 단추와 같은 높이로 선다 — 줄 높이만큼 늘이고, 아이콘은 글 단추의 것(16px)에 맞춘다. */
+#stage header .btn.icon {
+  align-self: stretch;
+}
+
+#stage header .btn.icon > .ico {
+  width: 16px;
+  height: 16px;
+}
+
 #stage .body {
   position: relative;
   flex: 1;

@@ -193,8 +193,12 @@ export class DetailPanel {
     private readonly stage?: HTMLElement,
   ) {
     if (stage) {
-      const fold = h("button", { class: "btn icon", type: "button", title: t("가운데 화면 접기"), "aria-label": t("가운데 화면 접기") }, icon("close"));
-      fold.addEventListener("click", () => this.setStageOff(true));
+      const fold = h("button", { class: "btn icon", type: "button", title: t("가운데 화면 접기"), "aria-label": t("가운데 화면 접기") }, icon("fold"));
+      // 접으면 상태 창의 터미널 화면 칸을 펼쳐 둔다 — 화면이 사라진 게 아니라 옮겨 간 것이 보이고, 다시 띄우는 단추도 거기 있다.
+      fold.addEventListener("click", () => {
+        this.open.screen = true;
+        this.setStageOff(true);
+      });
       const big = this.button(t("크게 보기"), () => this.preview.pane && this.callbacks.act({ type: "terminal", paneId: this.preview.pane }), { cls: "btn", icon: "expand" });
       stage.replaceChildren(h("header", {}, icon("terminal"), h("div", { class: "names" }, this.stageTitle, this.stageSub), big, fold), this.stageBody);
     }
