@@ -3512,6 +3512,18 @@ dialog.dlg .warn {
 /* ── 좁은 화면(휴대폰) ───────────────────────────────────────────── */
 
 @media (max-width: 760px) {
+  /* 덜 쓰는 일이 세 개를 넘으면(셸: 이름·옆으로·아래로·닫기) 한 줄에 못 들어가 닫기만 다음 줄에 홀로 떨어진다.
+     위의 큰 단추 두 개와 같은 두 칸으로 나눠 놓는다. */
+  .actions.minor:has(> .btn:nth-child(3)) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .actions.minor:has(> .btn:nth-child(3)) .btn.danger {
+    margin-left: 0;
+  }
+
   html,
   body {
     height: 100dvh;
