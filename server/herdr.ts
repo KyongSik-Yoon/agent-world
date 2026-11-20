@@ -123,6 +123,8 @@ export interface HerdrPane {
   state_change_seq?: number;
   interactive_ready?: boolean;
   launch_pending?: boolean;
+  /** 화면 줄 수(viewport_rows)는 테두리를 뺀 안쪽 크기다 — layouts 의 rect 는 테두리까지 친 크기라 이것으로 테두리 폭을 안다. */
+  scroll?: { viewport_rows?: number };
 }
 
 export interface HerdrWorkspace {

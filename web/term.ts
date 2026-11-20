@@ -973,6 +973,8 @@ const FLOW_MEDIA = "(max-width: 760px) and (orientation: portrait)";
  * 맞춰 키우면 더 커 보여, 사용자가 크다며 10px 을 골랐다.
  */
 const FLOW_FONT_PX = MIN_FONT_PX;
+/** 줄 높이(글자 크기의 배수). 스타일시트의 .term 과 같다. */
+const LINE_EM = 1.22;
 
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
 export class TermScreen {
@@ -1502,6 +1504,8 @@ export class TermOverlay {
   private readonly body = document.createElement("div");
   private readonly flowMedia = matchMedia(FLOW_MEDIA);
   private cols = 120;
+  /** pane 의 화면 줄 수. 모르면 0 — 그때는 폭에만 맞춘다. */
+  private rows = 0;
   private pending = "";
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
   /** 보내고 아직 답을 받지 못한 입력의 수. */
@@ -1726,8 +1730,9 @@ export class TermOverlay {
     if (!this.root.hidden) this.ime.focus();
   }
 
-  open(paneId: string, title: string, sub: string, cols: number | undefined): void {
+  open(paneId: string, title: string, sub: string, cols: number | undefined, rows: number | undefined): void {
     this.cols = cols && cols > 20 ? cols : 120;
+    this.rows = rows && rows > 2 ? rows : 0;
     this.title.textContent = title;
     this.sub.textContent = sub;
     this.root.hidden = false;
@@ -1743,6 +1748,16 @@ export class TermOverlay {
     this.fit();
     this.ime.focus();
     this.onToggle?.(true);
+  }
+
+  /** 보고 있는 pane 의 크기가 바뀌었다. */
+  resize(cols: number | undefined, rows: number | undefined): void {
+    const nextCols = cols && cols > 20 ? cols : this.cols;
+    const nextRows = rows && rows > 2 ? rows : this.rows;
+    if (nextCols === this.cols && nextRows === this.rows) return;
+    this.cols = nextCols;
+    this.rows = nextRows;
+    this.fit();
   }
 
   close(): void {
@@ -1800,12 +1815,22 @@ export class TermOverlay {
     this.screen.fitFooter = flow;
     this.screen.flow = flow;
     const width = this.body.clientWidth - 28;
+    // pane 화면 전체(칸과 줄 모두)가 창에 들어가는 크기로 맞춘다 — 폭에만 맞추면 줄이 많은 pane 은 창보다 길어, 열자마자
+    // 위아래로 밀어야 첫 줄과 상태줄을 본다. 위아래 여백(12px × 2)은 스타일시트의 #term-overlay .term 과 같다.
+    // 화면 요소의 높이를 쓴다 — 터치 기기에서는 그 밑에 입력란이 함께 선다.
+    const height = this.screen.el.clientHeight - 24;
+    const byRows = this.rows > 0 && height > 0 ? height / (this.rows * LINE_EM) : Infinity;
     // 칸을 다 넣으려다 글자가 깨알이 되느니, 읽을 만한 크기로 두고 가로로 민다.
     // 칸 수가 적은 pane 은 글자를 조금 키우고(읽기 좋은 데까지만), 그래도 남는 폭은 양옆에 고르게 둔다(스타일시트).
     // 그렇게 고른 크기에서 칸이 기기 픽셀의 정수배가 되도록 조금 줄인다(setFont) — 세로선이 줄마다·칸마다 같은 자리에 그어진다.
     if (flow) this.screen.setFont(FLOW_FONT_PX, false);
-    else this.screen.setFont(Math.max(MIN_FONT_PX, Math.min(MAX_FONT_PX, width / (this.cols * 0.6))), true, MIN_FONT_PX);
+    else this.screen.setFont(Math.max(MIN_FONT_PX, Math.min(MAX_FONT_PX, width / (this.cols * 0.6), byRows)), true, MIN_FONT_PX);
     this.screen.el.style.setProperty("--cols", String(this.cols));
+    // 칸을 기기 픽셀에 맞추느라 줄인 만큼 남는 높이는 위아래에 나눠, 남는 폭을 양옆에 두는 것처럼 화면을 가운데 둔다.
+    const size = parseFloat(this.screen.el.style.fontSize);
+    const spare = !flow && this.rows > 0 && size > 0 ? height - this.rows * size * LINE_EM : 0;
+    if (spare > 1) this.screen.el.style.setProperty("--pad-y", `${12 + Math.floor(spare / 2)}px`);
+    else this.screen.el.style.removeProperty("--pad-y");
     // 글자 크기가 바뀌면 화면 높이도 바뀐다 — 아래에 붙어 있었으면 다시 붙인다.
     this.screen.restoreScroll();
   }

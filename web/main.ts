@@ -140,7 +140,7 @@ function openTerminal(paneId: string): void {
   const pane = snap?.panes.find((p) => p.id === paneId);
   const agent = snap?.agents.find((a) => a.paneId === paneId);
   const ws = snap?.workspaces.find((w) => w.id === pane?.workspaceId);
-  terminal.open(paneId, agent?.title ?? pane?.label ?? pane?.title ?? paneId, `${ws ? `${ws.number} · ${ws.label} · ` : ""}${paneId}`, pane?.cols);
+  terminal.open(paneId, agent?.title ?? pane?.label ?? pane?.title ?? paneId, `${ws ? `${ws.number} · ${ws.label} · ` : ""}${paneId}`, pane?.cols, pane?.rows);
   terminal.setPlan(agent?.plan !== undefined);
 }
 
@@ -434,7 +434,12 @@ function show(snapshot: WorldSnapshot): void {
   announce(snapshot);
   scene.sync(snapshot);
   hud.update(snapshot);
-  if (terminal.isOpen) terminal.setPlan(snapshot.agents.some((a) => a.paneId === terminal.pane && a.plan !== undefined));
+  if (terminal.isOpen) {
+    terminal.setPlan(snapshot.agents.some((a) => a.paneId === terminal.pane && a.plan !== undefined));
+    // 보는 동안 pane 크기가 바뀌면(herdr 창을 나누거나 터미널 창을 키우면) 글자 크기를 다시 맞춘다.
+    const pane = snapshot.panes.find((p) => p.id === terminal.pane);
+    terminal.resize(pane?.cols, pane?.rows);
+  }
   planReader.sync(snapshot.agents);
   reviewReader.sync(snapshot.agents);
   builder.observe(snapshot);

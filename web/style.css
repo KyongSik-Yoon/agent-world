@@ -2206,7 +2206,7 @@ body[data-covered] :is(#world, #topbar, #roster, #detail) * {
 #term-overlay .term {
   height: 100%;
   /* 화면의 칸 수보다 창이 넓으면 남는 폭을 양옆에 나눠, 내용이 왼쪽 구석에 몰리지 않게 한다. */
-  padding: 12px max(14px, calc((100% - var(--cols, 120) * var(--cell, 1ch)) / 2));
+  padding: var(--pad-y, 12px) max(14px, calc((100% - var(--cols, 120) * var(--cell, 1ch)) / 2));
 }
 
 #term-overlay:focus-within {

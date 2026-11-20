@@ -87,6 +87,17 @@ interface Tracked {
   reviewScan?: number;
 }
 
+/**
+ * pane 화면의 칸·줄 수. layouts 의 rect 는 herdr 가 그리는 테두리(pane_borders 설정)까지 친 크기라, 화면 줄 수(viewport_rows)와의
+ * 차이로 테두리 폭을 알아 칸 수에서도 뺀다 — 그대로 쓰면 크게 보기가 없는 두 칸·두 줄까지 넣으려고 글자를 맞춘다.
+ */
+function innerSize(rect: { width: number; height: number } | undefined, viewportRows: number | undefined): { cols?: number; rows?: number } {
+  if (!rect) return viewportRows ? { rows: viewportRows } : {};
+  const frame = viewportRows !== undefined ? rect.height - viewportRows : 0;
+  if (frame < 0 || frame > 2) return { cols: rect.width, rows: rect.height };
+  return { cols: rect.width - frame, rows: rect.height - frame };
+}
+
 export class World {
   private readonly tracked = new Map<string, Tracked>();
   /** 에이전트 id → 그 에이전트의 로그(tracked 의 키). 활동의 원문을 찾을 때 쓴다. */
@@ -506,8 +517,7 @@ export class World {
           title: (pane.terminal_title_stripped ?? "").trim(),
           cwd: pane.foreground_cwd || pane.cwd || "",
           agentId: hosts.has(pane.pane_id) ? pane.pane_id : undefined,
-          cols: size?.width,
-          rows: size?.height,
+          ...innerSize(size, pane.scroll?.viewport_rows),
         });
       }
       const alive = new Set(snap.panes.map((p) => p.pane_id));
