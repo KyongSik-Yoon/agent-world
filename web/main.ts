@@ -9,6 +9,7 @@ import { STATUS_LABEL, bubbleText, needsAttention } from "./format.ts";
 import { Hud } from "./hud.ts";
 import { lang, localizeStatic, t, setLang } from "./i18n.ts";
 import { acceptKey, withKey } from "./key.ts";
+import { setSolo } from "./beat.ts";
 import { swipeToClose } from "./sheet.ts";
 import { PlanReader } from "./plan.ts";
 import { askForInput, askOnFirstTouch, reportPresence } from "./presence.ts";
@@ -65,7 +66,7 @@ const terminal = new TermOverlay();
 terminal.onError = (message) => hud.toast(t("입력을 보내지 못했습니다"), message, "var(--blocked)");
 terminal.onGone = (title) => hud.toast(t("터미널을 닫았습니다"), t("{title} — 이 pane 이 herdr 에서 닫혔습니다.", { title }), "var(--idle)");
 terminal.onToggle = (open) => {
-  scene.setCovered(open);
+  syncCovered();
   hud.setCovered(open);
   // 덮인 화면의 애니메이션(일하는 로고, 이름표의 깜빡임)을 멈춘다 — 보이지 않는 움직임이 합성을 초당 수십 장 붙든다.
   document.body.toggleAttribute("data-covered", open);
@@ -565,6 +566,17 @@ const BACK_GUARD = "agent-world.back";
 const STAGE_MIN_WIDTH = 520;
 const STAGE_MIN_HEIGHT = 680;
 const phoneLayout = matchMedia("(max-width: 760px)");
+
+// 장면이 통째로 가려진 동안에는 그리지 않는다: 터미널 크게 보기, 그리고 휴대폰에서 화면 전체를 쓰는 상태 창.
+// 상태 창은 휴대폰에서 가장 오래 보는 화면인데, 그 뒤에서 장면이 초당 30장(창을 만질 때마다 2.5초씩 60장)을 그리고 있었다.
+function syncCovered(): void {
+  const sheet = phoneLayout.matches && !document.getElementById("detail")!.hidden && !terminal.isOpen;
+  scene.setCovered(terminal.isOpen || sheet);
+  setSolo(sheet);
+}
+new MutationObserver(syncCovered).observe(document.getElementById("detail")!, { attributes: true, attributeFilter: ["hidden"] });
+phoneLayout.addEventListener("change", syncCovered);
+syncCovered();
 /** 지금 기록 칸이 우리가 얹은 지킴 칸인가. */
 const onGuard = (): boolean => (history.state as Record<string, unknown> | null)?.[BACK_GUARD] === true;
 /** 뒤로 가기로 닫을 맨 위의 것. 없으면 null. */

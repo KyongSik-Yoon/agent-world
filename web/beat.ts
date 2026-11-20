@@ -54,8 +54,41 @@ function flush(): void {
 /** 장면의 다음 프레임 안에서 fn 을 부른다. 돌려주는 함수로 무른다. */
 export function rideFrame(fn: () => void): () => void {
   riders.add(fn);
-  stranded ??= setTimeout(() => requestAnimationFrame(flush), RIDE_WAIT_MS);
+  // 장면이 멈춰 있으면 얹을 프레임이 오지 않는다 — 기다리지 않고 바로 그린다.
+  stranded ??= setTimeout(() => requestAnimationFrame(flush), solo ? 0 : RIDE_WAIT_MS);
   return () => riders.delete(fn);
+}
+
+/** 장면은 덮여 멈췄는데 그 위의 창(휴대폰의 상태 창)은 보이는 중이다. */
+let solo = false;
+let soloTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * 장면이 덮여 멈춘 동안 그 위에 보이는 창의 박자를 따로 이어 간다. 넘기는 것은 일하는 로고뿐이다 — 깜빡이는 이름표는
+ * 장면과 같이 가려져 있다. 탭이 가려지면 requestAnimationFrame 이 오지 않아 여기서 같이 선다.
+ */
+export function setSolo(on: boolean): void {
+  if (on === solo) return;
+  solo = on;
+  clearTimeout(soloTimer);
+  soloTimer = undefined;
+  if (!on) return;
+  if (riders.size > 0) {
+    clearTimeout(stranded);
+    stranded = setTimeout(() => requestAnimationFrame(flush), 0);
+  }
+  const step = (): void => {
+    soloTimer = setTimeout(() => {
+      // 그 창에 움직일 로고가 없으면 프레임을 걸지 않는다 — 걸기만 해도 브라우저가 화면 합성까지 깨어난다.
+      if (stillness.matches || !document.querySelector("#detail .logo-strip")) return step();
+      requestAnimationFrame(() => {
+        if (!solo) return;
+        stepLogos();
+        step();
+      });
+    }, LOGO_STEP_MS);
+  };
+  step();
 }
 
 const stillness = matchMedia("(prefers-reduced-motion: reduce)");
