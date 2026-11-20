@@ -2015,7 +2015,8 @@ kbd {
 /* 한글·한자는 대개 1em 폭이라 두 칸(영문 0.6em×2)에 못 미쳐, 칸 가운데 떠서 글자 사이가 벌어진다. 이 기기에서 잰 배율로
    글자만 키워 두 칸을 채운다 — transform 이라 칸 자리와 줄 배치는 그대로다. 배율(가로·세로)은 term.ts 의 fitWide 가 정한다. */
 .term .w2.cjk {
-  transform: scale(var(--wide-x, 1), var(--wide-y, 1));
+  /* 세로 배율은 줄 높이를 넘지 않게 — 크게 보기가 줄 높이를 낮추면(--term-line) 키운 글자가 이웃 줄에 닿는다. */
+  transform: scale(var(--wide-x, 1), min(var(--wide-y, 1), var(--term-line)));
 }
 
 /* 터미널이 그림을 그려 둔 자리. 그림은 받아 올 수 없어 자리만 옅게 칠한다. */

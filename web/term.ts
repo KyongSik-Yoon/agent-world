@@ -977,10 +977,11 @@ const FLOW_FONT_PX = MIN_FONT_PX;
 const LINE_EM = 1.22;
 /**
  * 크게 보기가 pane 의 줄을 창 높이에 맞추려고 줄 높이를 고칠 수 있는 범위. 칸의 가로세로 비율이 창과 어긋나는 만큼을 자간이
- * 아니라 줄 간격으로 받는다 — 폭에 맞춘 글자 크기를 그대로 두고도 줄이 다 들어간다. 1.15 아래로 내리면 두 칸에 맞춰 키운
- * 한글(fitWide, 세로 1.15배까지)이 윗줄·아랫줄에 닿고, 1.3 을 넘기면 줄 사이가 성겨 보인다.
+ * 아니라 줄 간격으로 받는다 — 폭에 맞춘 글자 크기를 그대로 두고도 줄이 다 들어간다. 302×85 pane 을 2536×1390 창에 8px 칸으로
+ * 넣는 데 1.13 이 든다(1.15 로 두었더니 그 창에서 칸이 한 눈금 작아져 양옆이 150px 씩 비었다). 1.1 아래는 글자의 위아래가
+ * 이웃 줄에 닿고, 1.3 을 넘기면 줄 사이가 성겨 보인다. 두 칸에 맞춰 키운 한글은 줄 높이를 넘지 않게 스타일시트가 누른다.
  */
-const LINE_MIN = 1.15;
+const LINE_MIN = 1.1;
 const LINE_MAX = 1.3;
 
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
@@ -1911,14 +1912,13 @@ export class TermOverlay {
     else this.screen.setFont(Math.max(MIN_FONT_PX, Math.min(MAX_FONT_PX, width / (this.cols * 0.6), byRows)), true, MIN_FONT_PX);
     const style = this.screen.el.style;
     style.setProperty("--cols", String(this.cols));
-    // 줄 높이: 줄이 창 높이를 채우는 값을 기기 픽셀에 맞춰 내림한다(줄마다 같은 높이라 블록 글자의 이음매가 고르다).
-    // 범위 안에서 다 들어가지 않으면(하한 글자 크기에서도 넘치는 작은 창) 본래 줄 높이로 두고 밀어 본다.
+    // 줄 높이: 줄이 창 높이를 채우는 값. 기기 픽셀에 맞춰 내림하지 않는다 — 줄마다 한 눈금까지 버려 하한에 먼저 걸리고,
+    // 블록 글자는 이웃 줄과 0.5px 겹쳐 그려 소수점 경계에도 틈이 없다. 범위 안에서 다 들어가지 않으면(하한 글자 크기에서도 넘치는 작은 창) 본래 줄 높이로 두고 밀어 본다.
     const size = parseFloat(style.fontSize);
-    const dpr = devicePixelRatio || 1;
     let line = LINE_EM;
     if (!flow && this.rows > 0 && size > 0 && height > 0) {
-      const fill = Math.floor((height / this.rows) * dpr) / dpr / size;
-      if (fill >= LINE_MIN - 0.005) line = Math.min(LINE_MAX, fill);
+      const fill = height / this.rows / size;
+      if (fill >= LINE_MIN - 0.002) line = Math.min(LINE_MAX, fill);
     }
     if (line === LINE_EM) style.removeProperty("--term-line");
     else style.setProperty("--term-line", String(Math.floor(line * 1e4) / 1e4));
