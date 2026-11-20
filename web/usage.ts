@@ -101,7 +101,7 @@ export class UsageChip {
     if (this.dlg || this.views.length === 0) return;
     const close = h("button", { class: "btn icon", type: "button", title: t("닫기"), "aria-label": t("닫기") }, icon("close"));
     const body = h("div", { class: "usage-list" });
-    const note = h("p", { class: "usage-note" }, t("각 하네스가 이 PC 에 남긴 값입니다. 다른 기기에서 쓴 만큼은 그 하네스를 여기서 다시 쓸 때 반영됩니다."));
+    const note = h("p", { class: "usage-note" }, t("Claude Code 는 계정 전체 사용량을 3분마다 물어 옵니다. 다른 하네스는 이 PC 에 남긴 값이라, 다른 기기에서 쓴 만큼은 그 하네스를 여기서 다시 쓸 때 반영됩니다."));
     const dlg = h("dialog", { class: "dlg usage-dlg", tabindex: "-1" }, h("div", { class: "usage-head" }, h("h2", {}, t("사용량")), close), body, note);
     this.dlg = dlg;
     this.body = body;

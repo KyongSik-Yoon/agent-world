@@ -381,5 +381,5 @@ export const en: Record<string, string> = {
   "{when} 기준": "as of {when}",
   "{n}% 사용": "{n}% used",
   "{n}% 남음": "{n}% left",
-  "각 하네스가 이 PC 에 남긴 값입니다. 다른 기기에서 쓴 만큼은 그 하네스를 여기서 다시 쓸 때 반영됩니다.": "Read from what each harness left on this machine. Usage from other devices shows up the next time that harness runs here.",
+  "Claude Code 는 계정 전체 사용량을 3분마다 물어 옵니다. 다른 하네스는 이 PC 에 남긴 값이라, 다른 기기에서 쓴 만큼은 그 하네스를 여기서 다시 쓸 때 반영됩니다.": "Claude Code usage is asked for the whole account every 3 minutes. Other harnesses show what they left on this machine, so usage from other devices shows up the next time that harness runs here.",
 };

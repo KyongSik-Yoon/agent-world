@@ -205,7 +205,7 @@ tailscale serve --bg --https=4780 http://127.0.0.1:4780
 
 ## 동작 원리
 
-하네스에 훅을 걸지 않습니다. 읽는 것은 herdr 소켓과 하네스가 이 PC 에 남긴 파일뿐입니다.
+하네스에 훅을 걸지 않고 statusLine 같은 설정도 건드리지 않습니다. 읽는 것은 herdr 소켓과 하네스가 이 PC 에 남긴 파일이고, 밖으로 묻는 것은 Claude Code 사용량 하나뿐입니다(아래 사용량).
 
 먼저 herdr 소켓입니다. `session.snapshot` 으로 어느 pane 에 어떤 에이전트가 있는지, 상태가 무엇인지, 세션 id 가 무엇인지 읽습니다. 조작도 같은 소켓으로 보냅니다(`agent.prompt`, `pane.send_input`, `workspace.create`, `agent.start` …).
 
@@ -217,9 +217,9 @@ tailscale serve --bg --https=4780 http://127.0.0.1:4780
 
 Claude Code 의 로그에는 쓴 토큰만 있고 컨텍스트 창 크기는 없습니다. herdr 웹 UI 의 statusLine 기록을 켜 두었으면 그것이 세션마다 남기는 창 크기(`~/.herdr/statusline-context/`)를 읽어 상태 창에 비율과 막대를 함께 보여 주고, 없으면 토큰 수만 보여 줍니다.
 
-사용량도 남아 있는 것만 읽습니다. 30초에 한 번 파일 시각을 보고 바뀐 것만 다시 읽으며, 계정 메일이나 id 는 화면으로 보내지 않습니다.
+사용량은 남아 있는 것을 읽고, Claude Code 만 사용량 API 에 직접 묻습니다. 30초에 한 번 파일 시각을 보고 바뀐 것만 다시 읽으며, 계정 메일·id·토큰은 화면으로 보내지 않습니다.
 
-- Claude Code: herdr 웹 UI 의 statusLine 기록이 남기는 `~/.herdr/statusline-last.json`(5시간·7일 창). 요금제 이름은 `~/.claude.json` 의 계정 정보에서 읽고, 두 파일의 계정이 같을 때만 보여 줍니다. Fable 같은 모델별 주간 한도는 statusLine 스크립트가 usage API 응답을 `$XDG_RUNTIME_DIR/claude-statusline/statusline-usage-cache.json` 에 남겨 둘 때만 함께 보입니다
+- Claude Code: Claude Code 가 남긴 로그인 토큰(`~/.claude/.credentials.json`, 없으면 macOS 키체인·Linux Secret Service)으로 3분에 한 번 `https://api.anthropic.com/api/oauth/usage` 에 묻습니다(5시간·7일·Fable 같은 모델별 주간 한도). 토큰은 읽기만 하고 갱신하지 않아서, 만료됐으면 Claude Code 가 새로 받아 둘 때까지 앞서 받은 값을 둡니다. 거절(429)을 받으면 10분 쉽니다. 끄려면 `AGENT_WORLD_CLAUDE_USAGE_API=0` 으로 띄웁니다. herdr 웹 UI 의 statusLine 기록(`~/.herdr/statusline-last.json`)이나 usage API 응답을 남기는 statusLine 스크립트(`$XDG_RUNTIME_DIR/claude-statusline/statusline-usage-cache.json`)가 있으면 그 값도 섞어 더 자주 갱신합니다. 요금제 이름은 `~/.claude.json` 의 계정 정보에서 읽습니다
 - Codex: 세션 로그의 `token_count` 행에 실려 오는 `rate_limits`(창과 요금제). 가장 최근에 쓴 세션의 것을 씁니다
 - Antigravity: statusLine 스크립트가 받은 값을 `/tmp/agy-statusline-<uid>/last-payload.json` 에 남겨 둘 때만 읽습니다. Antigravity 가 스스로 남기는 파일이 아니라서, 그런 스크립트를 쓰지 않으면 뜨지 않습니다
 
@@ -256,7 +256,7 @@ docs/     홈페이지(index.html)와 스크린샷
 - `bun run perf:lint`·`bun run perf`: 화면 성능을 검사합니다. 린트는 끝없이 도는 CSS 애니메이션 같은 것을 코드에서 찾고, 프레임 검사는 가상 세션을 GPU 헤드리스 크롬으로 돌려 화면이 장면보다 많이 나가지 않는지 봅니다(`--compare` 로 앞 판과 비용 비교). web/ 을 바꾼 묶음은 프레임 검사를 통과해야 main 에 올라갑니다
 - `bun run i18n`: 화면의 문장마다 영어 번역이 있는지 검사합니다. 화면에 문장을 추가할 때는 `t("…")` 로 감싸고 `web/locale/en.ts` 에 번역을 적어 주세요
 
-사용량을 가상 값으로 시험할 때는 Claude Code 쪽 파일을 `AGENT_WORLD_CLAUDE_LIMITS`(모델별 한도는 `AGENT_WORLD_CLAUDE_USAGE`), Antigravity 쪽 파일을 `AGENT_WORLD_AGY_PAYLOAD` 로 바꿔 줍니다(Claude Code 는 `CLAUDE_CONFIG_DIR/.claude.json` 의 계정과 맞아야 뜹니다). `CLAUDE_CONFIG_DIR`·`CODEX_HOME`·`AGY_HOME` 을 빈 폴더로 돌린 서버는 이 PC 의 실제 사용량을 읽지 않습니다.
+사용량을 가상 값으로 시험할 때는 Claude Code 쪽 파일을 `AGENT_WORLD_CLAUDE_LIMITS`(모델별 한도는 `AGENT_WORLD_CLAUDE_USAGE`), Antigravity 쪽 파일을 `AGENT_WORLD_AGY_PAYLOAD` 로 바꿔 줍니다(Claude Code 는 `CLAUDE_CONFIG_DIR/.claude.json` 의 계정과 맞아야 뜹니다). `AGENT_WORLD_CLAUDE_LIMITS`·`AGENT_WORLD_CLAUDE_USAGE` 중 하나를 주면 사용량 API 에도 묻지 않습니다. `CLAUDE_CONFIG_DIR`·`CODEX_HOME`·`AGY_HOME` 을 빈 폴더로 돌린 서버는 이 PC 의 실제 사용량을 읽지 않습니다.
 
 조작 기능을 시험할 때는 쓰고 있는 herdr 말고 이름 붙은 테스트 세션을 씁니다. 쓰던 세션에 시험용 지시가 들어가면 곤란하니까요.
 

@@ -1,11 +1,12 @@
 // 하네스별 요금제와 한도 사용량. 위 막대의 사용량 칩이 쓴다.
 //
-// 어디에도 묻지 않는다 — 각 하네스가 이 PC 에 이미 남겨 둔 것만 읽는다.
-//  - Claude Code: herdr 웹 UI 의 statusLine tee 가 남기는 `~/.herdr/statusline-last.json`(5시간·7일 창).
-//    요금제 이름은 Claude 설정(`.claude.json`)의 계정 정보에서. 두 파일의 계정이 같을 때만 보인다.
+// 하네스에 훅을 걸지 않는다 — 각 하네스가 이 PC 에 남겨 둔 것을 읽고, Claude Code 만 사용량 API 에 한 번 묻는다.
+//  - Claude Code: Claude Code 가 남긴 로그인 토큰으로 사용량 API(`/api/oauth/usage`)를 3분마다 부른다(5시간·7일·모델별 창).
+//    토큰은 읽기만 하고 갱신하지 않는다. herdr 웹 UI 의 statusLine tee 가 남기는 `~/.herdr/statusline-last.json` 이
+//    있으면 그 값도 섞는다. 요금제 이름은 Claude 설정(`.claude.json`)의 계정 정보에서.
 //  - Codex: 세션 로그의 token_count 행에 실려 오는 rate_limits(창과 요금제).
 //  - Antigravity: statusLine 스크립트가 받은 것을 `/tmp/agy-statusline-<uid>/last-payload.json` 에 남겨 두었을 때만.
-// 없는 파일의 하네스는 칩이 없다. 계정 메일·id 는 읽어도 내보내지 않는다.
+// 읽을 것이 없는 하네스는 칩이 없다. 계정 메일·id·토큰은 읽어도 화면으로 내보내지 않는다.
 //
 // 값은 드물게 바뀐다(퍼센트 한 칸). 스냅샷마다 읽지 않고 CHECK_MS 마다 파일 시각만 보고, 바뀐 파일만 다시 읽는다.
 import { lstat, open, readFile, readdir, stat } from "node:fs/promises";
@@ -69,9 +70,9 @@ const claudeConfigPath = (): string => (process.env.CLAUDE_CONFIG_DIR ? join(pro
 let claudeAccount: { id?: string; plan?: string; readAt: number } | undefined;
 
 /** 이 서버가 보는 Claude 설정에 로그인한 계정. want 와 다른 계정을 기억하고 있으면 주기를 기다리지 않고 다시 읽는다. */
-async function claudeSignedIn(want: string): Promise<{ id?: string; plan?: string }> {
+async function claudeSignedIn(want?: string): Promise<{ id?: string; plan?: string }> {
   const now = Date.now();
-  if (claudeAccount && (claudeAccount.id === want ? now - claudeAccount.readAt < ACCOUNT_EVERY_MS : now - claudeAccount.readAt < CHECK_MS)) return claudeAccount;
+  if (claudeAccount && (want === undefined || claudeAccount.id === want ? now - claudeAccount.readAt < ACCOUNT_EVERY_MS : now - claudeAccount.readAt < CHECK_MS)) return claudeAccount;
   let id: string | undefined;
   let plan: string | undefined;
   try {
@@ -110,7 +111,7 @@ function hold(w: UsageWindow): void {
 
 /**
  * 모델별 주간 한도(Fable 등)는 statusLine 에 실려 오지 않는다. 사용자의 statusLine 스크립트가 60초마다 usage API 를 불러
- * 남겨 두는 응답을 읽는다 — Antigravity 칩처럼, 그 스크립트가 없으면 이 창도 없다.
+ * 남겨 두는 응답이 있으면 함께 읽는다 — 이 서버가 3분마다 묻는 사이의 값을 채운다.
  * 설정 폴더나 한도 파일을 돌려 띄운 서버(시험·그림 찍기)는 이 PC 의 실제 응답을 읽지 않는다.
  */
 function claudeUsageCachePath(): string | undefined {
@@ -120,26 +121,18 @@ function claudeUsageCachePath(): string | undefined {
 }
 
 /** usage API 응답의 창들. 모델별 한도는 모델 이름을 묶음으로 단다. */
-async function claudeUsageCache(): Promise<UsageWindow[]> {
-  const path = claudeUsageCachePath();
-  if (!path) return [];
-  if (!process.env.AGENT_WORLD_CLAUDE_USAGE) {
-    const dir = await lstat(join(path, "..")).catch(() => undefined);
-    if (!dir?.isDirectory() || dir.uid !== process.getuid?.()) return [];
-  }
-  const got = await smallJson(path);
-  if (!got) return [];
+function usageWindows(body: Record<string, unknown>): UsageWindow[] {
   const at = (v: unknown): number | undefined => {
     const t = Date.parse(str(v) ?? "");
     return Number.isFinite(t) ? t : undefined;
   };
   const windows: UsageWindow[] = [];
   for (const [key, minutes] of [["five_hour", 300], ["seven_day", 7 * 1440]] as const) {
-    const w = isRecord(got.body[key]) ? got.body[key] : undefined;
+    const w = isRecord(body[key]) ? body[key] : undefined;
     const made = window(num(w?.utilization), at(w?.resets_at), minutes);
     if (made) windows.push(made);
   }
-  for (const limit of Array.isArray(got.body.limits) ? got.body.limits : []) {
+  for (const limit of Array.isArray(body.limits) ? body.limits : []) {
     if (!isRecord(limit) || limit.kind !== "weekly_scoped") continue;
     const model = isRecord(limit.scope) && isRecord(limit.scope.model) ? str(limit.scope.model.display_name)?.trim() : undefined;
     const made = model ? window(num(limit.percent), at(limit.resets_at), 7 * 1440, model) : undefined;
@@ -148,30 +141,156 @@ async function claudeUsageCache(): Promise<UsageWindow[]> {
   return windows;
 }
 
-async function readClaude(): Promise<Reading | undefined> {
-  const got = await smallJson(claudeLimitsPath());
-  if (!got) return undefined;
-  const limits = isRecord(got.body.rate_limits) ? got.body.rate_limits : {};
-  const herdr = isRecord(got.body._herdr) ? got.body._herdr : {};
-  const owner = isRecord(herdr.account) ? str(herdr.account.id) : undefined;
-  if (!owner) return undefined;
-  // 한도는 그것을 그린 CLI 의 계정 것이다. 지금 설정의 계정과 다르면(다른 프로필, 시험용 빈 설정 폴더) 남의 숫자다.
-  const account = await claudeSignedIn(owner);
-  if (account.id !== owner) return undefined;
-  if (claudeHeld?.owner !== owner) claudeHeld = { owner, windows: new Map() };
-  for (const [key, minutes] of [["five_hour", 300], ["seven_day", 7 * 1440]] as const) {
-    const w = isRecord(limits[key]) ? limits[key] : undefined;
-    const resets = num(w?.resets_at);
-    const made = window(num(w?.used_percentage), resets === undefined ? undefined : resets * 1000, minutes);
-    if (made) hold(made);
+async function claudeUsageCache(): Promise<{ windows: UsageWindow[]; at: number } | undefined> {
+  const path = claudeUsageCachePath();
+  if (!path) return undefined;
+  if (!process.env.AGENT_WORLD_CLAUDE_USAGE) {
+    const dir = await lstat(join(path, "..")).catch(() => undefined);
+    if (!dir?.isDirectory() || dir.uid !== process.getuid?.()) return undefined;
   }
-  // 그 응답에는 계정이 적혀 있지 않다. 계정을 확인한 창과 초기화 시각이 같을 때만 같은 계정·같은 창의 것으로 본다.
-  const cached = await claudeUsageCache().catch(() => []);
-  const same = cached.some((w) => !w.group && w.resetsAt !== undefined && claudeHeld?.windows.get(heldKey(w))?.resetsAt === w.resetsAt);
-  if (same) for (const w of cached) hold(w);
+  const got = await smallJson(path);
+  return got ? { windows: usageWindows(got.body), at: got.mtimeMs } : undefined;
+}
+
+/** 계정이 적혀 있지 않은 응답(cache)이 계정을 아는 창들(known)과 같은 창인가 — 모델 묶음 없는 창의 초기화 시각이 같으면 그렇다. */
+function sameWindows(cache: UsageWindow[], known: (w: UsageWindow) => UsageWindow | undefined): boolean {
+  return cache.some((w) => !w.group && w.resetsAt !== undefined && known(w)?.resetsAt === w.resetsAt);
+}
+
+/** 사용량 API 를 다시 부르는 간격. 같은 API 를 부르는 statusLine 스크립트를 쓰는 PC 도 있어, 잦으면 둘 다 429 를 받는다. */
+const CLAUDE_API_EVERY_MS = 3 * 60_000;
+/** 거절(429·5xx)이나 망 끊김 뒤에 쉬는 간격. 서버가 Retry-After 로 더 길게 말하면 그만큼(1시간까지) 쉰다. */
+const CLAUDE_API_BACKOFF_MS = 10 * 60_000;
+const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
+/** Claude Code 가 기본 설정 폴더의 로그인을 키체인(macOS)·Secret Service(Linux)에 둘 때의 이름. */
+const CLAUDE_CRED_SERVICE = "Claude Code-credentials";
+
+/** 가상 값으로 시험하는 서버와 끄라고 한 서버는 API 에 묻지 않는다. */
+const claudeApiOn = (): boolean => process.env.AGENT_WORLD_CLAUDE_USAGE_API !== "0" && !process.env.AGENT_WORLD_CLAUDE_LIMITS && !process.env.AGENT_WORLD_CLAUDE_USAGE;
+
+/** 로그인 정보에서 접근 토큰. 사용량을 물을 권한(user:profile)이 없는 토큰(추론 전용 setup-token)은 쓰지 않는다. */
+function tokenFrom(text: string): { token: string; expiresAt?: number } | undefined {
+  try {
+    const body: unknown = JSON.parse(text);
+    const oauth = isRecord(body) && isRecord(body.claudeAiOauth) ? body.claudeAiOauth : undefined;
+    const token = str(oauth?.accessToken)?.trim();
+    if (!token) return undefined;
+    if (Array.isArray(oauth?.scopes) && !oauth.scopes.includes("user:profile")) return undefined;
+    return { token, expiresAt: num(oauth?.expiresAt) };
+  } catch {
+    return undefined;
+  }
+}
+
+async function secretStore(cmd: string[]): Promise<string | undefined> {
+  try {
+    const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "ignore", stdin: "ignore", timeout: 2000 });
+    const out = await new Response(proc.stdout).text();
+    return (await proc.exited) === 0 ? out : undefined;
+  } catch {
+    return undefined; // 그 도구가 없다.
+  }
+}
+
+/** Claude Code 가 남긴 로그인 토큰. 설정 폴더의 파일을 먼저 보고, 기본 폴더면 OS 의 비밀 저장소도 본다. */
+async function claudeToken(): Promise<{ token: string; expiresAt?: number } | undefined> {
+  const dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+  const file = await readFile(join(dir, ".credentials.json"), "utf8").catch(() => undefined);
+  const fromFile = file ? tokenFrom(file) : undefined;
+  // 설정 폴더를 돌린 Claude Code 는 비밀 저장소에 다른 이름으로 둔다 — 그 이름은 모르니 파일만 본다.
+  if (fromFile || process.env.CLAUDE_CONFIG_DIR) return fromFile;
+  const cmd =
+    process.platform === "darwin" ? ["security", "find-generic-password", "-s", CLAUDE_CRED_SERVICE, "-w"]
+    : process.platform === "linux" ? ["secret-tool", "lookup", "service", CLAUDE_CRED_SERVICE]
+    : undefined;
+  const blob = cmd ? await secretStore(cmd) : undefined;
+  return blob ? tokenFrom(blob) : undefined;
+}
+
+/** 마지막으로 받은 API 값과, 그때 이 설정 폴더에 로그인해 있던 계정. */
+let claudeApi: { owner: string; windows: UsageWindow[]; at: number } | undefined;
+let claudeApiNextAt = 0;
+
+/**
+ * statusLine 을 거치지 않고 사용량 API 에 직접 묻는다 — statusLine 에 아무것도 깔지 않은 PC 에서도 사용량이 보인다.
+ * 토큰을 새로 받는 것은 Claude Code 몫이다. 여기서 갱신하면 Claude Code 가 쥔 refresh token 이 바뀌어 로그인이 풀리므로,
+ * 만료됐으면 Claude Code 가 새로 받아 둘 때까지 앞서 받은 값을 둔다.
+ * cacheFresh: statusLine 스크립트가 같은 계정의 응답을 방금 남겨 두었다 — 같은 API 를 두 번 부르지 않고 그것을 쓴다.
+ */
+async function claudeUsageApi(owner: string, cacheFresh: boolean): Promise<{ windows: UsageWindow[]; at: number } | undefined> {
+  if (!claudeApiOn()) return undefined;
+  if (claudeApi && claudeApi.owner !== owner) {
+    // 계정이 바뀌었다. 앞 계정의 숫자는 버리고 곧바로 다시 묻는다.
+    claudeApi = undefined;
+    claudeApiNextAt = 0;
+  }
+  const now = Date.now();
+  if (now < claudeApiNextAt) return claudeApi;
+  claudeApiNextAt = now + CLAUDE_API_EVERY_MS;
+  if (cacheFresh && claudeApi) return claudeApi;
+  const cred = await claudeToken();
+  if (!cred) return (claudeApi = undefined); // 로그아웃했다 — 앞 계정의 값을 두지 않는다.
+  if (cred.expiresAt !== undefined && cred.expiresAt <= now) return claudeApi;
+  try {
+    const res = await fetch(CLAUDE_USAGE_URL, {
+      headers: { Authorization: `Bearer ${cred.token}`, "anthropic-beta": "oauth-2025-04-20", Accept: "application/json" },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      if (res.status === 429 || res.status >= 500) {
+        const retry = Number(res.headers.get("retry-after")) * 1000;
+        claudeApiNextAt = now + Math.min(60 * 60_000, Math.max(CLAUDE_API_BACKOFF_MS, Number.isFinite(retry) ? retry : 0));
+      }
+      return claudeApi; // 401·403 은 토큰이 바뀌어야 풀린다 — 보통 간격으로 다시 본다.
+    }
+    const body: unknown = await res.json();
+    const windows = isRecord(body) ? usageWindows(body) : [];
+    if (windows.length > 0) claudeApi = { owner, windows, at: Date.now() };
+  } catch {
+    claudeApiNextAt = now + CLAUDE_API_BACKOFF_MS;
+  }
+  return claudeApi;
+}
+
+async function readClaude(): Promise<Reading | undefined> {
+  const [got, cache] = await Promise.all([smallJson(claudeLimitsPath()), claudeUsageCache().catch(() => undefined)]);
+  const herdr = got && isRecord(got.body._herdr) ? got.body._herdr : {};
+  const teeOwner = isRecord(herdr.account) ? str(herdr.account.id) : undefined;
+  const account = await claudeSignedIn(teeOwner);
+  const owner = account.id ?? "";
+  // statusLine 스크립트의 응답이 3분 안의 것이고 앞서 API 로 받은 이 계정의 창과 같으면 API 를 다시 부르지 않는다.
+  const lastApi = claudeApi?.owner === owner ? claudeApi : undefined;
+  const cacheFresh =
+    !!cache && !!lastApi && Date.now() - cache.at < CLAUDE_API_EVERY_MS && sameWindows(cache.windows, (w) => lastApi.windows.find((a) => !a.group && a.minutes === w.minutes));
+  const api = await claudeUsageApi(owner, cacheFresh).catch(() => undefined);
+  // statusLine 기록은 그것을 그린 CLI 의 계정 것이다. 지금 설정의 계정과 다르면(다른 프로필, 시험용 빈 설정 폴더) 남의 숫자다.
+  // API 값은 이 설정 폴더의 로그인 토큰으로 물은 것이라 이 계정 것이다.
+  const tee = got && teeOwner !== undefined && account.id === teeOwner ? got : undefined;
+  if (!tee && !api) return undefined;
+  if (claudeHeld?.owner !== owner) claudeHeld = { owner, windows: new Map() };
+  let at = 0;
+  if (tee) {
+    const limits = isRecord(tee.body.rate_limits) ? tee.body.rate_limits : {};
+    for (const [key, minutes] of [["five_hour", 300], ["seven_day", 7 * 1440]] as const) {
+      const w = isRecord(limits[key]) ? limits[key] : undefined;
+      const resets = num(w?.resets_at);
+      const made = window(num(w?.used_percentage), resets === undefined ? undefined : resets * 1000, minutes);
+      if (made) hold(made);
+    }
+    at = tee.mtimeMs;
+  }
+  if (api) {
+    for (const w of api.windows) hold(w);
+    at = Math.max(at, api.at);
+  }
+  // statusLine 스크립트가 남긴 응답에는 계정이 적혀 있지 않다. 계정을 확인한 창과 초기화 시각이 같을 때만 같은 계정·같은 창의 것으로 본다.
+  if (cache && sameWindows(cache.windows, (w) => claudeHeld?.windows.get(heldKey(w)))) {
+    for (const w of cache.windows) hold(w);
+    at = Math.max(at, cache.at);
+  }
   // 모델 묶음이 없는 창(5시간·7일)이 먼저, 그 안에서는 짧은 창부터.
   const windows = [...claudeHeld.windows.values()].sort((a, b) => (a.group ? 1 : 0) - (b.group ? 1 : 0) || (a.minutes ?? 0) - (b.minutes ?? 0));
-  return windows.length > 0 ? { plan: account.plan, windows, at: got.mtimeMs } : undefined;
+  return windows.length > 0 ? { plan: account.plan, windows, at } : undefined;
 }
 
 // ── Codex ───────────────────────────────────────────────────────────────────────────────────

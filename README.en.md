@@ -218,7 +218,7 @@ raw `--tcp` forwarding should not be used because the sender cannot be identifie
 
 ## How it knows
 
-It does not hook into the harnesses. It reads the herdr socket and the files the harnesses leave on this machine.
+It does not hook into the harnesses or touch settings such as the status line. It reads the herdr socket and the files the harnesses leave on this machine; the only thing it asks the network for is Claude Code usage (see usage below).
 
 - **The herdr socket** — `session.snapshot` tells it which pane runs which agent, its status and its session id.
   Control goes through the same socket (`agent.prompt`, `pane.send_input`, `workspace.create`, `agent.start` …).
@@ -236,12 +236,12 @@ Claude Code's log has the tokens used but not the size of the context window. If
 capture is installed, the window size it leaves per session (`~/.herdr/statusline-context/`) is read so the status
 window shows a percentage and a bar; without it, only the token count is shown.
 
-Usage is read the same way, from what is already there. File times are checked every 30 seconds and only a changed
-file is read again; account emails and ids are never sent to the page.
+Usage is read from what is already there, except Claude Code, whose usage API is asked directly. File times are checked
+every 30 seconds and only a changed file is read again; account emails, ids and tokens are never sent to the page.
 
 | Harness | Plan and usage from |
 | --- | --- |
-| Claude Code | `~/.herdr/statusline-last.json`, left by the herdr web UI's status-line capture (5h and 7d windows). The plan name comes from the account in `~/.claude.json`, and usage is shown only when both files name the same account. Per-model weekly limits such as Fable appear only if your status-line script leaves the usage API response at `$XDG_RUNTIME_DIR/claude-statusline/statusline-usage-cache.json`. |
+| Claude Code | Every 3 minutes, `https://api.anthropic.com/api/oauth/usage` is asked with the sign-in token Claude Code left (`~/.claude/.credentials.json`, else the macOS Keychain or Linux Secret Service): 5h, 7d and per-model weekly limits such as Fable. The token is only read, never refreshed — once it expires the last values stay until Claude Code gets a new one. A 429 pauses it for 10 minutes. Start with `AGENT_WORLD_CLAUDE_USAGE_API=0` to turn it off. If the herdr web UI's status-line capture (`~/.herdr/statusline-last.json`) or a status-line script that leaves the usage API response (`$XDG_RUNTIME_DIR/claude-statusline/statusline-usage-cache.json`) is there, those are mixed in for fresher values. The plan name comes from the account in `~/.claude.json`. |
 | Codex | `rate_limits` on the `token_count` rows of the session log (windows and plan), from the most recently used session. |
 | Antigravity | `/tmp/agy-statusline-<uid>/last-payload.json`, only if your status-line script leaves what it receives there. Antigravity does not write this file itself, so without such a script it does not appear. |
 
@@ -285,7 +285,7 @@ frame check passes.
 To try the usage button with made-up values, point `AGENT_WORLD_CLAUDE_LIMITS` at a Claude Code limits file (and
 `AGENT_WORLD_CLAUDE_USAGE` at a usage API response for per-model limits),
 `AGENT_WORLD_AGY_PAYLOAD` at an Antigravity payload (Claude Code's shows only when the account matches
-`CLAUDE_CONFIG_DIR/.claude.json`). A server started with `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `AGY_HOME` pointing at
+`CLAUDE_CONFIG_DIR/.claude.json`; either Claude Code variable also stops it asking the usage API). A server started with `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `AGY_HOME` pointing at
 empty folders reads none of this machine's real usage.
 
 To test control features, use a named test session instead of the herdr you are working in:
