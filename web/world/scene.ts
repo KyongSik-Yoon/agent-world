@@ -43,6 +43,11 @@ const ACTIVE_MS = 2500;
  */
 const ACTIVE_FRAME_MS = 1000 / 60;
 /**
+ * 프레임 검사(dev/perf/run.ts)용: 주소에 `?perf-skip=1` 을 붙이면 60Hz 화면에서도 조작 중에 박자를 그만큼 거른다.
+ * 120Hz 화면에서만 드러나던 회귀(거른 박자에 화면이 따로 나가는 것)를 60Hz 헤드리스에서 잡으려고 둔다.
+ */
+const FORCED_SKIP = Number(new URLSearchParams(location.search).get("perf-skip")) || 0;
+/**
  * 장면 밖에서 온 일(목록의 줄에 올려놓기, 걸러 보기)에 캐릭터가 반응하는 동안 — 커지고 밝아지는 전환이 끝날 때까지 —
  * 주사율 그대로 그리는 시간. 가장 느린 전환(밝기, 시정수 약 170ms)이 눈에 띄지 않을 만큼 가라앉는 데 맞췄다.
  */
@@ -767,7 +772,7 @@ export class WorldScene {
       this.dueAt = 0;
       this.chained = true;
       // 60Hz 이하면 0, 120Hz 면 1. 측정 오차(119.9Hz 등)로 한 박자를 덜 거르지 않게 조금 얹어 내림한다.
-      this.skip = Math.max(0, Math.floor(ACTIVE_FRAME_MS / this.refreshMs + 0.05) - 1);
+      this.skip = FORCED_SKIP || Math.max(0, Math.floor(ACTIVE_FRAME_MS / this.refreshMs + 0.05) - 1);
       requestAnimationFrame(this.tick);
       return;
     }

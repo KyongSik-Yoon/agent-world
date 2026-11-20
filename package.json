@@ -1,6 +1,6 @@
 {
   "name": "agent-world",
-  "version": "0.6.13",
+  "version": "0.6.14",
   "description": "A 3D village for the coding agents running in herdr — see who needs you, talk to them, and build new workspaces from the browser.",
   "license": "MIT",
   "private": true,
@@ -11,7 +11,9 @@
     "probe": "bun server/probe.ts",
     "url": "bun server/url.ts",
     "i18n": "bun dev/i18n-check.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "perf": "bun dev/perf/run.ts",
+    "perf:lint": "bun dev/perf/lint.ts"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "5.3.0",
