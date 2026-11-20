@@ -38,6 +38,8 @@ const ACTIVE_MS = 2500;
  * 묶는다(120Hz 는 두 박자에 한 번, 144Hz 는 72장). 60장 밑으로는 내리지 않는다(90Hz 는 거르지 않는다).
  * 120Hz 실제 창 실측(번갈아 3회): 거르지 않으면 메인 스레드가 차서 초당 73장 남짓을 들쭉날쭉 그리며 크롬이 코어의
  * 242% 를 썼다. 거르면 57장, 178%. 쉬는 동안(IDLE_FRAME_MS 24 → 33)은 40장 64% → 30장 51%.
+ * 거른 박자에 화면이 나가지 않게 해야 이득이 온전하다 — 이름표의 비켜 서기 transition 이 그 박자마다 한 장씩 내보내
+ * 화면 출력이 116장이었다. 그것을 장면 프레임으로 옮긴 뒤(labels.ts) 60장 그대로 60장 출력, 93%.
  */
 const ACTIVE_FRAME_MS = 1000 / 60;
 /**
@@ -739,7 +741,8 @@ export class WorldScene {
     const chained = this.chained;
     this.chained = false;
     // 걸러 넘기는 박자에서도 rAF 를 이어 건다 — 타이머로 쉬면 박자를 놓쳐 간격이 들쭉날쭉하고, 주사율도 잴 수 없다.
-    // 그리는 것이 없으면 크롬은 화면을 내보내지 않는다.
+    // 그리는 것이 없으면 크롬은 화면을 내보내지 않는다 — 그래서 페이지에 박자마다 도는 것(CSS transition·애니메이션)을 두지
+    // 않는다. 이름표가 비켜 서는 것도 장면의 프레임에서 넘긴다(labels.ts).
     if (chained && this.skip > 0) {
       this.skip -= 1;
       if (stamp !== undefined && this.lastStamp > 0) this.sampleRefresh(stamp - this.lastStamp);

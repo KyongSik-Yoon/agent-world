@@ -118,12 +118,9 @@ input {
   pointer-events: auto;
   cursor: pointer;
   user-select: none;
-  /* 자리가 막혀 비켜 올라선 이름표는 그만큼 부드럽게 올라간다. 자리를 잡는 transform 과 따로 노는 translate 를 쓰고,
-     이름표째로 옮긴다 — 조각만 옮기면 눌리는 영역이 제자리에 남아 남의 이름표를 가린다. */
-  translate: 0 var(--lift, 0px);
-  transition:
-    opacity 0.25s,
-    translate 0.18s ease-out;
+  /* 자리가 막혀 비켜 올라서는 것은 labels.ts 가 장면의 프레임마다 칸째로 옮긴다 — transition 은 장면이 쉬는 박자에도
+     화면을 따로 내보낸다. 이름표째로 옮긴다 — 조각만 옮기면 눌리는 영역이 제자리에 남아 남의 이름표를 가린다. */
+  transition: opacity 0.25s;
 }
 
 .tag[data-status="idle"],
@@ -354,17 +351,11 @@ body[data-beat-quick] .tag[data-status="blocked"] .dot {
 }
 
 /*
- * 곁눈질 화면(초당 3장, scene.ts 가 body 에 표시한다)에서는 비켜 서는 것을 미끄러뜨리지 않는다. transition 은 도는 동안
- * 화면 박자마다 한 장씩 내보내, 장면이 쉬는 사이에 출력이 튄다.
+ * 곁눈질 화면(초당 3장, scene.ts 가 body 에 표시한다)에서는 이름표가 흐려지는 것도 바로 바꾼다. transition 은 도는 동안
+ * 화면 박자마다 한 장씩 내보내, 장면이 쉬는 사이에 출력이 튄다. 비켜 서기는 labels.ts 가 이때 바로 세운다.
  */
-body[data-ambient] :is(.tag, .plot-sign) {
+body[data-ambient] .tag {
   transition: none;
-}
-
-/* 이름표를 덜 가리는 쪽으로 기둥 옆에 내어 걸린 문패: 그만큼 부드럽게 옮겨 간다. */
-.plot-sign {
-  translate: var(--shift, 0%) var(--lift, 0px);
-  transition: translate 0.2s ease-out;
 }
 
 .plot-sign.compact:not(:hover) .sign-name {

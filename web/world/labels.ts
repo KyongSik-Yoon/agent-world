@@ -6,9 +6,12 @@
 //     급한 순서대로 자리를 잡게 하고, 밀린 이름표는 말풍선을 접고 그래도 안 되면 번호만 남긴다.
 //   - 달라진 것만 쓴다. 자리가 눈에 띄게 바뀌지 않은 요소의 스타일은 건드리지 않는다 — 가만히 있는 화면에서
 //     매 프레임 수십 개의 스타일을 다시 쓰면 그리는 것보다 스타일 계산이 더 든다.
-//   - 매 프레임 쓰는 자리(transform·쌓는 순서·보임)는 이름표를 감싼 빈 칸에 쓴다. 이름표 자신에는 비켜 서기의
-//     transition 과 `--lift`·`--shift` 가 있어, 거기에 자리를 쓰면 브라우저가 인라인 스타일만 바뀐 요소를 빨리
-//     처리하는 길을 못 탄다(끌어 돌리는 동안 이름표 40여 개에 프레임마다 스타일 계산 1ms 남짓이 더 들었다).
+//   - 매 프레임 쓰는 자리(transform·쌓는 순서·보임)는 이름표를 감싼 빈 칸에 쓴다. 이름표 자신에 쓰면 브라우저가
+//     인라인 스타일만 바뀐 요소를 빨리 처리하는 길을 못 탄다(끌어 돌리는 동안 이름표 40여 개에 프레임마다 스타일
+//     계산 1ms 남짓이 더 들었다).
+//   - 비켜 서기(위로 올라서기·옆으로 내어 걸기)는 CSS transition 이 아니라 여기서 장면의 프레임마다 미끄러뜨린다.
+//     transition 은 장면이 쉬는 화면 박자에도 한 장씩 따로 내보낸다 — 카메라를 돌리면 이름표가 쉴 새 없이 비켜 서서,
+//     120Hz 화면에서 장면은 초당 57장인데 화면 출력은 110장을 넘었다.
 import * as THREE from "three";
 
 /** 요소의 가로·세로(px). */
@@ -29,13 +32,12 @@ export interface LabelSpec {
   /** 그 모습으로 바꾼다. sizes 의 길이와 같은 값은 "숨김"이다(hideable 일 때만 온다). */
   setLevel?(level: number): void;
   /**
-   * 제자리가 막혔을 때 위로 비켜 설 수 있는 높이들(px). 줄어들기 전에 먼저 비켜 서 본다.
-   * 얼마나 올라섰는지는 요소의 `--lift` 로 알려 준다 — 스타일시트가 그만큼 부드럽게 올린다.
+   * 제자리가 막혔을 때 위로 비켜 설 수 있는 높이들(px). 줄어들기 전에 먼저 비켜 서 본다. 칸째로 부드럽게 올린다.
    */
   lifts?: readonly number[];
   /**
    * 제자리 대신 옆으로 붙을 수 있는 자리들(제 너비의 몇 배만큼 옮기는지). 문패가 쓴다 — 기둥 가운데에 걸거나,
-   * 오른쪽이나 왼쪽으로 내어 건다. 다른 이름표들이 다 펴졌을 때 덜 가리는 쪽을 고르고, `--shift` 로 알려 준다.
+   * 오른쪽이나 왼쪽으로 내어 건다. 다른 이름표들이 다 펴졌을 때 덜 가리는 쪽을 고르고, 칸째로 부드럽게 옮긴다.
    */
   shifts?: readonly number[];
   /** 가장 작은 모습으로도 자리가 없으면 숨겨도 되는지. 상태에 따라 달라질 수 있어 매번 묻는다. */
@@ -53,6 +55,11 @@ interface Label extends LabelSpec {
   lift: number;
   /** 지금 옆으로 비켜 있는 정도(제 너비의 배수). */
   shift: number;
+  /** 화면에 보이는 높이와 옆자리 — 목표(lift·shift)로 미끄러져 가는 도중의 값. */
+  shownLift: number;
+  shownShift: number;
+  /** 미끄러지기 시작한 자리와 때. 다 닿았으면 null. */
+  slide: { lift: number; shift: number; at: number } | null;
   /** 더 자세한 모습으로 돌아갈 자리가 난 시각. 아직 없으면 0. */
   roomSince: number;
   shown: boolean;
@@ -63,6 +70,8 @@ interface Label extends LabelSpec {
   wroteX: number;
   wroteY: number;
   wroteZ: number;
+  wroteLift: number;
+  wroteShift: number;
   wroteShown: boolean;
   depth: number;
 }
@@ -79,6 +88,27 @@ const OFFSCREEN = 80;
 /** 옆으로 옮겨 걸어서 덜 가리게 되는 넓이가 이만큼(px²)은 돼야 옮긴다 — 엎치락뒤치락하지 않게. */
 const KEEP_SHIFT = 60;
 const NO_LIFT: readonly number[] = [0];
+/** 비켜 서는 데 걸리는 시간(ms) — 이름표가 올라설 때와 문패가 옆으로 옮겨 걸릴 때. */
+const LIFT_MS = 180;
+const SHIFT_MS = 200;
+
+/** CSS 의 ease-out(cubic-bezier(0, 0, 0.58, 1)): 흐른 비율 p 에서 옮겨 간 비율. */
+function easeOut(p: number): number {
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  // x(t) = 1.74(1-t)t² + t³ 를 p 로 푸는 t 를 반 나누기로 찾고, 그 t 의 y(t) = 3(1-t)t² + t³ 를 돌려준다.
+  let lo = 0;
+  let hi = 1;
+  let t = p;
+  for (let i = 0; i < 20; i += 1) {
+    const x = 1.74 * (1 - t) * t * t + t * t * t;
+    if (Math.abs(x - p) < 1e-5) break;
+    if (x < p) lo = t;
+    else hi = t;
+    t = (lo + hi) / 2;
+  }
+  return 3 * (1 - t) * t * t + t * t * t;
+}
 
 type Rect = [number, number, number, number];
 
@@ -126,7 +156,7 @@ export class LabelLayer {
     // 자리를 받기 전에는 보이지 않게 둔다(왼쪽 위 구석에 한 프레임 비치지 않도록).
     slot.style.visibility = "hidden";
     slot.append(spec.el);
-    this.labels.set(spec.el, { ...spec, slot, level: 0, lift: 0, shift: 0, roomSince: 0, shown: false, x: 0, y: 0, z: 0, wroteX: NaN, wroteY: NaN, wroteZ: NaN, wroteShown: false, depth: 0 });
+    this.labels.set(spec.el, { ...spec, slot, level: 0, lift: 0, shift: 0, shownLift: 0, shownShift: 0, slide: null, roomSince: 0, shown: false, x: 0, y: 0, z: 0, wroteX: NaN, wroteY: NaN, wroteZ: NaN, wroteLift: 0, wroteShift: 0, wroteShown: false, depth: 0 });
     this.domElement.append(slot);
     this.dirty = true;
   }
@@ -196,8 +226,8 @@ export class LabelLayer {
           }
         }
         if (best !== label.shift) {
+          label.slide = { lift: label.shownLift, shift: label.shownShift, at: now };
           label.shift = best;
-          label.el.style.setProperty("--shift", `${best * 100}%`);
         }
       }
       const lifts = label.lifts ?? NO_LIFT;
@@ -248,8 +278,8 @@ export class LabelLayer {
       } else label.roomSince = 0;
       // 올라설 높이는 그 모습이 실제로 적용됐을 때 함께 바꾼다(펴지기를 기다리는 동안에는 지금 자리를 지킨다).
       if (label.level === target && lift !== label.lift) {
+        label.slide = { lift: label.shownLift, shift: label.shownShift, at: now };
         label.lift = lift;
-        label.el.style.setProperty("--lift", `${-lift}px`);
       }
     }
 
@@ -261,18 +291,35 @@ export class LabelLayer {
       label.z = i + 1;
     });
 
+    // 곁눈질 화면(초당 3장, scene.ts 가 body 에 표시한다)에서는 미끄러뜨리지 않고 바로 선다 — 세 장에 걸쳐 끊겨 보일 뿐이다.
+    const instant = document.body.hasAttribute("data-ambient");
     for (const label of all) {
+      if (label.slide) {
+        const from = label.slide;
+        const k = instant ? 1 : easeOut((now - from.at) / (label.shifts ? SHIFT_MS : LIFT_MS));
+        label.shownLift = from.lift + (label.lift - from.lift) * k;
+        label.shownShift = from.shift + (label.shift - from.shift) * k;
+        if (k >= 1) label.slide = null;
+        else waiting = true;
+      }
       const visible = label.shown && label.level < label.sizes().length;
       if (visible !== label.wroteShown) {
         label.slot.style.visibility = visible ? "" : "hidden";
         label.wroteShown = visible;
       }
       if (!visible) continue;
-      if (!(Math.abs(label.x - label.wroteX) < 0.1 && Math.abs(label.y - label.wroteY) < 0.1)) {
+      if (
+        !(Math.abs(label.x - label.wroteX) < 0.1 && Math.abs(label.y - label.wroteY) < 0.1) ||
+        label.shownLift !== label.wroteLift ||
+        label.shownShift !== label.wroteShift
+      ) {
         const [cx, cy] = label.center ?? [0.5, 1];
-        label.slot.style.transform = `translate(${-100 * cx}%,${-100 * cy}%) translate(${label.x.toFixed(1)}px,${label.y.toFixed(1)}px)`;
+        // 옆으로 비켜 거는 것은 제 너비의 배수라 %, 올라서는 것은 px 로 화면 자리와 함께 쓴다.
+        label.slot.style.transform = `translate(${(100 * (label.shownShift - cx)).toFixed(2)}%,${-100 * cy}%) translate(${label.x.toFixed(1)}px,${(label.y - label.shownLift).toFixed(1)}px)`;
         label.wroteX = label.x;
         label.wroteY = label.y;
+        label.wroteLift = label.shownLift;
+        label.wroteShift = label.shownShift;
       }
       if (label.z !== label.wroteZ) {
         label.slot.style.zIndex = String(label.z);
