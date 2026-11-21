@@ -1457,6 +1457,30 @@ kbd {
 }
 .prose pre code { padding: 0; background: none; white-space: pre; overflow-wrap: normal; }
 
+/* 코드 블록 오른쪽의 복사 단추. 바탕색이 비쳐서 글 위에 얹으면 겹쳐 보이므로, 블록 안에 제 칸을 두고 글은 그 왼쪽에서만 옆으로 민다. */
+.prose .code {
+  display: flex;
+  align-items: flex-start;
+  border-radius: 8px;
+  background: var(--soft-2);
+}
+.prose .code pre { flex: 1; min-width: 0; margin: 0; background: none; }
+.prose .code-copy {
+  flex: none;
+  display: grid;
+  place-items: center;
+  /* 한 줄짜리 블록의 높이를 다 쓴다 — 엄지로 누를 자리다. */
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  user-select: none;
+}
+.prose .code-copy .ico { width: 14px; height: 14px; }
+
 .prose blockquote {
   padding-left: 10px;
   border-left: 3px solid var(--line);

@@ -93,6 +93,17 @@ reviewReader.onSend = async (a, text) => {
   hud.toast(t("고칠 항목을 보냈습니다"), a.title, "var(--accent)");
 };
 
+// 응답 글 안 코드 블록의 복사 단추(dom.ts 의 prose). 상태 창·플랜·리뷰 어디에 그려졌든 여기서 받는다.
+document.addEventListener("click", (e) => {
+  const btn = e.target instanceof Element ? e.target.closest(".code-copy") : null;
+  const code = btn?.parentElement?.querySelector("pre > code")?.textContent;
+  if (!btn || code == null) return;
+  navigator.clipboard.writeText(code).then(
+    () => hud.toast(t("복사했습니다"), t("코드"), "var(--accent)"),
+    () => hud.toast(t("복사하지 못했습니다"), t("코드"), "var(--blocked)"),
+  );
+});
+
 const builder = new Builder({
   snapshot: () => hud.latest,
   select: (id) => select(id),

@@ -1,5 +1,6 @@
 // 화면 조각들이 함께 쓰는 작은 DOM 도구.
 import type { AgentStatus } from "../shared/types.ts";
+import { t } from "./i18n.ts";
 
 export type Child = Node | string | null | undefined | false;
 
@@ -187,7 +188,9 @@ export function prose(text: string): DocumentFragment {
       i += 1;
       while (i < lines.length && !lines[i]!.trim().startsWith(fence[1]!)) body.push(lines[i++]!);
       i += 1;
-      frag.append(h("pre", {}, h("code", {}, body.join("\n"))));
+      // 복사 단추는 pre 옆 제 칸에 둔다 — 긴 줄을 옆으로 밀어도 단추는 제자리에 있고 글을 가리지 않는다. 누르는 일은 main.ts 가 한 곳에서 받는다.
+      const copy = h("button", { class: "code-copy", type: "button", title: t("이 코드를 클립보드에 복사합니다"), "aria-label": t("코드 복사") }, icon("copy"));
+      frag.append(h("div", { class: "code" }, h("pre", {}, h("code", {}, body.join("\n"))), copy));
       continue;
     }
 
