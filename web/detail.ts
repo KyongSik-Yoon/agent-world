@@ -6,6 +6,7 @@
 import { type Activity, type AgentView, LIVE_MODEL_KINDS, type PaneView, type PendingRequest, type SkillView, type WorkspaceView, type WorldSnapshot } from "../shared/types.ts";
 import { ApiError, get, headers, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
+import { setLogoActive } from "./logos.ts";
 import { buzzConfirm, tapOnPress } from "./haptic.ts";
 import { type Child, type IconName, STATUS_VAR, h, icon, prose, store, stored } from "./dom.ts";
 import { STATUS_LABEL, activityParts, bubbleParts, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
@@ -125,6 +126,10 @@ export class DetailPanel {
   private skillAgent: string | null = null;
   private readonly skillCache = new Map<string, { at: number; skills: SkillView[] }>();
   private skillLoading: string | null = null;
+  private headKey = "";
+  private headTile: Element | undefined;
+  private headTitle: HTMLElement | undefined;
+  private headSub: HTMLElement | undefined;
   /** 지금 목록에 보이는 스킬과 고른 줄. */
   private skillShown: SkillView[] = [];
   private skillActive = -1;
@@ -780,7 +785,17 @@ export class DetailPanel {
 
   // ── 에이전트 ───────────────────────────────────────────────────────────────────────────────
 
-  private setHead(tile: Node, title: string, sub: string): void {
+  /**
+   * 머리를 그린다. 같은 대상(key)이면 타일과 단추를 그대로 두고 글만 고친다 — 활동 로그 한 줄을 펴는 것처럼 창을 다시
+   * 그릴 때마다 타일을 새로 만들면, 일하는 중인 캐릭터의 움직임이 처음부터 다시 돌아 한 번씩 깜빡인다.
+   */
+  private setHead(key: string, makeTile: () => Element, title: string, sub: string): Element {
+    if (this.headKey === key && this.headTile && this.headTitle && this.headSub) {
+      if (this.headTitle.textContent !== title) this.headTitle.textContent = this.headTitle.title = title;
+      if (this.headSub.textContent !== sub) this.headSub.textContent = this.headSub.title = sub;
+      return this.headTile;
+    }
+    const tile = makeTile();
     const close = h("button", { class: "btn icon close", type: "button", title: t("닫기 (Esc)"), "aria-label": t("닫기 (Esc)") }, icon("close"));
     close.addEventListener("click", () => this.callbacks.act({ type: "select", id: null }));
     // 휴대폰에서는 상태 창이 화면을 다 덮어 목록이 가려진다. 창을 닫지 않고 목록을 꺼내 다른 에이전트로 옮겨 가게 한다.
@@ -788,7 +803,12 @@ export class DetailPanel {
     const roster = h("button", { class: "btn icon roster-open", type: "button", title: t("에이전트 목록"), "aria-label": t("에이전트 목록") }, icon("menu"));
     roster.addEventListener("click", () => this.callbacks.act({ type: "roster" }));
     // 제목은 두 줄까지, 버금줄은 한 줄. 넘치는 글은 말풍선으로 다 보인다.
-    this.head.replaceChildren(roster, tile, h("div", { class: "d-title" }, h("h2", { title }, title), h("p", { title: sub }, sub)), close);
+    this.headTitle = h("h2", { title }, title);
+    this.headSub = h("p", { title: sub }, sub);
+    this.head.replaceChildren(roster, tile, h("div", { class: "d-title" }, this.headTitle, this.headSub), close);
+    this.headKey = key;
+    this.headTile = tile;
+    return tile;
   }
 
   /** 다시 쓰는 노드는 제자리에 두고 그 앞뒤만 바꾼다. replaceChildren 은 모두 떼었다 붙여, 붙어 있던 노드 안의
@@ -817,13 +837,22 @@ export class DetailPanel {
     // 버금줄은 어느 집의 누구인지만: 하네스 이름은 옆 로고(말풍선)와 아는 것 카드의 버전 꼬리표에 이미 있고,
     // 스페이스 번호는 무슨 숫자인지 읽히지 않아 뺀다(목록과 마을의 문패에는 그대로 있다).
     const where = a.workspaceNumber ? a.workspaceLabel : t("{name} (herdr 밖)", { name: a.workspaceLabel });
-    const tile = brandTile(a.vendor, 36, a.status === "working");
-    const harness = brandFor(a.vendor).name;
-    tile.setAttribute("role", "img");
-    tile.setAttribute("aria-label", harness);
-    if (tile instanceof HTMLElement) tile.title = harness;
-    else tile.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "title")).textContent = harness;
-    this.setHead(tile, a.title, a.name ? `${where} · ${a.name}` : where);
+    const working = a.status === "working";
+    const tile = this.setHead(
+      `agent:${a.id}:${a.vendor}`,
+      () => {
+        const made = brandTile(a.vendor, 36, working);
+        const harness = brandFor(a.vendor).name;
+        made.setAttribute("role", "img");
+        made.setAttribute("aria-label", harness);
+        if (made instanceof HTMLElement) made.title = harness;
+        else made.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "title")).textContent = harness;
+        return made;
+      },
+      a.title,
+      a.name ? `${where} · ${a.name}` : where,
+    );
+    setLogoActive(tile, working);
     this.stageTitle.textContent = a.title;
     this.stageSub.textContent = where;
 
@@ -1222,7 +1251,7 @@ export class DetailPanel {
     const snap = this.snapshot!;
     const ws = snap.workspaces.find((w) => w.id === p.workspaceId);
     const tab = snap.tabs.find((tb) => tb.id === p.tabId);
-    this.setHead(h("span", { class: "shell-tile big" }, ">_"), p.label || p.title || t("터미널"), t("셸 · {where}", { where: ws ? ws.label : p.workspaceId }));
+    this.setHead(`pane:${p.id}`, () => h("span", { class: "shell-tile big" }, ">_"), p.label || p.title || t("터미널"), t("셸 · {where}", { where: ws ? ws.label : p.workspaceId }));
     const rows: Fact[] = [
       { label: t("Pane"), value: tab?.label ? `${p.id} · ${tab.label}` : p.id, mono: true },
       { label: t("크기"), value: p.cols && p.rows ? `${p.cols} × ${p.rows}` : "—", mono: true },
@@ -1266,7 +1295,7 @@ export class DetailPanel {
     const agents = snap.agents.filter((a) => a.workspaceId === ws.id);
     const panes = snap.panes.filter((p) => p.workspaceId === ws.id);
     const sub = ws.managed ? `${t("스페이스 {n}", { n: ws.number })}${ws.repo ? ` · ${ws.repo}` : ""}${ws.worktree?.linked ? ` · ${t("워크트리")}` : ""}` : t("herdr 밖의 세션들");
-    this.setHead(h("span", { class: "house-tile" }, icon("house")), ws.label, sub);
+    this.setHead(`house:${ws.id}`, () => h("span", { class: "house-tile" }, icon("house")), ws.label, sub);
 
     const parts: Child[] = [];
     if (ws.topic) parts.push(h("div", { class: "now" }, ws.topic));
