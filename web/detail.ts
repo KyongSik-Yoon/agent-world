@@ -720,8 +720,10 @@ export class DetailPanel {
     const still = (): boolean => this.docked?.paneId === target.paneId && this.docked.agent === target.agent;
     try {
       if (target.agent) {
-        await post("/api/prompt", { paneId: target.paneId, text, ...(shots.length ? { images: shots.map((s) => s.id) } : {}) });
+        // 보내기 전의 모습을 먼저 잡아 둔다. 서버는 글이 입력창을 떠난 것까지 보고 답하므로, 그 사이에 온 스냅샷에 이미 새 행이
+        // 실려 있으면 "앞의 것"이 방금 보낸 것이 되어 끝내 받은 줄 모른다.
         const was = this.snapshot?.agents.find((a) => a.paneId === target.paneId);
+        await post("/api/prompt", { paneId: target.paneId, text, ...(shots.length ? { images: shots.map((s) => s.id) } : {}) });
         this.sent = { text, at: Date.now(), confirmed: false, before: was?.lastPrompt, beforeCommand: was?.lastCommandAt };
         this.setNote("", "");
         if (still()) this.clearShots();
@@ -757,8 +759,10 @@ export class DetailPanel {
     const want = norm(sent.text).slice(0, 32);
     // 일하는 중에 보낸 지시는 줄에 섰다가 나중에 들어간다 — 줄에 선 것도 받은 것이다. 줄의 글에도 [Image #N] 이 붙는다.
     const queued = want !== "" && a.queued?.some((q) => bare(q).startsWith(want)) === true;
-    // `/clear` 같은 내장 명령은 지시로 남지 않는다 — 명령 행이 새로 찍혔는지로 본다. 같은 명령을 거푸 보내도 시각이 다르다.
-    const command = want.startsWith("/") && a.lastCommandAt !== sent.beforeCommand && a.lastCommand !== undefined && norm(a.lastCommand).startsWith(want);
+    // `/clear` 같은 내장 명령과 `!git pull` 같은 셸 명령은 지시로 남지 않는다 — 명령 행이 새로 찍혔는지로 본다. 같은 명령을
+    // 거푸 보내도 시각이 다르다. 셸 명령은 느낌표 뒤의 빈칸이 로그에서 빠진다.
+    const typed = want.replace(/^!\s*/, "!");
+    const command = /^[/!]/.test(typed) && a.lastCommandAt !== sent.beforeCommand && a.lastCommand !== undefined && norm(a.lastCommand).startsWith(typed);
     if (queued || command || (logged !== undefined && (want ? logged.startsWith(want) : a.lastPrompt !== sent.before))) {
       sent.confirmed = true;
       this.setNote("", "");

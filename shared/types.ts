@@ -91,7 +91,7 @@ export interface AgentView {
   /** 최근 활동, 오래된 것부터. */
   recent: Activity[];
   lastPrompt?: string;
-  /** 사람이 친 마지막 내장 명령(`/clear` 등, Claude Code)과 그 행의 시각. 지시가 아니어서 lastPrompt 로는 닿았는지 알 수 없다. */
+  /** 사람이 친 마지막 내장 명령(`/clear` 등)이나 셸 명령(`!git pull`, Claude Code)과 그 행의 시각. 지시가 아니어서 lastPrompt 로는 닿았는지 알 수 없다. */
   lastCommand?: string;
   lastCommandAt?: string;
   /** 일하는 중에 보내 줄에 선 것들(Claude Code). 아직 들어가지 않아 마지막 지시가 아니지만, 보낸 지시가 닿았다는 표시다. */

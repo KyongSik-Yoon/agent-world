@@ -76,6 +76,15 @@ function builtinCommand(raw: string): string | undefined {
 }
 
 /**
+ * 느낌표로 돌린 셸 명령(`!git pull`)의 사용자 행 — 친 글 대신 `<bash-input>git pull</bash-input>` 로 남는다. 친 그대로 되살린다.
+ * 지시가 아니어서 내장 명령처럼 다룬다. 결과 행(`<bash-stdout>`)은 따로 오고 여기서 걸리지 않는다.
+ */
+function bashCommand(raw: string): string | undefined {
+  const inner = /^<bash-input>([\s\S]*?)<\/bash-input>/.exec(raw.trimStart())?.[1]?.trim();
+  return inner ? `!${inner}` : undefined;
+}
+
+/**
  * 여는 꼬리표와 닫는 꼬리표 사이를 걷어낸다. 닫는 꼬리표가 없으면 그대로 둔다.
  * 정규식의 게으른 되짚기로 하면 닫히지 않은 꼬리표가 많은 긴 글에서 걸리는 시간이 길이의 제곱으로 는다.
  */
@@ -186,7 +195,7 @@ function feedUser(s: LogSummary, row: Record<string, unknown>, at: string): void
   if (typeof content === "string") {
     feedCommandOutput(s, content);
     if (!human) return;
-    const command = builtinCommand(content);
+    const command = builtinCommand(content) ?? bashCommand(content);
     if (command) {
       s.lastCommand = { text: command, at };
       return;
