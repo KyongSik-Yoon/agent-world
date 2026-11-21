@@ -1180,7 +1180,9 @@ export class TermScreen {
       this.raw = undefined;
       this.clear(t("화면을 읽는 중…"));
     }
-    const source = new EventSource(withKey(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}${this.options.live ? "&live=1" : ""}`));
+    // 손가락으로 쓰는 기기(휴대폰·태블릿)는 흐르는 화면을 초당 4번까지만 받는다 — 배터리와 발열 때문이다(서버의 TERM_CALM_LIVE_MS).
+    const calm = this.options.live && matchMedia("(pointer: coarse)").matches ? "&calm=1" : "";
+    const source = new EventSource(withKey(`/api/term?pane=${encodeURIComponent(paneId)}&back=${back}${this.options.live ? "&live=1" : ""}${calm}`));
     this.source = source;
     source.addEventListener("screen", (e) => {
       this.raw = (JSON.parse((e as MessageEvent<string>).data) as { text: string }).text.split(/\r?\n/);

@@ -41,6 +41,9 @@ const TERM_POLL_MS = 400;
 /** 크게 보는 화면이 바뀌고 있는 동안의 간격과, 마지막으로 바뀐 뒤 그 간격을 지키는 시간. 미리보기는 해당 없다. */
 const TERM_LIVE_MS = 60;
 const TERM_LIVE_FOR_MS = 2000;
+/** 휴대폰에서 크게 보는 화면이 바뀌고 있는 동안의 간격. 쉬지 않고 도는 표시(agy 의 진행 표시는 초당 10번 바뀐다)를 60ms 로 따라가면
+    화면을 여는 내내 초당 10번 넘게 받고 그리느라 무선과 GPU 가 쉬지 못한다. 친 글자는 TERM_ECHO_MS 가 따로 챙긴다. */
+const TERM_CALM_LIVE_MS = 250;
 /** 입력을 보낸 직후의 간격과 그 시간 — 친 글자가 곧바로 보이게. */
 const TERM_ECHO_MS = 25;
 const TERM_ECHO_FOR_MS = 600;
@@ -282,6 +285,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         const back = Math.min(MAX_BACK_LINES, Math.max(0, Number(url.searchParams.get("back")) || 0));
         // 크게 보는 화면만 흐르는 출력을 촘촘히 따라간다. 종일 열려 있는 미리보기까지 그러면 herdr 를 쉬지 않고 읽게 된다.
         const live = url.searchParams.get("live") === "1";
+        const liveMs = url.searchParams.get("calm") === "1" ? TERM_CALM_LIVE_MS : TERM_LIVE_MS;
         try {
           if (!(await world.hasPane(paneId))) return json({ error: say(NO_PANE, langOf(req)) }, 404);
         } catch (e) {
@@ -317,7 +321,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
               const now = Date.now();
               if (back > 0) return now - pokedAt < TERM_ECHO_FOR_MS ? TERM_BACK_ECHO_MS : TERM_BACK_POLL_MS;
               if (now - pokedAt < TERM_ECHO_FOR_MS) return TERM_ECHO_MS;
-              return live && now - changedAt < TERM_LIVE_FOR_MS ? TERM_LIVE_MS : TERM_POLL_MS;
+              return live && now - changedAt < TERM_LIVE_FOR_MS ? liveMs : TERM_POLL_MS;
             };
             const loop = async (): Promise<void> => {
               if (closed || reading) return;
