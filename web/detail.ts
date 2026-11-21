@@ -856,7 +856,7 @@ export class DetailPanel {
     this.stageTitle.textContent = a.title;
     this.stageSub.textContent = where;
 
-    const source = a.statusSource === "herdr" ? t("herdr 가 알려준 상태") : a.statusSource === "card" ? t("질문 카드가 답을 기다리는 중") : a.statusSource === "prompt" ? t("보낸 첫 지시를 시작하는 중") : t("로그 시각으로 추정한 상태");
+    const source = a.statusSource === "herdr" ? t("herdr 가 알려준 상태") : a.statusSource === "card" ? t("질문 카드가 답을 기다리는 중") : a.statusSource === "dialog" ? t("터미널의 확인 창이 답을 기다리는 중") : a.statusSource === "prompt" ? t("보낸 첫 지시를 시작하는 중") : t("로그 시각으로 추정한 상태");
     const badge = h("span", { class: "badge", title: source }, a.seen ? t("확인함") : STATUS_LABEL[a.status]);
     badge.style.setProperty("--c", STATUS_VAR[a.status]);
     // 상태의 출처는 herdr 가 알려 준 평소의 경우에는 적지 않는다 — 다른 데서 짐작한 때에만 눈여겨볼 값이다.

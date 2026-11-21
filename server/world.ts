@@ -11,6 +11,7 @@ import { claude } from "./adapters/claude.ts";
 import { codex } from "./adapters/codex.ts";
 import type { Harness, LogFile } from "./adapters/types.ts";
 import { AskingPanes, type Card } from "./asking.ts";
+import { AgyDialogs } from "./dialog.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Lang, type Text } from "./text.ts";
 import { planMtime, planPathIn, readPlan, type PlanText } from "./plan.ts";
@@ -116,6 +117,8 @@ export class World {
   private readonly names = new NameStore();
   /** herdr 는 working 이라 하지만 카드를 띄워 답을 기다리는 pane 들. */
   private readonly asking = new AskingPanes();
+  /** herdr 는 쉰다고 하지만 화면에 확인 창을 띄워 답을 기다리는 agy pane 들. */
+  private readonly dialogs = new AgyDialogs();
   /** 플랜 승인 카드가 떠 있는 pane 의 플랜 파일. 카드(세션·뜬 시각)마다 한 번 로그에서 찾고, 못 찾은 것도 적어 다시 찾지 않는다. */
   private readonly plans = new Map<string, { card: string; path: string | undefined }>();
   /** herdr pane 안에서 돌던 세션을 마지막으로 본 시각. pane 을 닫은 세션이 "herdr 밖 세션"으로 되살아나지 않게 한다. */
@@ -304,6 +307,14 @@ export class World {
       view.statusSource = "card";
     }
     if (card?.plan) view.plan = await this.planOf(pane.pane_id, card, view.sessionId);
+    // 하나 더: agy 의 질문·권한 창은 상태줄에 밀려 herdr 의 규칙에 걸리지 않고, herdr 는 쉬는 것으로 본다(dialog.ts).
+    // 화면에 그 창이 떠 있으면 확인 필요로 올린다 — "완료" 알림 대신 무엇을 묻는지가 간다.
+    if (harness?.vendor === "agy" && (status === "done" || status === "idle")) {
+      if (await this.dialogs.check(pane.pane_id, `${pane.state_change_seq ?? 0}:${view.logUpdatedAt ?? 0}`)) {
+        status = "blocked";
+        view.statusSource = "dialog";
+      }
+    } else this.dialogs.forget(pane.pane_id);
     // 갓 띄운 Claude 의 첫 턴은 PC 가 바쁘면 Enter 뒤 몇 초에서 수십 초가 지나서야 시작한다(SessionStart 훅 등). 그동안
     // herdr 가 읽는 작업 표시(제목 스피너, esc to interrupt)가 빠지는 틈이 생겨 herdr 는 working → done(또는 idle) → working 으로
     // 오간다 — 새 주민이 "다 했어요" 하고 뛰쳐나갔다가 돌아온다. desk-look 이 스피너 줄을 바꿔 그리면 그 틈이 넓어진다.
@@ -525,6 +536,7 @@ export class World {
       const alive = new Set(snap.panes.map((p) => p.pane_id));
       this.seen.prune(alive);
       this.names.prune(alive);
+      this.dialogs.prune(alive);
       for (const id of this.doneSeq.keys()) if (!alive.has(id)) this.doneSeq.delete(id);
       for (const id of this.unread.keys()) if (!alive.has(id)) this.unread.delete(id);
       for (const id of this.firstPrompt.keys()) if (!alive.has(id)) this.firstPrompt.delete(id);

@@ -207,7 +207,7 @@ export async function activityText(path: string, reader: LogReader<LogSummary>, 
 
 const MAX_PENDING_CHARS = 2000;
 /** 사용자에게 직접 묻는 도구 — 답이 올 때까지 에이전트는 반드시 멈춰 있다. */
-const ASKS_USER = /^(AskUserQuestion|ExitPlanMode|ask_user|request_user_input)$/;
+const ASKS_USER = /^(AskUserQuestion|ExitPlanMode|ask_user|ask_question|request_user_input)$/;
 
 /** 도구 입력을 줄이지 않고 보여 줄 글로 만든다(승인 전에 무엇을 하려는지 읽을 수 있게). */
 function describeToolInput(input: unknown): string {
@@ -233,7 +233,10 @@ export function pendingRequest(tool: string, input: unknown, at: string): Pendin
   if (isRecord(input) && Array.isArray(input.questions)) {
     request.questions = input.questions.filter(isRecord).map((q) => ({
       question: str(q.question) ?? "",
-      options: (Array.isArray(q.options) ? q.options : []).filter(isRecord).map((o) => ({ label: str(o.label) ?? "", description: str(o.description) })),
+      options: (Array.isArray(q.options) ? q.options : [])
+        // 선택지는 하네스마다 모양이 다르다 — Claude 는 { label, description }, agy 의 ask_question 은 글 한 줄이다.
+        .map((o) => (typeof o === "string" ? { label: o } : isRecord(o) ? { label: str(o.label) ?? "", description: str(o.description) } : undefined))
+        .filter((o) => o !== undefined),
     }));
     request.detail = request.questions.map((q) => q.question).join("\n");
   }

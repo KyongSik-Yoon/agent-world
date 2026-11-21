@@ -58,7 +58,7 @@ export interface AgentView {
    * herdr 는 working 이라 했지만 답을 기다리는 질문 카드(desk-look·desk-plan)를 찾아 올린 값인지,
    * herdr 는 쉰다고 했지만 월드가 보낸 첫 지시에 아직 첫 응답이 없어 일하는 중으로 둔 값인지.
    */
-  statusSource: "herdr" | "log" | "card" | "prompt";
+  statusSource: "herdr" | "log" | "card" | "dialog" | "prompt";
   /** 완료를 월드에서 이미 확인했다 — status 는 idle 로 내려가 있다. */
   seen?: boolean;
   /** 이 완료는 새 결과가 아니다 — 컴팩션(대화 요약)이 끝나 다시 나온, 아직 확인하지 않은 예전 완료다. 알리지 않는다. */

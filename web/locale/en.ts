@@ -265,6 +265,7 @@ export const en: Record<string, string> = {
   "herdr 가 알려준 상태": "Status reported by herdr",
   "로그 시각으로 추정한 상태": "Status inferred from log times",
   "질문 카드가 답을 기다리는 중": "A question card is waiting for your answer",
+  "터미널의 확인 창이 답을 기다리는 중": "A dialog in the terminal is waiting for your answer",
   "보낸 첫 지시를 시작하는 중": "Starting on the first instruction you sent",
   "이 세션의 로그 파일을 아직 찾지 못했습니다. 모델과 활동은 로그가 생기면 채워집니다.": "No log file found for this session yet. Model and activity appear once it exists.",
   "herdr 가 아직 이 에이전트의 세션 id 를 알려 주지 않았습니다. 알려 주면 모델과 활동이 채워집니다.": "herdr has not reported a session id for this agent yet. Model and activity appear once it does.",
