@@ -17,6 +17,11 @@
 - 움직임은 장면 프레임에 얹는다(`web/beat.ts`, `web/world/labels.ts`). CSS 애니메이션·이름표 transition·따로 도는 rAF 를 더하지 않는다.
   린트 예외(`perf-ok: <이유>`)는 쉬지 않고 돌지 않는 까닭을 쓸 때만 단다. 읽는 법과 측정 함정은 `.claude/skills/ui-perf/SKILL.md`.
 
+## 터미널 화면
+
+- 미리보기·크게 보기(`web/term.ts`, `.term` 스타일)를 고칠 때는 먼저 `.claude/skills/term-view/SKILL.md` 를 읽는다. 줄을 가르는 순서와
+  그간 정한 규칙·기각한 안이 거기 있다. 새로 정한 것은 그 파일에 보탠다.
+
 ## 버전과 릴리스
 
 - `main` 에 올리는 묶음마다 버전을 올린다. `sh scripts/bump-version.sh`(patch, 큰 기능 묶음은 `minor`)로
