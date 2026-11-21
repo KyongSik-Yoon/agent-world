@@ -40,6 +40,14 @@ export class AgyDialogs {
     return known.open;
   }
 
+  /** 지금 이 순간 확인 창이 떠 있는지 — 지시를 넣기 직전에 묻는다. 쉬고 있는 agy pane 이 아니면 화면을 읽지 않는다. */
+  async now(paneId: string): Promise<boolean> {
+    const known = this.panes.get(paneId);
+    if (!known) return false;
+    known.open = agyDialogOpen(await herdrScreen(paneId));
+    return known.open;
+  }
+
   /** herdr 가 쉰다고 하지 않는 pane 은 잊는다. */
   forget(paneId: string): void {
     this.panes.delete(paneId);

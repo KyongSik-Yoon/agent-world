@@ -676,9 +676,12 @@ export class World {
     return entry && mark ? readReview(entry.path, mark) : undefined;
   }
 
-  /** 카드를 띄워 답을 기다리는 중인지 — herdr 가 막아 주지 않으므로 지시를 보내기 전에 따로 묻는다. */
+  /**
+   * 카드나 agy 의 확인 창을 띄워 답을 기다리는 중인지 — herdr 가 막아 주지 않으므로 지시를 보내기 전에 따로 묻는다.
+   * agy 의 창은 herdr 가 쉬는 것으로 알아, 그대로 보내면 지시가 창에 들어가 질문에 답해 버린다.
+   */
   async waitingOnCard(paneId: string): Promise<boolean> {
-    return (await this.asking.check()).has(paneId);
+    return (await this.asking.check()).has(paneId) || (await this.dialogs.now(paneId));
   }
 
   /** 플랜 승인 카드(desk-plan)가 떠 있는지. 질문 카드는 아니다 — 같은 숫자 키가 다른 선택지를 고른다. */

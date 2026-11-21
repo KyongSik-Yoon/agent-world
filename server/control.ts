@@ -204,6 +204,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
   /**
    * 질문 카드(desk-look·desk-plan)가 답을 기다리면 지시를 막는다. herdr 는 그 pane 을 working 으로 알아 `agent_blocked` 로
    * 거절해 주지 않는다. 그대로 넣으면 글이 입력창에 차서, 입력창이 비어 있을 때만 받는 카드의 숫자 키가 먹지 않는다.
+   * 상태줄을 켠 agy 의 질문·권한 창도 herdr 가 쉬는 것으로 알아 거절하지 않는다 — 지시가 창에 들어가 질문에 답해 버린다.
    */
   const refuseIfAsking = async (paneId: string): Promise<void> => {
     if (await world.waitingOnCard(paneId)) throw new Reject(L("에이전트가 질문에 대한 답을 기다리는 중입니다.", "The agent is waiting for an answer to its question."), 409, "agent_blocked");
