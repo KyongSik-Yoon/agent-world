@@ -7,7 +7,7 @@
 //   - `disable-model-invocation: true` 인 스킬은 빗금으로만 부르는 것이라 실려 있지 않다 → 더한다.
 // 둘 다 SKILL.md 머리말에만 있어서 개인(~/.claude/skills)·프로젝트(.claude/skills)·켜진 플러그인의 파일을 읽는다.
 // 내장 스킬 가운데 사람이 못 부르는 것(keybindings-help 등)은 파일이 없어 가리지 못한다 — 고르면 Claude 가 거절 글을 띄운다.
-// 내장 명령(/compact, /model …)은 싣지 않는다. 스킬이 아니고, 월드에는 모델 바꾸기가 따로 있다.
+// 내장 명령은 로그 어디에도 목록이 없어, 월드에서 보내도 되는 것만 손으로 적어 맨 앞에 싣는다(BUILTINS).
 import { createReadStream } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -15,11 +15,29 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 
 import type { SkillView as Skill } from "../shared/types.ts";
+import { L, say, type Lang, type Text } from "./text.ts";
 
 const LISTING_MARK = '"type":"skill_listing"';
 /** 디스크에서 읽은 머리말을 다시 쓰는 시간. 고르는 창을 열 때마다 수십 개 파일을 읽지 않게 한다. */
 const DISK_TTL_MS = 30_000;
 const MAX_DESCRIPTION = 300;
+
+/**
+ * 목록에 싣는 내장 명령(Claude Code 2.1.330 에서 확인). 싣는 조건은 셋이다:
+ *   - 로그에 명령 행을 남긴다 — 월드가 받은 것을 확인할 수 있다.
+ *   - 터미널에 창을 띄워 두지 않는다 — `/usage`·`/status`·`/rewind` 는 창이 떠서 다음 지시를 삼킨다.
+ *   - 다른 세션의 기본값을 바꾸지 않는다 — `/model`·`/effort` 는 전역에 저장한다(월드에는 그 세션만 바꾸는 길이 따로 있다).
+ * 그 밖의 내장 명령은 목록에 없어도 쳐서 보낼 수 있다.
+ */
+const BUILTINS: Array<{ name: string; description: Text; hint?: Text }> = [
+  { name: "clear", description: L("대화를 비우고 새로 시작합니다. 지금까지의 맥락은 사라집니다.", "Clear the conversation and start fresh. The context so far is dropped.") },
+  {
+    name: "compact",
+    description: L("대화를 요약해 맥락을 줄이고 이어서 일합니다. 뒤에 무엇을 남길지 적을 수 있습니다.", "Summarize the conversation to free up context and keep going. You can add what to keep."),
+    hint: L("[남길 것]", "[what to keep]"),
+  },
+  { name: "context", description: L("맥락을 무엇이 얼마나 차지하는지 터미널 화면에 보여 줍니다.", "Show in the terminal what is using the context window.") },
+];
 
 function configDir(): string {
   return process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
@@ -220,13 +238,17 @@ async function diskOf(cwd: string | undefined): Promise<Disk> {
   return disk;
 }
 
-/** 그 세션에서 빗금으로 부를 수 있는 스킬. 로그의 차례(개인 → 플러그인 → 내장)를 따르고, 빗금 전용은 뒤에 붙인다. */
-export async function claudeSkills(logPath: string, cwd: string | undefined): Promise<Skill[]> {
+/**
+ * 그 세션에서 빗금으로 부를 수 있는 것. 내장 명령이 맨 앞이고, 스킬은 로그의 차례(개인 → 플러그인 → 내장)를 따르며 빗금
+ * 전용은 뒤에 붙인다. 같은 이름의 스킬이 있으면 내장 명령이 이긴다 — Claude 도 그 이름을 내장 명령으로 받는다.
+ */
+export async function claudeSkills(logPath: string, cwd: string | undefined, lang?: Lang): Promise<Skill[]> {
   const [listing, disk] = await Promise.all([listingOf(logPath), diskOf(cwd)]);
-  const out: Skill[] = [];
+  const out: Skill[] = BUILTINS.map((b) => ({ name: b.name, description: say(b.description, lang), hint: b.hint && say(b.hint, lang) }));
+  const taken = new Set(out.map((s) => s.name));
   for (const [name, description] of listing) {
-    if (!disk.modelOnly.has(name)) out.push({ name, description, hint: disk.hints.get(name) });
+    if (!disk.modelOnly.has(name) && !taken.has(name)) out.push({ name, description, hint: disk.hints.get(name) });
   }
-  for (const [name, skill] of disk.userOnly) if (!listing.has(name)) out.push(skill);
+  for (const [name, skill] of disk.userOnly) if (!listing.has(name) && !taken.has(name)) out.push(skill);
   return out;
 }

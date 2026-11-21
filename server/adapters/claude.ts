@@ -268,6 +268,13 @@ export const claudeReader: LogReader<LogSummary> = {
       case "user":
         if (row.isSidechain !== true) feedUser(s, row, at);
         break;
+      case "system": {
+        // `/context` 처럼 모델에게 가지 않는 내장 명령은 사용자 행이 아니라 이 행으로 남는다. 받은 것을 확인하는 데 쓴다.
+        const content = row.subtype === "local_command" && row.isSidechain !== true ? str(row.content) : undefined;
+        const command = content && builtinCommand(content);
+        if (command) s.lastCommand = { text: command, at };
+        break;
+      }
       case "ai-title":
         s.title = str(row.aiTitle) ?? s.title;
         break;

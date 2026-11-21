@@ -536,7 +536,7 @@ const listen = (at: number) =>
     "/api/skills": {
       GET: guarded(async (req) => {
         try {
-          const skills = await world.skills(new URL(req.url).searchParams.get("agent") ?? "");
+          const skills = await world.skills(new URL(req.url).searchParams.get("agent") ?? "", langOf(req));
           return json({ skills: skills ?? [] });
         } catch (e) {
           return json({ error: (e as Error).message }, 500);

@@ -12,7 +12,7 @@ import { codex } from "./adapters/codex.ts";
 import type { Harness, LogFile } from "./adapters/types.ts";
 import { AskingPanes, type Card } from "./asking.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
-import { asText, type Text } from "./text.ts";
+import { asText, type Lang, type Text } from "./text.ts";
 import { planMtime, planPathIn, readPlan, type PlanText } from "./plan.ts";
 import { findReview, readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
@@ -688,12 +688,12 @@ export class World {
     return activityText(entry.path, entry.harness.reader, ref, at);
   }
 
-  /** 입력창에서 고를 스킬. 지금은 Claude Code 만 — 다른 하네스는 부르는 문법과 목록의 출처를 아직 확인하지 않았다. */
-  async skills(agentId: string): Promise<SkillView[] | undefined> {
+  /** 입력창에서 고를 스킬과 내장 명령. 지금은 Claude Code 만 — 다른 하네스는 부르는 문법과 목록의 출처를 아직 확인하지 않았다. */
+  async skills(agentId: string, lang?: Lang): Promise<SkillView[] | undefined> {
     const key = this.logOf.get(agentId);
     const entry = key ? this.tracked.get(key) : undefined;
     if (!entry || entry.harness.vendor !== "claude") return undefined;
-    return claudeSkills(entry.path, entry.tail.state.cwd);
+    return claudeSkills(entry.path, entry.tail.state.cwd, lang);
   }
 
   hasPane(paneId: string): Promise<boolean> {

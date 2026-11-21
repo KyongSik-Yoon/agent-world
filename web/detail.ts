@@ -567,7 +567,7 @@ export class DetailPanel {
     this.skillShown = ranked.map((x) => x.s);
     this.skillQuery = query;
     // 첫 줄은 친 글자로 시작하는 이름일 때만 잡아 둔다. 그 밖에는(`/model` 이 agy:models 에 걸리는 등) 잡지 않아, Enter 가
-    // 친 그대로 보낸다 — 목록에 없는 내장 명령도 쳐서 보낼 수 있다.
+    // 친 그대로 보낸다 — 목록에 없는 내장 명령(`/model` 등)도 쳐서 보낼 수 있다.
     this.skillActive = ranked.length > 0 && ranked[0]!.r <= 1 ? 0 : -1;
     const empty = !cached ? t("스킬 목록을 읽는 중…") : cached.skills.length === 0 ? t("이 세션에서 찾은 스킬이 없습니다.") : t("맞는 스킬이 없습니다.");
     this.renderSkills(this.skillShown.length > 0 ? null : empty);
