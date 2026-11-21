@@ -1969,6 +1969,11 @@ kbd {
   height: calc(100% + 1px);
 }
 
+/* 테두리 줄과 한 줄을 쓰던 상자 밖의 글(renderPanel 의 trailed): 제 줄로 올려 오른쪽 끝에 둔다. */
+.term.flow .tl.trailed > .tl:first-child {
+  text-align: right;
+}
+
 .term.flow .tl.panel > .run {
   flex: 1;
   min-width: 0;

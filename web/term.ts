@@ -517,8 +517,9 @@ export function displayCols(text: string, trimRightGap = false): number {
 }
 
 /** 상자 줄: 세로선·모서리로 시작하고 상자 글자로 끝나는 줄(Claude Code 가 그리는 표, 상자에 든 대화상자). */
-/** 윗테두리 뒤에 짧은 표시가 붙은 줄(Claude Code 의 플랜 승인 상자: `╭───╮ [-]`)도 상자 줄이다 — 빼면 그 줄만 상자 밖에서 화면 끝까지 그어진다. */
-const BOX_ROW = /^\s*(?:[\u2502\u2503\u2551\u256D\u2570\u250C\u2514\u251C\u2554\u255A\u2560][\s\S]*[\u2500-\u257F]|[\u256D\u250C\u2554][\u2500\u2550]+[\u256E\u2510\u2557] \S{1,5})\s*$/;
+/** 윗테두리 뒤에 짧은 표시가 붙은 줄(Claude Code 의 플랜 승인 상자: `╭───╮ [-]`)도 상자 줄이다 — 빼면 그 줄만 상자 밖에서 화면 끝까지 그어진다.
+ *  창이 상자보다 넓으면 표시는 창의 오른쪽 끝에 놓여 모서리와 여러 칸 떨어진다. */
+const BOX_ROW = /^\s*(?:[\u2502\u2503\u2551\u256D\u2570\u250C\u2514\u251C\u2554\u255A\u2560][\s\S]*[\u2500-\u257F]|[\u256D\u250C\u2554][\u2500\u2550]+[\u256E\u2510\u2557] +\S{1,5})\s*$/;
 /** 상자 글자와 공백 말고 다른 글자가 있는 줄 — 가로줄만 이어진 묶음은 표가 아니다. */
 const HAS_TEXT = /[^\s\u2500-\u257F]/;
 
@@ -872,6 +873,11 @@ export function stackPanes(lines: readonly string[]): string[] | null {
 /** 글 상자의 위·아래 테두리와 가름줄(╭───╮ ╰───╯ ├───┤): 양 끝 모서리 사이의 가로줄만 화면 폭에 맞춰 자른다. */
 const FRAME_ROW = /^ *[\u256D\u2570\u250C\u2514\u2554\u255A\u251C\u255F\u2560\u2523].*[\u256E\u256F\u2510\u2518\u2557\u255D\u2524\u2562\u2563\u252B]$/;
 const FRAME_HEAD = /^ *./u;
+/**
+ * 테두리 줄 뒤에 상자 밖의 글이 같은 줄에 이어진 것(╭───╮      [-]). 넓은 창에서 상자 오른쪽 빈 곳에 놓인 표시가 테두리 줄과
+ * 한 줄을 쓴다. 그대로 두면 테두리 줄로 읽히지 않아 오른쪽 모서리가 화면 밖으로 잘린다.
+ */
+const FRAME_TRAILED = /^( *[\u256D\u2570\u250C\u2514\u2554\u255A\u251C\u255F\u2560\u2523].*?[\u256E\u256F\u2510\u2518\u2557\u255D\u2524\u2562\u2563\u252B]) +[^\u2500-\u257F\s][^\u2500-\u257F]*$/;
 
 /** 그린 줄의 자식들을 flex 칸 하나에 옮긴다. 글 조각은 span 으로 감싸 세로선(.blk)과 나란히 선다. */
 function column(cls: string, from: HTMLElement): HTMLElement {
@@ -895,6 +901,17 @@ function column(cls: string, from: HTMLElement): HTMLElement {
 function renderPanel(raw: string, start: Style): Row {
   const text = plain(raw).trimEnd();
   const frame = FRAME_ROW.test(text);
+  const trailed = frame ? null : FRAME_TRAILED.exec(text);
+  if (trailed) {
+    // 상자 밖의 글은 제 줄로 올려 오른쪽에 붙이고(넓은 창에서 있던 자리), 테두리 줄은 다른 테두리 줄처럼 화면 폭에 맞춰 닫는다.
+    const [box, rest] = splitColumns(raw, displayCols(trailed[1]!));
+    const main = renderPanel(box, start);
+    const extra = renderLine(rest.replace(/^((?:\x1b\[[0-9;:]*m)*) +/, "$1"), main.end, true);
+    const node = document.createElement("div");
+    node.className = "tl trailed";
+    node.append(extra.node, main.node);
+    return { key: PANEL_KEY + styleKey(start) + raw, node, text: `${extra.text}\n${main.text}`, bgLogo: false, end: extra.end, line: raw, start };
+  }
   const head = (frame ? FRAME_HEAD : PANEL_HEAD).exec(text);
   const hangCols = head && head[0].length <= PANEL_HANG_MAX ? head[0].length : 0;
   const cols = displayCols(text);
