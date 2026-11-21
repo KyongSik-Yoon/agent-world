@@ -673,33 +673,19 @@ export function isTable(texts: readonly string[]): boolean {
   return false;
 }
 
-/** 상자 줄의 오른쪽 테두리와 그 앞 공백을 뗀다. 색상 코드는 그대로 둔다. */
-export function dropRightBorder(line: string): string {
+/**
+ * 상자 줄을 글과 오른쪽 테두리로 가른다: 테두리 앞 공백은 걷고(색상 코드는 글 쪽에 남아 테두리 색을 정한다), 테두리 뒤의
+ * 공백도 버린다. 테두리가 없으면 [줄, ""].
+ */
+export function splitRightBorder(line: string): [string, string] {
   const tokens = [...line.matchAll(ANSI_TOKEN)].map((m) => m[0]);
   let last = tokens.length - 1;
   while (last >= 0 && (tokens[last]!.startsWith("\x1b") || tokens[last] === " ")) last -= 1;
-  if (last < 0 || !/[\u2502\u2503\u2551\u256E\u256F\u2510\u2518\u2557\u255D]/.test(tokens[last]!)) return line;
-  let out = "";
-  let gap = "";
-  for (let i = 0; i < tokens.length; i += 1) {
-    const t = tokens[i]!;
-    if (i === last) {
-      gap = gap.replace(/ /g, "");
-      continue;
-    }
-    if (t.startsWith("\x1b")) {
-      if (gap) gap += t;
-      else out += t;
-      continue;
-    }
-    if (t === " " && i < last) {
-      gap += t;
-      continue;
-    }
-    out += gap + t;
-    gap = "";
-  }
-  return out + gap.replace(/ /g, "");
+  if (last < 0 || !/[\u2502\u2503\u2551\u256E\u256F\u2510\u2518\u2557\u255D]/.test(tokens[last]!)) return [line, ""];
+  let text = last - 1;
+  while (text >= 0 && (tokens[text]!.startsWith("\x1b") || tokens[text] === " ")) text -= 1;
+  const body = tokens.slice(0, text + 1).join("") + tokens.slice(text + 1, last).filter((t) => t !== " ").join("");
+  return [body, tokens.slice(last).filter((t) => t !== " ").join("")];
 }
 
 /** 접는 글 상자 줄의 머리: 왼쪽 세로선과 그 뒤 공백. 접힌 줄은 이 칸 뒤에서 이어진다(모두 한 칸 글자라 길이가 칸 수다). */
@@ -751,7 +737,8 @@ export function splitColumns(line: string, n: number): [string, string] {
 }
 
 /**
- * 넘쳐서 접을 글 상자의 줄들: 오른쪽 테두리를 뗀 shownLines(빈 칸 구간을 뗀 줄)에서, 상자 폭 때문에 다음 줄로 넘긴 글은 앞줄에 다시 이어 붙인다(붙은 줄은 null).
+ * 넘쳐서 접을 글 상자의 줄들: shownLines(빈 칸 구간을 뗀 줄)에서 오른쪽 테두리 앞 공백을 걷고, 상자 폭 때문에 다음 줄로 넘긴 글은
+ * 앞줄의 테두리 앞에 다시 이어 붙인다(붙은 줄은 null). 테두리는 줄 끝에 붙여 두고, 그리는 쪽(renderPanel)이 화면 오른쪽 끝에 세운다.
  * 넘긴 줄인지는 줄바꿈 규칙대로 가린다 — 다음 줄의 첫 낱말이 앞줄 끝 한 칸 뒤에 들어갈 자리가 없었고, 같은 들여쓰기로
  * 이어지며(목록이면 머리 뒤 글자에 맞춰), 목록 머리로 시작하지 않을 때. 그대로 두면 좁은 화면에서 넓은 상자의 줄 끝마다
  * 한두 낱말짜리 줄이 생긴다. 넘겼는지는 빈 칸을 떼기 전의 줄(lines)에서 잰다 — 뗀 줄에서는 상자 폭이 가장 긴 줄에 맞춰
@@ -759,20 +746,23 @@ export function splitColumns(line: string, n: number): [string, string] {
  */
 export function panelLines(lines: readonly string[], shownLines: readonly string[] = lines): Array<string | null> {
   const out: Array<string | null> = [];
+  const borders: string[] = [];
   let open = -1;
   let indent = 0;
   let end = 0;
   let edge = 0;
   let tail = "";
   lines.forEach((line, i) => {
-    const shown = dropRightBorder(shownLines[i]!);
     const text = plain(line).trimEnd();
     const head = PANEL_HEAD.exec(text);
     if (!head || !RIGHT_BORDER.test(text)) {
-      out.push(shown);
+      out.push(shownLines[i]!);
+      borders.push("");
       open = -1;
       return;
     }
+    const [shown, right] = splitRightBorder(shownLines[i]!);
+    borders.push(right);
     const hang = head[0].length;
     const body = text.slice(hang, -1).trimEnd();
     const mark = LIST_MARK.exec(body)?.[0].length ?? 0;
@@ -795,7 +785,7 @@ export function panelLines(lines: readonly string[], shownLines: readonly string
     edge = border - 1;
     tail = last;
   });
-  return out;
+  return out.map((line, i) => (line === null ? null : line + borders[i]!));
 }
 
 /** 세로로 나뉜 창의 구분선 글자. */
@@ -879,37 +869,64 @@ export function stackPanes(lines: readonly string[]): string[] | null {
   return [...lines.slice(0, start), ...right, `\x1b[0m\x1b[2m${"\u2500".repeat(24)}\x1b[0m`, ...left, ...lines.slice(end)];
 }
 
-/**
- * 글 상자의 한 줄을 세로선 칸과 글 칸으로 나눠 그린다. 접힌 줄이 세로선 밖(맨 왼쪽)으로 나가지 않고 글 칸 안에서 이어지며,
- * 세로선은 접힌 줄 높이만큼 내려온다(스타일시트의 .tl.panel).
- */
-function renderPanel(raw: string, start: Style): Row {
-  const head = PANEL_HEAD.exec(plain(raw));
-  if (!head || head[0].length > PANEL_HANG_MAX) {
-    const row = renderLine(raw, start, true);
-    return { ...row, key: PANEL_KEY + row.key };
-  }
-  const [lead, rest] = splitColumns(raw, head[0].length);
-  const left = renderLine(lead, start, true);
-  const right = renderLine(rest, left.end, true);
-  const node = document.createElement("div");
-  node.className = "tl panel";
-  const hang = document.createElement("span");
-  hang.className = "hang";
-  for (const child of [...left.node.childNodes]) {
+/** 글 상자의 위·아래 테두리와 가름줄(╭───╮ ╰───╯ ├───┤): 양 끝 모서리 사이의 가로줄만 화면 폭에 맞춰 자른다. */
+const FRAME_ROW = /^ *[\u256D\u2570\u250C\u2514\u2554\u255A\u251C\u255F\u2560\u2523].*[\u256E\u256F\u2510\u2518\u2557\u255D\u2524\u2562\u2563\u252B]$/;
+const FRAME_HEAD = /^ *./u;
+
+/** 그린 줄의 자식들을 flex 칸 하나에 옮긴다. 글 조각은 span 으로 감싸 세로선(.blk)과 나란히 선다. */
+function column(cls: string, from: HTMLElement): HTMLElement {
+  const col = document.createElement("span");
+  col.className = cls;
+  for (const child of [...from.childNodes]) {
     if (child.nodeType === Node.TEXT_NODE) {
       const wrap = document.createElement("span");
       wrap.append(child);
-      hang.append(wrap);
-    } else hang.append(child);
+      col.append(wrap);
+    } else col.append(child);
   }
-  const body = document.createElement("span");
-  body.className = "flowed";
-  body.append(...right.node.childNodes);
-  const mark = LIST_MARK.exec(right.text)?.[0].length ?? 0;
+  return col;
+}
+
+/**
+ * 글 상자의 한 줄을 왼쪽 세로선 칸, 글 칸, 오른쪽 테두리 칸으로 나눠 그린다. 접힌 줄이 세로선 밖(맨 왼쪽)으로 나가지 않고 글 칸
+ * 안에서 이어지며, 양쪽 세로선은 접힌 줄 높이만큼 내려온다. 오른쪽 테두리는 화면 오른쪽 끝에 붙고, 위·아래 테두리 줄은
+ * 모서리를 양 끝에 둔 채 가운데 가로줄만 잘린다 — 상자가 화면 폭에 맞춰 닫힌다(스타일시트의 .tl.panel).
+ */
+function renderPanel(raw: string, start: Style): Row {
+  const text = plain(raw).trimEnd();
+  const frame = FRAME_ROW.test(text);
+  const head = (frame ? FRAME_HEAD : PANEL_HEAD).exec(text);
+  const hangCols = head && head[0].length <= PANEL_HANG_MAX ? head[0].length : 0;
+  const cols = displayCols(text);
+  const edged = frame || (RIGHT_BORDER.test(text) && cols > hangCols);
+  if (!hangCols && !edged) {
+    const row = renderLine(raw, start, true);
+    return { ...row, key: PANEL_KEY + row.key };
+  }
+  const [lead, rest] = splitColumns(raw, hangCols);
+  const [mid, side] = edged ? splitColumns(rest, cols - hangCols - 1) : [rest, ""];
+  const left = renderLine(lead, start, true);
+  const right = renderLine(mid, left.end, true);
+  const node = document.createElement("div");
+  node.className = "tl panel";
+  if (hangCols) node.append(column("hang", left.node));
+  const body = column(frame ? "run" : "flowed", right.node);
+  const mark = frame ? 0 : (LIST_MARK.exec(right.text)?.[0].length ?? 0);
   if (mark) body.style.setProperty("--mark", String(mark));
-  node.append(hang, body);
-  return { key: PANEL_KEY + styleKey(start) + raw, node, text: left.text + right.text, bgLogo: false, end: right.end, line: raw, start };
+  node.append(body);
+  let tail = right;
+  if (edged) {
+    tail = renderLine(side.replace(/ /g, ""), right.end, true);
+    const edge = column("edge", tail.node);
+    // 글 줄은 테두리 앞에 한 칸을 띄운다 — 접힌 글이 세로선에 붙지 않게.
+    if (!frame) {
+      const gap = document.createElement("span");
+      gap.textContent = " ";
+      edge.prepend(gap);
+    }
+    node.append(edge);
+  }
+  return { key: PANEL_KEY + styleKey(start) + raw, node, text: left.text + right.text + (edged ? tail.text : ""), bgLogo: false, end: tail.end, line: raw, start };
 }
 
 /** 줄에서 drop 으로 표시한 칸의 글자를 뗀다. 색상 코드는 그대로 둔다. */
