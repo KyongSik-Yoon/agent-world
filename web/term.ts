@@ -814,6 +814,8 @@ function dividerCols(text: string): [number[], number] {
   return [at, col];
 }
 
+/** 구분선 왼쪽이 상자 테두리로 시작해 닫히지 않은 채 구분선에 닿는 줄 — 그 세로선은 상자에 든 표의 안쪽 선이다. */
+const BOXED_OPEN = /^\s*[\u2502\u2503\u2551\u251C\u2560\u256D\u2570\u250C\u2514](?![\s\S]*[\u2502\u2503\u2551\u2524\u2563\u256E\u256F\u2510\u2518]\s*$)/;
 /** 나뉜 화면에서 줄 하나를 구분선 칸에서 가른 것. */
 interface PaneCut {
   col: number;
@@ -859,7 +861,9 @@ function cutPane(line: string, info: PaneLine, col: number, width: number): Pane
     right,
     // 테두리는 구분선 왼쪽에서 찾는다: 왼쪽 창이 빈 줄(오른쪽 창만 찬 줄)은 공백 뒤 첫 글자가 바로 그 세로선이라,
     // 줄 전체에서 찾으면 나뉜 화면을 표로 잘못 읽는다.
-    boxed: /^\s*[│┃║├╠╭╰┌└]/.test(splitColumns(info.text, col)[0]),
+    // 구분선에 닿기 전에 닫힌 상자(왼쪽 창 안의 대화상자·인용 상자)는 세지 않는다 — 왼쪽 창에 긴 상자가 뜨면 나뉜 화면을
+    // 표로 읽어, 두 창의 글이 다시 한 줄씩 섞였다.
+    boxed: BOXED_OPEN.test(splitColumns(info.text, col)[0]),
     bgs: right.match(BG_CODE) ?? [],
     blank: plain(right).trim() === "",
   };
