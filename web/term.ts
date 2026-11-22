@@ -1119,6 +1119,37 @@ const LINE_EM = 1.22;
 const LINE_MIN = 1.1;
 const LINE_MAX = 1.3;
 
+/** 상태줄 묶음의 요소와 그 안에 그려 둔 줄들(줄의 글 → 요소). */
+interface MascotBand {
+  node: HTMLDivElement;
+  art: HTMLElement;
+  side: HTMLElement;
+  arts: Map<string, HTMLElement[]>;
+  texts: Map<string, HTMLElement[]>;
+}
+
+function mascotBand(): MascotBand {
+  const node = document.createElement("div");
+  node.className = "tl mascot";
+  const art = document.createElement("span");
+  art.className = "mascot-art";
+  const side = document.createElement("span");
+  side.className = "mascot-text";
+  node.append(art, side);
+  return { node, art, side, arts: new Map(), texts: new Map() };
+}
+
+/** parent 의 자식을 nodes 로 맞춘다. 남는 것은 붙어 있는 채로 두고, 빠진 것만 떼고 새것만 끼운다. */
+function syncChildren(parent: HTMLElement, nodes: readonly Node[]): void {
+  const keep = new Set<Node>(nodes);
+  for (const child of [...parent.childNodes]) if (!keep.has(child)) child.remove();
+  let at = parent.firstChild;
+  for (const node of nodes) {
+    if (at === node) at = at.nextSibling;
+    else parent.insertBefore(node, at);
+  }
+}
+
 /** pane 하나의 화면을 받아 그리는 요소. start 하면 서버의 흐름에 붙고, stop 하면 끊는다. */
 export class TermScreen {
   readonly el = document.createElement("div");
@@ -1150,6 +1181,8 @@ export class TermScreen {
   private savedTop = 0;
   /** 이 pane 을 이 폭에서 그리는 동안 본 가장 넓은 상태줄의 칸 수(unfoldFooter). */
   private footerSeen = { pane: "", width: 0, cols: 0, cut: 0 };
+  /** 상태줄 묶음(mascot). 처음 묶을 때 만든다. */
+  private band: MascotBand | undefined;
   /** 지난 그리기의 상자 묶음 결과(묶음 줄들의 key → 결과). 이번에 쓴 것만 남긴다. */
   private boxForms = new Map<string, BoxForm>();
   /** 크게 보기가 정해 준 글자 크기(px)와 칸을 기기 픽셀에 맞출지. 없으면 스타일시트의 크기를 쓴다. */
@@ -1450,25 +1483,45 @@ export class TermScreen {
     return this.reline(row, row.unfold.line, pool);
   }
 
-  /** 로고가 걸친 상태줄들을 한 줄로 묶는다: 왼쪽은 줄마다의 로고 칸(접지 않음), 오른쪽은 줄마다의 글(접음). */
+  /**
+   * 로고가 걸친 상태줄들을 한 줄로 묶는다: 왼쪽은 줄마다의 로고 칸(접지 않음), 오른쪽은 줄마다의 글(접음).
+   *
+   * 묶음의 요소는 하나를 계속 쓰고, 그 안에서 바뀐 줄만 간다. 로고는 초에도 몇 번씩 동작 컷이 바뀌는데, 그때마다 묶음을 통째로
+   * 새로 만들면 그대로인 글 줄까지 다시 칠해져 휴대폰의 크게 보기에서 화면 아래가 깜빡였다.
+   */
   private mascot(band: Row[], cut: number, pool: Map<string, Row[]>): Row {
     const key = `${MASCOT_KEY}${cut}\n${band.map((r) => r.key).join("\n")}`;
     const last = band[band.length - 1]!;
     let row = pool.get(key)?.pop();
     if (!row) {
-      const node = document.createElement("div");
-      node.className = "tl mascot";
-      const art = document.createElement("span");
-      art.className = "mascot-art";
-      const side = document.createElement("span");
-      side.className = "mascot-text";
+      const held = (this.band ??= mascotBand());
+      const arts = new Map<string, HTMLElement[]>();
+      const texts = new Map<string, HTMLElement[]>();
+      /** 지난 묶음에 같은 줄이 있으면 그 요소를 쓴다. */
+      const take = (from: Map<string, HTMLElement[]>, to: Map<string, HTMLElement[]>, id: string, make: () => HTMLElement): HTMLElement => {
+        const node = from.get(id)?.pop() ?? make();
+        const same = to.get(id);
+        if (same) same.push(node);
+        else to.set(id, [node]);
+        return node;
+      };
+      const artNodes: HTMLElement[] = [];
+      const textNodes: HTMLElement[] = [];
       for (const r of band) {
-        art.append(renderLine(splitColumns(r.line, cut)[0], r.start, false).node);
-        const text = renderLine(unfoldLine(r.line, cut).replace(/^((?:\x1b\[[0-9;:]*m)*) +/, "$1"), r.start, true);
-        if (text.text.trim() !== "") side.append(text.node);
+        const style = styleKey(r.start);
+        const art = splitColumns(r.line, cut)[0];
+        artNodes.push(take(held.arts, arts, style + art, () => renderLine(art, r.start, false).node));
+        // 글 앞에는 로고 칸의 색상 코드가 딸려 온다(로고 뒤 공백의 색). 글이 초기화 코드로 시작하면 그 앞의 코드는 아무것도
+        // 칠하지 않으므로 뗀다 — 두면 로고의 컷마다 코드가 달라 같은 글 줄을 다른 줄로 알고 새로 만든다.
+        const text = unfoldLine(r.line, cut).replace(/^((?:\x1b\[[0-9;:]*m)*) +/, "$1").replace(/^(?:\x1b\[[0-9;:]*m)*(?=\x1b\[0m)/, "");
+        const fresh = text.startsWith("\x1b[0m");
+        if (plain(text).trim() !== "") textNodes.push(take(held.texts, texts, (fresh ? "" : style) + text, () => renderLine(text, fresh ? {} : r.start, true).node));
       }
-      node.append(art, side);
-      row = { key, node, text: band.map((r) => r.text).join("\n"), bgLogo: false, end: last.end, line: last.line, start: band[0]!.start };
+      held.arts = arts;
+      held.texts = texts;
+      syncChildren(held.art, artNodes);
+      syncChildren(held.side, textNodes);
+      row = { key, node: held.node, text: band.map((r) => r.text).join("\n"), bgLogo: false, end: last.end, line: last.line, start: band[0]!.start };
     }
     this.rows.push(row);
     return row;
