@@ -814,21 +814,85 @@ function dividerCols(text: string): [number[], number] {
   return [at, col];
 }
 
+/** 나뉜 화면에서 줄 하나를 구분선 칸에서 가른 것. */
+interface PaneCut {
+  col: number;
+  /** 화면의 칸 수 — 오른쪽 끝의 스크롤 막대를 뗄지가 여기에 달렸다. */
+  width: number;
+  left: string;
+  right: string;
+  /** 왼쪽 창이 상자 테두리로 시작하는가(상자에 든 표의 안쪽 세로선을 가릴 때). */
+  boxed: boolean;
+  /** 오른쪽 창에 깔린 바탕색 코드들. */
+  bgs: string[];
+  blank: boolean;
+  /** 가장 많이 쓰인 바탕을 걷어 낸 오른쪽 창의 줄과, 그때 걷은 바탕. */
+  bare?: { surface: string | undefined; line: string };
+}
+
+/** 줄 하나에서 재 둔 것. 같은 줄은 그리기마다 같은 글로 돌아오므로 다시 재지 않는다. */
+interface PaneLine {
+  text: string;
+  /** 구분선 글자가 있는 칸들과 줄의 칸 수. */
+  at: number[];
+  cols: number;
+  cut?: PaneCut;
+}
+
+/** 지난번 stackPanes 가 본 줄들. 이번에 본 줄만 남긴다. */
+let paneLines = new Map<string, PaneLine>();
+
+function cutPane(line: string, info: PaneLine, col: number, width: number): PaneCut {
+  const [head, rest] = splitColumns(line, col);
+  const [bar, tail] = splitColumns(rest, 1);
+  // 오른쪽 창의 글은 줄 앞에서 이어지던 스타일로 시작해야 한다 — 앞쪽의 색상 코드를 차례로 다시 건다.
+  let right = `\x1b[0m${(head + bar).match(SGR_ONLY)?.join("") ?? ""}${tail}`;
+  const shown = plain(tail).trimEnd();
+  const last = shown.at(-1) ?? "";
+  if (SCROLL_TRACK.test(last) && col + 1 + displayCols(shown) === info.cols && info.cols === width) {
+    right = splitColumns(right, displayCols(shown) - 1)[0];
+  }
+  return {
+    col,
+    width,
+    left: head,
+    right,
+    // 테두리는 구분선 왼쪽에서 찾는다: 왼쪽 창이 빈 줄(오른쪽 창만 찬 줄)은 공백 뒤 첫 글자가 바로 그 세로선이라,
+    // 줄 전체에서 찾으면 나뉜 화면을 표로 잘못 읽는다.
+    boxed: /^\s*[│┃║├╠╭╰┌└]/.test(splitColumns(info.text, col)[0]),
+    bgs: right.match(BG_CODE) ?? [],
+    blank: plain(right).trim() === "",
+  };
+}
+
 /**
  * 세로로 나뉜 화면(Claude Code 가 오른쪽에 플랜 보기 창을 띄운 것 등)을 줄 접는 화면에서 볼 수 있게 위아래로 쌓는다.
  * 그대로 접으면 왼쪽 창 줄 뒤에 오른쪽 창 줄이 이어 붙어 접혀, 두 창의 글이 한 줄씩 엇갈려 섞인다. 같은 칸의 세로선이
  * 화면의 SPLIT_SHARE 넘게 이어지는 구간을 찾아, 오른쪽 창을 위에, 왼쪽 창을 아래에 둔다 — 아래에 붙여 보는 미리보기와
  * 크게 보기의 끝이 왼쪽 창(대화)의 끝과 그 밑의 입력창으로 이어진다. 나뉜 화면이 아니면 null.
+ *
+ * 그리기마다 불린다. 줄마다 재는 것(색상 코드를 뺀 글, 구분선 칸, 가른 양쪽)은 줄에 적어 두고 다시 쓴다 — 스피너 한 줄만
+ * 바뀐 화면에서 모든 줄을 다시 재면 넓은 pane(302칸 × 85줄)에 6ms 가 들었다.
  */
 export function stackPanes(lines: readonly string[]): string[] | null {
-  if (lines.filter((l) => l.includes("\u2502") || l.includes("\u2503") || l.includes("\u2551")).length < SPLIT_MIN_ROWS) return null;
-  const texts = lines.map(plain);
-  const marks = texts.map(dividerCols);
-  const width = Math.max(0, ...marks.map(([, w]) => w));
+  if (lines.filter((l) => l.includes("│") || l.includes("┃") || l.includes("║")).length < SPLIT_MIN_ROWS) return null;
+  const seen = new Map<string, PaneLine>();
+  const infos = lines.map((line) => {
+    let info = seen.get(line) ?? paneLines.get(line);
+    if (!info) {
+      const text = plain(line);
+      const [at, cols] = dividerCols(text);
+      info = { text, at, cols };
+    }
+    seen.set(line, info);
+    return info;
+  });
+  paneLines = seen;
+  const width = Math.max(0, ...infos.map((info) => info.cols));
   // 칸마다 지금 이어지는 줄 수를 세며 가장 긴 구간을 찾는다.
   const runs = new Map<number, number>();
   let best = { col: -1, start: 0, end: 0 };
-  marks.forEach(([at], i) => {
+  infos.forEach(({ at }, i) => {
     const here = new Set(at.filter((c) => c >= SPLIT_MIN_SIDE && c < width - SPLIT_MIN_SIDE));
     for (const c of [...runs.keys()]) if (!here.has(c)) runs.delete(c);
     for (const c of here) {
@@ -839,35 +903,28 @@ export function stackPanes(lines: readonly string[]): string[] | null {
   });
   const { col, start, end } = best;
   if (col < 0 || end - start < Math.max(SPLIT_MIN_ROWS, lines.length * SPLIT_SHARE)) return null;
-  // 상자에 든 큰 표의 안쪽 세로선이다 — 줄마다 테두리로 시작한다. 테두리는 그 세로선 왼쪽에서 찾는다: 왼쪽 창이 빈 줄
-  // (오른쪽 창만 찬 줄)은 공백 뒤 첫 글자가 바로 그 세로선이라, 줄 전체에서 찾으면 나뉜 화면을 표로 잘못 읽는다.
-  let boxed = 0;
-  for (let i = start; i < end; i += 1) if (/^\s*[\u2502\u2503\u2551\u251C\u2560\u256D\u2570\u250C\u2514]/.test(splitColumns(texts[i]!, col)[0])) boxed += 1;
-  if (boxed * 2 > end - start) return null;
-  const left: string[] = [];
-  const right: string[] = [];
+  const cuts: PaneCut[] = [];
   for (let i = start; i < end; i += 1) {
-    const [head, rest] = splitColumns(lines[i]!, col);
-    const [bar, tail] = splitColumns(rest, 1);
-    left.push(head);
-    // 오른쪽 창의 글은 줄 앞에서 이어지던 스타일로 시작해야 한다 — 앞쪽의 색상 코드를 차례로 다시 건다.
-    let side = `\x1b[0m${(head + bar).match(SGR_ONLY)?.join("") ?? ""}${tail}`;
-    const shown = plain(tail).trimEnd();
-    const last = shown.at(-1) ?? "";
-    if (SCROLL_TRACK.test(last) && col + 1 + displayCols(shown) === marks[i]![1] && marks[i]![1] === width) {
-      side = splitColumns(side, displayCols(shown) - 1)[0];
-    }
-    right.push(side);
+    const info = infos[i]!;
+    if (info.cut?.col !== col || info.cut.width !== width) info.cut = cutPane(lines[i]!, info, col, width);
+    cuts.push(info.cut);
   }
+  // 상자에 든 큰 표의 안쪽 세로선이다 — 줄마다 테두리로 시작한다.
+  if (cuts.filter((c) => c.boxed).length * 2 > end - start) return null;
   // 오른쪽 창의 바탕색(가장 많이 쓰인 바탕)은 걷어 낸다. 줄마다 바탕이 깔리면 배너로 잘못 읽혀 끝이 잘리고, 접힌 줄은
   // 줄무늬가 된다. 인라인 코드처럼 그 위에 다른 바탕을 깐 글은 남는다.
   const bgs = new Map<string, number>();
-  for (const line of right) for (const [code] of line.matchAll(BG_CODE)) bgs.set(code, (bgs.get(code) ?? 0) + 1);
+  for (const cut of cuts) for (const code of cut.bgs) bgs.set(code, (bgs.get(code) ?? 0) + 1);
   const surface = [...bgs].sort((a, b) => b[1] - a[1])[0]?.[0];
-  if (surface) for (let i = 0; i < right.length; i += 1) right[i] = right[i]!.split(surface).join("\x1b[49m");
-  while (right.length && plain(right[right.length - 1]!).trim() === "") right.pop();
-  while (right.length && plain(right[0]!).trim() === "") right.shift();
-  return [...lines.slice(0, start), ...right, `\x1b[0m\x1b[2m${"\u2500".repeat(24)}\x1b[0m`, ...left, ...lines.slice(end)];
+  let from = 0;
+  let to = cuts.length;
+  while (to > from && cuts[to - 1]!.blank) to -= 1;
+  while (from < to && cuts[from]!.blank) from += 1;
+  const right = cuts.slice(from, to).map((cut) => {
+    if (cut.bare?.surface !== surface || !cut.bare) cut.bare = { surface, line: surface ? cut.right.split(surface).join("\x1b[49m") : cut.right };
+    return cut.bare.line;
+  });
+  return [...lines.slice(0, start), ...right, `\x1b[0m\x1b[2m${"─".repeat(24)}\x1b[0m`, ...cuts.map((cut) => cut.left), ...lines.slice(end)];
 }
 
 /** 글 상자의 위·아래 테두리와 가름줄(╭───╮ ╰───╯ ├───┤): 양 끝 모서리 사이의 가로줄만 화면 폭에 맞춰 자른다. */
