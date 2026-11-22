@@ -3560,6 +3560,15 @@ dialog.dlg .warn {
     border-radius: 0;
   }
 
+  /* 크게 보기가 화면을 다 덮으면 그 밑의 유리는 보이지 않는다 — 흐리지 않는다. 넘기는 동안 GPU 프로세스 18.2 → 15.4%, GPU 바쁨 2.3 → 1.7%. */
+  body[data-covered] :is(#topbar, #roster) {
+    backdrop-filter: none;
+  }
+
+  body[data-covered] #world {
+    visibility: hidden;
+  }
+
   #term-overlay header {
     padding: 6px 8px 6px 12px;
   }
@@ -3712,8 +3721,9 @@ dialog.dlg .warn {
   /* 상태 창이 열려 있으면 목록은 그 위로 올라온다. 뒤의 상태 창은 어둡게 덮어, 누르면 목록이 닫힌다(main.ts). */
   body:has(#detail:not([hidden])) #roster {
     z-index: 31;
-    /* 유리 너머로 상태 창의 단추가 비쳐 번지지 않게. */
+    /* 유리 너머로 상태 창의 단추가 비쳐 번지지 않게. 불투명하니 흐림도 끈다(위 #detail 과 같은 까닭). */
     background: var(--panel-solid);
+    backdrop-filter: none;
   }
 
   .d-head .btn.roster-open {
@@ -3751,7 +3761,22 @@ dialog.dlg .warn {
     border: 0;
     border-radius: 0;
     background: var(--panel-solid);
+    /* 화면 전체를 덮는 불투명한 창이라 유리 흐림(.glass)은 보이지 않는데, 남겨 두면 GPU 가 장마다 그 밑의 섬을 흐려 그린다.
+       휴대폰 크기 실측(번갈아 3회): 창을 넘기는 동안 내장 GPU 바쁨 2.5 → 1.3%, GPU 프로세스 10.5 → 8.5%. */
+    backdrop-filter: none;
     z-index: 30;
+  }
+
+  /* 상태 창이 덮은 위 막대도 흐릴 까닭이 없다 — 상태 창은 여닫을 때 미끄러지지 않아 그 사이에도 보이지 않는다.
+     같은 실측에서 GPU 프로세스 8.1 → 6.3%, GPU 바쁨 1.2 → 1.0%. */
+  body:has(#detail:not([hidden])) #topbar {
+    backdrop-filter: none;
+  }
+
+  /* 그 밑의 섬도 숨긴다. 장면은 덮인 동안 멈춰 있어(main.ts 의 syncCovered) 마지막 장이 남아 있다가 걷히면 그대로 보인다.
+     GPU 프로세스 6.3 → 5.7%, 렌더러 −1%p. */
+  body:has(#detail:not([hidden])) #world {
+    visibility: hidden;
   }
 
   /* 입력란 글자가 16px 보다 작으면 iOS 가 화면을 확대한다. */
