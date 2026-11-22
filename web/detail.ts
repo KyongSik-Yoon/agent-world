@@ -147,7 +147,7 @@ export class DetailPanel {
   private selectedId: string | null = null;
   /** 도크가 지금 붙어 있는 pane 과 방식. */
   private docked: { paneId: string; agent: boolean } | null = null;
-  private sent: { text: string; at: number; confirmed: boolean; before?: string; beforeCommand?: string } | null = null;
+  private sent: { text: string; at: number; confirmed: boolean; before?: string; beforeCommand?: string; beforeStatus?: string } | null = null;
   /** 마지막 응답은 읽으려고 여는 것이라 펼쳐 두고, 필요할 때 접는다. 지시와 터미널 미리보기는 접어 둔다. */
   private readonly open = { prompt: false, reply: true, screen: false };
   private readonly sectionOf: { prompt?: { stamp: string; el: HTMLElement }; reply?: { stamp: string; el: HTMLElement } } = {};
@@ -729,7 +729,7 @@ export class DetailPanel {
         // 실려 있으면 "앞의 것"이 방금 보낸 것이 되어 끝내 받은 줄 모른다.
         const was = this.snapshot?.agents.find((a) => a.paneId === target.paneId);
         await post("/api/prompt", { paneId: target.paneId, text, ...(shots.length ? { images: shots.map((s) => s.id) } : {}) });
-        this.sent = { text, at: Date.now(), confirmed: false, before: was?.lastPrompt, beforeCommand: was?.lastCommandAt };
+        this.sent = { text, at: Date.now(), confirmed: false, before: was?.lastPrompt, beforeCommand: was?.lastCommandAt, beforeStatus: was?.status };
         this.setNote("", "");
         if (still()) this.clearShots();
       } else {
@@ -768,7 +768,10 @@ export class DetailPanel {
     // 거푸 보내도 시각이 다르다. 셸 명령은 느낌표 뒤의 빈칸이 로그에서 빠진다.
     const typed = want.replace(/^!\s*/, "!");
     const command = /^[/!]/.test(typed) && a.lastCommandAt !== sent.beforeCommand && a.lastCommand !== undefined && norm(a.lastCommand).startsWith(typed);
-    if (queued || command || (logged !== undefined && (want ? logged.startsWith(want) : a.lastPrompt !== sent.before))) {
+    // `/compact` 는 압축이 끝난 뒤에야 명령 행이 찍힌다(수십 초~몇 분). 그동안의 흔적은 쉬던 에이전트가 일하기 시작한 것뿐이다 —
+    // 글이 입력창을 떠난 것은 서버가 이미 보고 답했다. 일하던 중에 보낸 명령은 줄에 선 것(queued)으로 안다.
+    const started = /^[/!]/.test(typed) && a.status === "working" && sent.beforeStatus !== undefined && sent.beforeStatus !== "working";
+    if (queued || command || started || (logged !== undefined && (want ? logged.startsWith(want) : a.lastPrompt !== sent.before))) {
       sent.confirmed = true;
       this.setNote("", "");
       this.callbacks.toast(t("에이전트가 받았습니다"), a.title, "var(--done)");
