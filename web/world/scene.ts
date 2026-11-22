@@ -59,6 +59,13 @@ const EASE_MS = 800;
  * 333ms 는 로고 한 칸(240ms)보다 길어 로고는 장마다 한 칸씩 고르게 넘어간다.
  */
 const AMBIENT_AFTER_MS = 20_000;
+/**
+ * 손가락으로 쓰는 기기(휴대폰·태블릿)는 5초면 곁눈질 화면으로 내려간다. 휴대폰 크기 실측에서 섬을 30장으로 그리는 동안이 다른 어느
+ * 화면보다 무거웠고(렌더러+GPU 43%, 상태 창은 7~9%), 세션을 오가는 사이마다 20초씩 그 값을 냈다. 5초 넘게 가만히 보면 걸음이
+ * 끊겨 보이는 것과 맞바꾼 값이다(사용자 선택, 2026-11-22).
+ */
+const AMBIENT_AFTER_TOUCH_MS = 5_000;
+const touchDevice = matchMedia("(pointer: coarse)");
 const AMBIENT_FRAME_MS = 333;
 /** 한 장 사이에 흐르게 둘 시간의 상한(초). 곁눈질 화면의 간격보다 길어야 그 동안에도 캐릭터가 제 속도로 걷는다. */
 const MAX_STEP_S = 0.4;
@@ -727,7 +734,7 @@ export class WorldScene {
   private pace(now: number): number {
     if (this.flight !== null || now - this.lastInputAt < ACTIVE_MS || now < this.easeUntil) return 0;
     const quiet = now - Math.max(this.lastInputAt, this.lastSeenAt);
-    return quiet > AMBIENT_AFTER_MS || !document.hasFocus() ? AMBIENT_FRAME_MS : IDLE_FRAME_MS;
+    return quiet > (touchDevice.matches ? AMBIENT_AFTER_TOUCH_MS : AMBIENT_AFTER_MS) || !document.hasFocus() ? AMBIENT_FRAME_MS : IDLE_FRAME_MS;
   }
 
   /**
