@@ -268,8 +268,10 @@ export async function claudeSkills(logPath: string, cwd: string | undefined, lan
 // `plugin` 은 표시 없이도 안 뜬다). 목록에 없어도 쳐서 보낼 수는 있다.
 
 /**
- * 목록에 싣는 AGY 명령. Claude 와 같은 잣대로 고른다 — 창을 띄워 두는 것(`/context`·`/codesearch`·`/btw`·`/usage` 는 창이 다음
- * 지시를 삼킨다)과 저장되는 설정을 바꾸는 것(`/model`·`/effort`·`/statusline`)은 뺀다. 받았는지는 AGY 의 입력 기록으로 확인한다.
+ * 목록에 싣는 AGY 명령. Claude 와 같은 잣대로 고른다 — 창을 띄워 두는 것(`/context`·`/usage`·`/codesearch` 는 창이 떠 있는 동안
+ * 다음 지시를 삼킨다), 답이 터미널에만 뜨고 월드에 오지 않는 것(`/btw`), 저장되는 설정을 바꾸는 것(`/model`·`/effort`·`/statusline`)은
+ * 뺀다. 받았는지는 AGY 의 입력 기록으로 확인한다. 실제로 보내 본 것은 `/clear`·`/compact`·`/rename`·`/plan` 이고, 나머지는 AGY 의
+ * 목록에서 `/plan` 과 같은 묶음(프롬프트로 풀리는 명령)이라 실었다.
  */
 const AGY_BUILTINS: Array<{ name: string; description: Text; hint?: Text }> = [
   { name: "clear", description: L("대화를 비우고 새 대화를 시작합니다. 지금까지의 맥락은 사라집니다.", "Clear the conversation and start a new one. The context so far is dropped.") },

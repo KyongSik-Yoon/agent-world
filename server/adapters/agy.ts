@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { type LogReader, TailedLog } from "../tail.ts";
-import { beginRow, emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
+import { beginRow, clip, emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
 import type { Harness, LogFile, Typed } from "./types.ts";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -157,6 +157,7 @@ interface TypedRow {
 
 /** 기억해 두는 입력 행 수. 닿았는지는 보낸 직후에만 묻는다 — 모든 pane 을 합쳐 최근 것만 있으면 된다. */
 const MAX_TYPED = 300;
+const MAX_TYPED_CHARS = 200;
 /** 줄에 선 것으로 치는 동안. 그보다 오래된 글은 로그가 지시로 적었거나(꼬리 창 밖) 사람이 줄에서 뺀 것이다. */
 const QUEUED_FOR_MS = 30 * 60_000;
 /** 한 스냅샷 안에서 pane 마다 파일 상태를 다시 묻지 않게 한다. */
@@ -171,7 +172,8 @@ const typedReader: LogReader<{ rows: TypedRow[] }> = {
     if (!display || at === undefined) return;
     const shell = row.type === "shell";
     s.rows.push({
-      text: shell ? `!${display}` : display,
+      // 붙여 넣은 긴 글도 한 줄로 남는다. 닿았는지는 앞머리로만 견주므로 스냅샷에 통째로 싣지 않는다.
+      text: clip(shell ? `!${display}` : display, MAX_TYPED_CHARS),
       at,
       command: shell || row.type === "slash_command" || display.startsWith("/"),
       session: str(row.conversationId),
@@ -226,15 +228,19 @@ async function typedFor(sessionId: string | undefined, cwd: string, last: { prom
       seen.add(r.session);
       if (!mine.has(r.session)) continue;
     } else if (r.cwd !== cwd) continue;
-    if (r.command) {
-      command = { text: r.text, at: String(r.at) };
-      if (CLEARS.test(r.text)) {
-        cleared = true;
-        clearedAt = r.at;
-      }
-      // 비운 뒤에 지난 대화를 다시 열었으면 화면에는 그 대화가 있다 — 무엇을 열었는지는 herdr 가 알려 주는 세션을 믿는다.
-      else if (SWITCHES.test(r.text)) clearedAt = undefined;
+    // 대화를 비웠다고 보는 것은 이 대화의 id 가 붙은 행뿐이다. id 없는 행은 폴더로만 맞춘 것이라, 그것으로 비우면 같은 폴더의
+    // 다른 pane 이 친 `/clear` 가 이 pane 을 비운다.
+    if (r.session && r.command && CLEARS.test(r.text)) {
+      cleared = true;
+      clearedAt = r.at;
     }
+    // 비운 뒤에 그 대화를 다시 열었으면(`/resume`, `agy -c`) 화면에는 그 대화가 있다 — herdr 가 알려 주는 id 로 다시 친 것이 있거나
+    // 옮겨 가는 명령을 쳤으면 비운 것을 잊고, 무엇이 열려 있는지는 herdr 의 세션을 믿는다.
+    else if (clearedAt !== undefined && (r.session === sessionId || (r.command && SWITCHES.test(r.text)))) {
+      cleared = false;
+      clearedAt = undefined;
+    }
+    if (r.command) command = { text: r.text, at: String(r.at) };
     // 로그의 시각은 초 단위라 같은 초에 보낸 지시가 "뒤"로 보인다 — 글이 같으면 이미 지시로 적힌 것이다.
     else if (r.at > since && head(r.text) !== logged) queued.push(r.text);
   }
