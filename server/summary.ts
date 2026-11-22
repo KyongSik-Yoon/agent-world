@@ -24,6 +24,8 @@ export interface LogSummary {
   contextWindow?: number;
   recent: Activity[];
   lastPrompt?: string;
+  /** 그 지시가 로그에 적힌 시각. 로그 밖의 입력 기록과 앞뒤를 견줄 때 쓴다(AGY). */
+  lastPromptAt?: string;
   /**
    * 사람이 친 마지막 내장 명령(`/clear`, `/model sonnet`)이나 셸 명령(`!git pull`)과 그 행의 시각. 이런 명령은 지시가 아니라 lastPrompt 를 바꾸지 않으므로,
    * 월드에서 보낸 명령이 닿았는지는 이것으로 확인한다. `/clear` 는 새 로그의 첫 행으로 남는다.

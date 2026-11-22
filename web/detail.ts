@@ -523,7 +523,7 @@ export class DetailPanel {
     if (agent?.paneId && control) this.setDock({ paneId: agent.paneId, agent: true });
     else if (pane && control) this.setDock({ paneId: pane.id, agent: false });
     else this.setDock(null);
-    this.skillAgent = agent?.paneId && control && agent.vendor === "claude" ? agent.id : null;
+    this.skillAgent = agent?.paneId && control && (agent.vendor === "claude" || agent.vendor === "agy") ? agent.id : null;
     if (this.skillAgent === null) this.closeSkills();
     if (agent) this.confirmDelivery(agent);
   }

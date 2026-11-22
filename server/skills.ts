@@ -8,6 +8,8 @@
 // 둘 다 SKILL.md 머리말에만 있어서 개인(~/.claude/skills)·프로젝트(.claude/skills)·켜진 플러그인의 파일을 읽는다.
 // 내장 스킬 가운데 사람이 못 부르는 것(keybindings-help 등)은 파일이 없어 가리지 못한다 — 고르면 Claude 가 거절 글을 띄운다.
 // 내장 명령은 로그 어디에도 목록이 없어, 월드에서 보내도 되는 것만 손으로 적어 맨 앞에 싣는다(BUILTINS).
+//
+// Antigravity CLI 는 로그에 스킬 목록을 남기지 않아 디스크만 읽는다(파일 끝의 agySkills).
 import { createReadStream } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -127,6 +129,8 @@ interface Front {
   hint?: string;
   userOnly: boolean;
   modelOnly: boolean;
+  /** 빗금 목록에서 뺀 스킬(AGY 의 `disable-slash-command: true`). */
+  noSlash: boolean;
 }
 
 /** 머리말(`---` 사이)의 몇 가지 값. YAML 전체를 풀지 않고 쓰는 키만 읽는다 — 접힌 글(`>`·`|`)은 들여 쓴 다음 줄들을 잇는다. */
@@ -156,6 +160,7 @@ export function frontMatter(text: string): Front | null {
     hint: values.get("argument-hint") || undefined,
     userOnly: yes("disable-model-invocation"),
     modelOnly: no("user-invocable"),
+    noSlash: yes("disable-slash-command"),
   };
 }
 
@@ -250,5 +255,82 @@ export async function claudeSkills(logPath: string, cwd: string | undefined, lan
     if (!disk.modelOnly.has(name) && !taken.has(name)) out.push({ name, description, hint: disk.hints.get(name) });
   }
   for (const [name, skill] of disk.userOnly) if (!listing.has(name) && !taken.has(name)) out.push(skill);
+  return out;
+}
+
+// ── Antigravity CLI ─────────────────────────────────────────────────────────────────────────
+//
+// AGY 는 입력창에 `/` 를 치면 내장 명령, 프롬프트로 풀리는 명령(`/plan` 등), 스킬을 한 목록에 보인다(1.5.13 에서 확인).
+// 그 목록을 터미널을 건드리지 않고 얻을 길은 없어서(CLI 에 스킬을 나열하는 명령이 없다) 명령은 손으로 적고 스킬은 디스크에서 모은다:
+// 프로젝트(`.agents/skills`, cwd 에서 위로), 개인(`~/.gemini/config/skills`), 켜진 플러그인(`~/.gemini/config/plugins/<이름>/skills`,
+// `<이름>:` 이 붙는다). 머리말에 `disable-slash-command: true` 가 있으면 뺀다.
+// AGY 에 딸려 오는 스킬(`antigravity-cli/builtin/skills`)은 싣지 않는다 — 어느 것이 목록에 뜨는지가 머리말에 없다(`automation`·
+// `plugin` 은 표시 없이도 안 뜬다). 목록에 없어도 쳐서 보낼 수는 있다.
+
+/**
+ * 목록에 싣는 AGY 명령. Claude 와 같은 잣대로 고른다 — 창을 띄워 두는 것(`/context`·`/codesearch`·`/btw`·`/usage` 는 창이 다음
+ * 지시를 삼킨다)과 저장되는 설정을 바꾸는 것(`/model`·`/effort`·`/statusline`)은 뺀다. 받았는지는 AGY 의 입력 기록으로 확인한다.
+ */
+const AGY_BUILTINS: Array<{ name: string; description: Text; hint?: Text }> = [
+  { name: "clear", description: L("대화를 비우고 새 대화를 시작합니다. 지금까지의 맥락은 사라집니다.", "Clear the conversation and start a new one. The context so far is dropped.") },
+  { name: "compact", description: L("대화를 요약해 맥락을 줄이고 이어서 일합니다.", "Summarize the conversation to free up context and keep going.") },
+  { name: "rename", description: L("이 대화의 이름을 바꿉니다.", "Rename this conversation."), hint: L("[이름]", "[name]") },
+  { name: "plan", description: L("실행하기 전에 꼼꼼히 계획부터 세웁니다.", "Plan carefully before executing a task."), hint: L("[할 일]", "[task]") },
+  { name: "goal", description: L("적어 준 목표를 다 이룰 때까지 이어서 일합니다.", "Run until the specified goal is completely finished."), hint: L("[목표]", "[goal]") },
+  { name: "grill-me", description: L("계획을 맞추기 위해 나에게 질문을 던집니다.", "Interview me to align on a plan."), hint: L("[주제]", "[topic]") },
+  { name: "teamwork", description: L("에이전트 팀을 꾸려 큰 일을 스스로 나눠 맡습니다.", "Invoke a team of agents to autonomously tackle large projects."), hint: L("[할 일]", "[task]") },
+  { name: "boost", description: L("복잡한 일을 Boost 멀티 에이전트 오케스트레이터에 맡깁니다.", "Invoke the Boost multi-agent orchestrator for complex tasks."), hint: L("[할 일]", "[task]") },
+  { name: "browser", description: L("웹에서 하는 일을 브라우저 에이전트에게 맡깁니다.", "Invoke a browser agent for web tasks."), hint: L("[할 일]", "[task]") },
+  { name: "schedule", description: L("지시를 주기적으로, 또는 정한 때에 한 번 돌립니다.", "Run an instruction on a recurring schedule or as a one-time timer."), hint: L("[언제 무엇을]", "[when and what]") },
+  { name: "learn", description: L("최근의 성공과 교정을 돌아보고 다시 쓸 스킬·규칙으로 남깁니다.", "Reflect on recent successes or corrections to capture reusable skills or rules.") },
+];
+
+/** AGY 의 개인 설정 폴더. 로그 폴더(`AGY_HOME`)의 곁에 있다 — 로그 폴더를 임시 폴더로 돌리면 이쪽도 따라 비어, 그림에 실제 스킬이 실리지 않는다. */
+function agyConfigDir(): string {
+  return join(process.env.AGY_HOME || join(homedir(), ".gemini", "antigravity-cli"), "..", "config");
+}
+
+const AGY_PROJECT_DIRS = [".agents", ".agent", "_agents", "_agent"];
+
+/** `<root>/skills/<폴더>/SKILL.md` 들을 into 에 보탠다. 먼저 들어온 이름이 이긴다(프로젝트 → 개인 → 플러그인). */
+async function scanAgyRoot(root: string, prefix: string, into: Map<string, Skill>): Promise<void> {
+  const dirs = (await readdir(join(root, "skills")).catch(() => [] as string[])).sort();
+  const fronts = await Promise.all(dirs.map(async (dir) => ({ dir, front: frontMatter(await readFile(join(root, "skills", dir, "SKILL.md"), "utf8").catch(() => "")) })));
+  for (const { dir, front } of fronts) {
+    if (!front || front.noSlash) continue;
+    const name = prefix + (front.name ?? dir);
+    if (!into.has(name)) into.set(name, { name, description: clean(front.description ?? ""), hint: front.hint });
+  }
+}
+
+const agyDisks = new Map<string, { at: number; skills: Skill[] }>();
+
+async function agyDiskOf(cwd: string | undefined): Promise<Skill[]> {
+  const key = cwd ?? "";
+  const cached = agyDisks.get(key);
+  if (cached && Date.now() - cached.at < DISK_TTL_MS) return cached.skills;
+  const found = new Map<string, Skill>();
+  const home = homedir();
+  for (let dir = cwd; dir && dir !== home; dir = dirname(dir)) {
+    for (const name of AGY_PROJECT_DIRS) await scanAgyRoot(join(dir, name), "", found);
+    if (dirname(dir) === dir) break;
+  }
+  const config = agyConfigDir();
+  await scanAgyRoot(config, "", found);
+  const set = ((await readJson(join(config, "config.json"))) as { plugins?: Record<string, { enabled?: unknown }> } | undefined)?.plugins ?? {};
+  for (const plugin of (await readdir(join(config, "plugins")).catch(() => [] as string[])).sort()) {
+    if (set[plugin]?.enabled !== false) await scanAgyRoot(join(config, "plugins", plugin), `${plugin}:`, found);
+  }
+  const skills = [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
+  if (agyDisks.size > 200) agyDisks.clear();
+  agyDisks.set(key, { at: Date.now(), skills });
+  return skills;
+}
+
+/** AGY 세션에서 빗금으로 부를 수 있는 것. 손으로 적은 명령이 맨 앞이고, 스킬은 AGY 의 목록처럼 이름순이다. */
+export async function agySkills(cwd: string | undefined, lang?: Lang): Promise<Skill[]> {
+  const out: Skill[] = AGY_BUILTINS.map((b) => ({ name: b.name, description: say(b.description, lang), hint: b.hint && say(b.hint, lang) }));
+  const taken = new Set(out.map((s) => s.name));
+  for (const skill of await agyDiskOf(cwd)) if (!taken.has(skill.name)) out.push(skill);
   return out;
 }

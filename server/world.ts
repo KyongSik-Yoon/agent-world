@@ -17,7 +17,7 @@ import { asText, type Lang, type Text } from "./text.ts";
 import { planMtime, planPathIn, readPlan, type PlanText } from "./plan.ts";
 import { findReview, readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
-import { claudeSkills } from "./skills.ts";
+import { agySkills, claudeSkills } from "./skills.ts";
 import { activityText, currentPending, markCut, oneLine, refOf, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
 import { UsageWatch } from "./usage.ts";
@@ -274,6 +274,22 @@ export class World {
       summary = await this.fromLog(view, harness, sessionId, undefined, this.firstPrompt.has(pane.pane_id));
       harnessTitle = await harness.title?.(sessionId);
     }
+    // 로그에 남지 않는 명령과, 줄에 서서 아직 지시로 적히지 않은 글(AGY). 세션이 아직 없는 pane 도 폴더로 찾는다.
+    const typed = await harness?.typed?.(view.sessionId, view.cwd, { prompt: summary?.lastPrompt, at: summary?.lastPromptAt });
+    if (typed?.command) {
+      view.lastCommand = typed.command.text;
+      view.lastCommandAt = typed.command.at;
+    }
+    // 대화를 비운 뒤로 로그가 움직이지 않았으면 그 로그는 지나간 대화다 — 새 지시가 가서 새 대화의 로그가 생길 때까지 빈 세션으로
+    // 보인다. herdr 는 그동안 비우기 전의 세션을 그대로 알려 준다.
+    if (typed?.clearedAt !== undefined && summary && typed.clearedAt > (view.logUpdatedAt ?? 0)) {
+      summary = undefined;
+      harnessTitle = undefined;
+      view.recent = [];
+      view.activity = view.lastPrompt = view.lastReply = view.pending = undefined;
+      view.contextTokens = view.review = view.reviewSent = undefined;
+    }
+    if (typed?.queued) view.queued = typed.queued;
 
     const switched = this.switched.get(pane.pane_id);
     if (switched) {
@@ -707,8 +723,11 @@ export class World {
   async skills(agentId: string, lang?: Lang): Promise<SkillView[] | undefined> {
     const key = this.logOf.get(agentId);
     const entry = key ? this.tracked.get(key) : undefined;
-    if (!entry || entry.harness.vendor !== "claude") return undefined;
-    return claudeSkills(entry.path, entry.tail.state.cwd, lang);
+    if (entry?.harness.vendor === "claude") return claudeSkills(entry.path, entry.tail.state.cwd, lang);
+    // AGY 는 첫 지시 전에는 세션도 로그도 없다 — 목록은 디스크에서만 나오므로 pane 의 폴더만 있으면 된다.
+    const pane = (await herdrSnapshot()).agents.find((p) => p.pane_id === agentId);
+    if (pane && harnessFor((pane.agent ?? "").toLowerCase())?.vendor === "agy") return agySkills(pane.foreground_cwd || pane.cwd, lang);
+    return undefined;
   }
 
   hasPane(paneId: string): Promise<boolean> {

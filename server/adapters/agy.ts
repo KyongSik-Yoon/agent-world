@@ -11,9 +11,9 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { LogReader } from "../tail.ts";
+import { type LogReader, TailedLog } from "../tail.ts";
 import { beginRow, emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
-import type { Harness, LogFile } from "./types.ts";
+import type { Harness, LogFile, Typed } from "./types.ts";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TITLE_TTL_MS = 30_000;
@@ -90,6 +90,7 @@ export const agyReader: LogReader<LogSummary> = {
         const text = userRequest(content);
         if (text) {
           setPrompt(s, text);
+          s.lastPromptAt = at;
           pushActivity(s, "user", "", text, at);
           s.turnOpen = true;
           s.open.clear();
@@ -136,6 +137,109 @@ export const agyReader: LogReader<LogSummary> = {
   },
   ready: (s) => s.sawAssistant,
 };
+
+// ── 입력 기록(history.jsonl) ─────────────────────────────────────────────────────────────────
+//
+// 대화 로그만 봐서는 보낸 것이 닿았는지 알 수 없는 입력이 둘 있다(1.5.13 에서 확인):
+//   - 슬래시 명령(`/clear`, `/rename …`)과 셸 명령은 대화 로그에 행을 남기지 않는다.
+//   - 일하는 중에 보낸 지시는 AGY 가 줄을 세웠다가 그 턴이 끝난 뒤에야 USER_INPUT 으로 적는다(몇 초에서 몇 분 뒤).
+// AGY 는 입력창에서 Enter 를 받은 것을 모두 `history.jsonl` 에 곧바로(0.3초 안) 한 줄씩 적는다. 줄에는 글과 시각, 폴더가 있고
+// 대화가 이미 있으면 그 id 가 붙는다. 슬래시 명령은 `type: "slash_command"`, 셸 명령은 `"shell"`(글에 느낌표가 없다)인데,
+// `/compact` 처럼 프롬프트로 풀리는 명령은 type 없이 글만 `/` 로 시작한다.
+
+interface TypedRow {
+  text: string;
+  at: number;
+  command: boolean;
+  session?: string;
+  cwd?: string;
+}
+
+/** 기억해 두는 입력 행 수. 닿았는지는 보낸 직후에만 묻는다 — 모든 pane 을 합쳐 최근 것만 있으면 된다. */
+const MAX_TYPED = 300;
+/** 줄에 선 것으로 치는 동안. 그보다 오래된 글은 로그가 지시로 적었거나(꼬리 창 밖) 사람이 줄에서 뺀 것이다. */
+const QUEUED_FOR_MS = 30 * 60_000;
+/** 한 스냅샷 안에서 pane 마다 파일 상태를 다시 묻지 않게 한다. */
+const TYPED_RECHECK_MS = 300;
+
+const typedReader: LogReader<{ rows: TypedRow[] }> = {
+  init: () => ({ rows: [] }),
+  feed(s, row) {
+    if (!isRecord(row)) return;
+    const display = str(row.display);
+    const at = num(row.timestamp);
+    if (!display || at === undefined) return;
+    const shell = row.type === "shell";
+    s.rows.push({
+      text: shell ? `!${display}` : display,
+      at,
+      command: shell || row.type === "slash_command" || display.startsWith("/"),
+      session: str(row.conversationId),
+      cwd: str(row.workspace),
+    });
+    if (s.rows.length > MAX_TYPED) s.rows.splice(0, s.rows.length - MAX_TYPED);
+  },
+  ready: () => true,
+};
+
+let typedLog: { tail: TailedLog<{ rows: TypedRow[] }>; checkedAt: number } | undefined;
+
+async function typedRows(): Promise<TypedRow[]> {
+  const path = join(root(), "history.jsonl");
+  if (typedLog?.tail.path !== path) typedLog = { tail: new TailedLog(path, typedReader), checkedAt: 0 };
+  const now = Date.now();
+  if (now - typedLog.checkedAt >= TYPED_RECHECK_MS) {
+    typedLog.checkedAt = now;
+    await typedLog.tail.refresh().catch(() => false);
+  }
+  return typedLog.tail.state.rows;
+}
+
+/** 대화를 비우는 명령(`/clear`, 다른 이름 `/new`). */
+const CLEARS = /^\/(clear|new)\s*$/;
+
+/** 지난 대화로 옮겨 가는 명령(`/resume`, 다른 이름 `/switch`). */
+const SWITCHES = /^\/(resume|switch)(\s|$)/;
+
+const head = (text: string): string => text.replace(/\s+/g, " ").trim().slice(0, 64);
+
+/** 이 대화(아직 대화가 없는 행은 이 폴더)의 마지막 명령과, 로그의 마지막 지시 뒤에 친 글들. */
+async function typedFor(sessionId: string | undefined, cwd: string, last: { prompt?: string; at?: string }): Promise<Typed | undefined> {
+  const rows = await typedRows();
+  const loggedAt = last.at ? Date.parse(last.at) : NaN;
+  const since = Math.max(Number.isFinite(loggedAt) ? loggedAt : 0, Date.now() - QUEUED_FOR_MS);
+  const logged = last.prompt ? head(last.prompt) : undefined;
+  let command: Typed["command"];
+  let clearedAt: number | undefined;
+  const queued: string[] = [];
+  // `/clear` 는 곧바로 새 대화를 만들어 그 뒤의 명령에는 새 id 가 붙는데, herdr 는 첫 지시가 갈 때까지 비우기 전의 id 를 알려 준다.
+  // 그래서 이 대화를 비운 뒤 같은 폴더에서 처음 나타난 id 를 이 pane 의 것으로 잇는다.
+  const mine = new Set(sessionId ? [sessionId] : []);
+  const seen = new Set<string>();
+  let cleared = false;
+  for (const r of rows) {
+    if (r.session) {
+      if (cleared && !seen.has(r.session) && r.cwd === cwd) {
+        mine.add(r.session);
+        cleared = false;
+      }
+      seen.add(r.session);
+      if (!mine.has(r.session)) continue;
+    } else if (r.cwd !== cwd) continue;
+    if (r.command) {
+      command = { text: r.text, at: String(r.at) };
+      if (CLEARS.test(r.text)) {
+        cleared = true;
+        clearedAt = r.at;
+      }
+      // 비운 뒤에 지난 대화를 다시 열었으면 화면에는 그 대화가 있다 — 무엇을 열었는지는 herdr 가 알려 주는 세션을 믿는다.
+      else if (SWITCHES.test(r.text)) clearedAt = undefined;
+    }
+    // 로그의 시각은 초 단위라 같은 초에 보낸 지시가 "뒤"로 보인다 — 글이 같으면 이미 지시로 적힌 것이다.
+    else if (r.at > since && head(r.text) !== logged) queued.push(r.text);
+  }
+  return command || queued.length ? { command, clearedAt, queued: queued.length ? queued : undefined } : undefined;
+}
 
 // 요약 DB 의 한 행. 제목과, 서브에이전트면 그것을 부른 대화.
 interface SummaryRow {
@@ -203,6 +307,7 @@ export const agy: Harness = {
   async mainSession(sessionId) {
     return SESSION_ID.test(sessionId) ? mainOf(sessionId) : sessionId;
   },
+  typed: typedFor,
   async discover(sinceMs) {
     let ids: string[];
     try {

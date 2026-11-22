@@ -7,6 +7,14 @@ export interface LogFile {
   mtimeMs: number;
 }
 
+/** 로그 밖에서 읽은 입력: 마지막 명령(`/clear`, `!pwd`)과, 보냈지만 아직 로그에 지시로 적히지 않은 글들. */
+export interface Typed {
+  command?: { text: string; at: string };
+  /** 대화를 마지막으로 비운 시각(ms). 그 뒤로 로그가 움직이지 않았으면 그 로그는 지나간 대화다. */
+  clearedAt?: number;
+  queued?: string[];
+}
+
 /** 하네스 하나의 로그를 읽는 방법. 새 하네스는 이 인터페이스 하나만 채우면 월드에 나타난다. */
 export interface Harness {
   vendor: string;
@@ -26,6 +34,11 @@ export interface Harness {
    * 없으면 herdr 의 세션을 그대로 읽는다.
    */
   mainSession?(sessionId: string): Promise<string | null>;
+  /**
+   * 로그에 남지 않거나 늦게 남는 입력을 다른 곳에서 읽는다(AGY 의 입력 기록). 세션이 아직 없으면 폴더로 찾는다.
+   * last 는 로그가 아는 마지막 지시 — 그 뒤에 친 것만 "줄에 선 것"으로 본다.
+   */
+  typed?(sessionId: string | undefined, cwd: string, last: { prompt?: string; at?: string }): Promise<Typed | undefined>;
   /** herdr 밖에서 도는 세션을 찾는다 — sinceMs 이후로 바뀐 로그 파일들. */
   discover?(sinceMs: number): Promise<LogFile[]>;
 }
