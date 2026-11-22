@@ -814,6 +814,22 @@ function dividerCols(text: string): [number[], number] {
   return [at, col];
 }
 
+/** 상자 글자와, 그 가운데 곧은 가로줄·세로줄. 곧은 줄이 아닌 상자 글자가 모서리·이음매다. */
+const TABLE_JOINT = /[\u2500-\u257F]/;
+const STRAIGHT = /[\u2500-\u250B\u254C-\u2551\u2574-\u257F]/;
+
+/** 그 칸에 놓인 글자(없으면 ""). 곧은 줄은 ""로 돌려, 남는 상자 글자가 모서리·이음매뿐이게 한다. */
+function charAt(text: string, col: number): string {
+  let at = 0;
+  for (const ch of text) {
+    if (JOINS.test(ch)) continue;
+    if (at === col) return STRAIGHT.test(ch) ? "" : ch;
+    if (at > col) return "";
+    at += WIDE.test(ch) ? 2 : 1;
+  }
+  return "";
+}
+
 /** 구분선 왼쪽이 상자 테두리로 시작해 닫히지 않은 채 구분선에 닿는 줄 — 그 세로선은 상자에 든 표의 안쪽 선이다. */
 const BOXED_OPEN = /^\s*[\u2502\u2503\u2551\u251C\u2560\u256D\u2570\u250C\u2514](?![\s\S]*[\u2502\u2503\u2551\u2524\u2563\u256E\u256F\u2510\u2518]\s*$)/;
 /** 나뉜 화면에서 줄 하나를 구분선 칸에서 가른 것. */
@@ -907,6 +923,8 @@ export function stackPanes(lines: readonly string[]): string[] | null {
   });
   const { col, start, end } = best;
   if (col < 0 || end - start < Math.max(SPLIT_MIN_ROWS, lines.length * SPLIT_SHARE)) return null;
+  // 세로선의 위나 아래가 상자의 모서리·이음매(┬ ┼ ┴ ╮ ╯)면 표나 상자의 선이다. 창을 가르는 선은 화면 끝이나 가로줄에서 끝난다.
+  if ([start - 1, end].some((i) => TABLE_JOINT.test(charAt(infos[i]?.text ?? "", col)))) return null;
   const cuts: PaneCut[] = [];
   for (let i = start; i < end; i += 1) {
     const info = infos[i]!;
