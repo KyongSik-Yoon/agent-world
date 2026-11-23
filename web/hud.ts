@@ -360,7 +360,7 @@ export class Hud {
       right = vw - term.right;
     } else if (detail && detail.width >= vw - 1) {
       // 휴대폰: 상태 창이 화면 전체를 쓴다.
-      top = this.detail.querySelector(".d-head")!.getBoundingClientRect().bottom;
+      top = this.belowDetailActions();
     } else {
       const roster = shown(this.roster);
       const l = roster && roster.width < vw / 2 ? roster.right : 0;
@@ -370,12 +370,23 @@ export class Hud {
         right = r;
       } else if (detail) {
         // 두 창 사이가 좁으면 상태 창 안, 그 머리 아래에 둔다 — 머리의 단추와 목록의 찾기 칸을 덮지 않게.
-        top = this.detail.querySelector(".d-head")!.getBoundingClientRect().bottom;
+        top = this.belowDetailActions();
         left = detail.left;
         right = vw - detail.right;
       }
     }
     Object.assign(this.toasts.style, { top: `${Math.round(top) + 8}px`, left: `${Math.round(left)}px`, right: `${Math.round(right)}px` });
+  }
+
+  /**
+   * 상태 창 안에 띄울 때의 위 끝. 머리 바로 밑은 할 일 단추 줄(herdr 에서 열기·닫기 등)이 놓이는 자리라, 그 줄이 보이면 그 아래로
+   * 내린다 — 알림이 7초가 차 사라지는 순간에 알림을 누르려던 손가락이 밑의 단추를 누르면, PC 의 herdr 화면이 옮겨지고 창이
+   * 튀어나오거나 pane 을 닫는 창이 뜬다. 줄이 머리 뒤로 스크롤돼 갔거나, 위의 질문 카드에 밀려 화면 가운데보다 아래에 있으면 머리 밑에 둔다.
+   */
+  private belowDetailActions(): number {
+    const head = this.detail.querySelector(".d-head")!.getBoundingClientRect().bottom;
+    const row = this.detail.querySelector('[data-k="actions"]')?.getBoundingClientRect();
+    return row && row.height > 0 && row.bottom > head && row.bottom < window.innerHeight / 2 ? row.bottom : head;
   }
 
   /** stay: 누르거나 밀어 닫을 때까지 둔다(그 알림에만 남은 것을 되찾는 길이 있을 때). */

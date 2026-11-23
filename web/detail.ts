@@ -1025,10 +1025,14 @@ export class DetailPanel {
     const tools = h("div", { class: "tools" });
     const openTitle = !a.paneId ? t("herdr 밖에서 도는 세션이라 옮겨 갈 pane 이 없습니다.") : control ? t("herdr 화면을 이 pane 으로 옮깁니다 (Enter)") : t("보기 전용으로 띄운 서버라 herdr 화면을 옮기지 않습니다.");
     const openHerdr = (): void => this.callbacks.act({ type: "open-herdr", agent: a });
-    if (a.status === "done" && a.paneId && control) {
-      row.append(this.button(t("확인 완료"), () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: false }), { cls: "btn primary", icon: "check", title: t("읽었다고 표시하고 집으로 돌려보냅니다 (D)") }));
+    const done = a.status === "done" && a.paneId && control;
+    if (done) row.append(this.button(t("확인 완료"), () => this.callbacks.act({ type: "seen", paneId: a.paneId!, undo: false }), { cls: "btn primary", icon: "check", title: t("읽었다고 표시하고 집으로 돌려보냅니다 (D)") }));
+    // 손가락 기기에서는 큰 단추로 두지 않는다. 그 기기는 대개 PC 앞이 아니어서 PC 의 herdr 화면을 옮길 일이 드문데, 누르면 PC 의
+    // 터미널 창이 앞으로 튀어나오고 완료 표시가 풀린다 — 머리 바로 밑의 넓은 단추라 스크롤하다·알림을 닫다 잘못 눌리기 쉽다.
+    if (done || touchFirst.matches) {
       const open = this.tool("open", t("herdr 에서 열기"), openHerdr);
       open.title = `${t("herdr 에서 열기")} — ${openTitle}`;
+      open.disabled = !a.paneId || !control;
       tools.append(open);
     } else {
       row.append(this.button(t("herdr 에서 열기"), openHerdr, { cls: "btn primary", icon: "open", disabled: !a.paneId || !control, title: openTitle }));
