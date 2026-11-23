@@ -126,7 +126,13 @@ const builder = new Builder({
   draft: (paneId, text) => hud.setDraft(paneId, text),
 });
 
+/** 휴대폰에서 목록 서랍을 펴 둔 채 골라 들어왔다 — 뒤로 가기로 상태 창을 닫으면 그 목록으로 돌아간다. */
+let cameFromRoster = false;
+
 function select(id: string | null): void {
+  // 상태 창이 열려 있는 동안에는 지우지 않는다 — 목록에서 들어온 뒤 알림을 눌러 다른 세션으로 옮겨 가도 돌아갈 곳은 목록이다.
+  if (id === null) cameFromRoster = false;
+  else if (document.body.dataset.roster === "open" && phoneLayout.matches) cameFromRoster = true;
   // 이미 고른 캐릭터를 다시 고르면, 다른 데를 보고 있었을 때 그 자리를 다시 비춘다(장면이 판단한다).
   // 좁은 화면에서는 목록이 마을이나 상태 창을 덮고 있으므로, 고르면 접는다. 지금 보던 것을 다시 골라도 접는다.
   if (id) setRoster(false);
@@ -609,6 +615,7 @@ document.getElementById("detail")!.addEventListener("click", (e) => {
 // 상태 창. 열린 것이 하나라도 있는 동안 방문 기록에 지킴 칸을 하나 얹어 두고, 뒤로 가기가 그 칸을 빼면 하나를 닫은 뒤
 // 남은 것이 있으면 다시 얹는다. 단추로 다 닫았으면 얹어 둔 칸을 스스로 걷어, 다음 뒤로 가기가 헛돌지 않게 한다.
 // 닫을 수 없는 대화상자(열쇠 묻기, data-stay)는 세지 않는다 — 뒤로 가기에 갇히지 않고 앱을 떠날 수 있게.
+// 목록 서랍에서 골라 들어온 상태 창은 뒤로 가기로 닫으면 그 목록이 다시 올라온다(닫기 단추·홈·Esc 는 마을로 간다).
 const BACK_GUARD = "agent-world.back";
 /** 가운데 무대를 세우려면 두 창 사이와 창 높이가 이만큼은 돼야 한다(px). */
 const STAGE_MIN_WIDTH = 520;
@@ -638,7 +645,12 @@ function topLayer(): (() => void) | null {
     };
   if (terminal.isOpen) return () => terminal.close();
   if (document.body.dataset.roster === "open" && phoneLayout.matches) return () => setRoster(false);
-  if (selectedId !== null) return () => select(null);
+  if (selectedId !== null)
+    return () => {
+      const toRoster = cameFromRoster && phoneLayout.matches;
+      select(null);
+      if (toRoster) setRoster(true);
+    };
   return null;
 }
 /** 얹은 칸을 걷으려고 부른 history.back() 이 아직 돌아오지 않았다. */
