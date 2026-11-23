@@ -2079,11 +2079,19 @@ export class TermOverlay {
     this.unpage();
   }
 
-  /** 페이지가 닫힌다(새로고침, 탭 닫기). 줄 서서 기다릴 수 없어 바로, 닫히는 중에도 가는 요청으로 보낸다. */
+  /**
+   * 페이지가 닫히거나 가려진다(새로고침, 탭 닫기, 휴대폰에서 앱을 내리거나 화면을 끔). 휴대폰은 앱을 내릴 때 창을 닫지 않으므로
+   * 여기서 돌려 두지 않으면 넘긴 화면이 그대로 남는다 — agy 는 스스로 내려오지 않아 PC 의 pane 화면까지 그 장면에 멈춘다.
+   * 곧 멈출 페이지라 줄 서서 기다리지 않고, 닫히는 중에도 가는 요청으로 바로 보낸다. 이 화면이 넘긴 것만 돌린다.
+   */
   pageHide(): void {
     if (this.root.hidden || this.paged <= 0) return;
     void post("/api/term/bottom", this.wheels ? { paneId: this.screen.pane, wheel: true } : { paneId: this.screen.pane, pages: this.paged }, true).catch(() => {});
     this.paged = 0;
+    this.rollPending = 0;
+    this.rollRest = 0;
+    this.screen.toBottom();
+    this.syncBack();
   }
 
   private toggleBack(): void {
