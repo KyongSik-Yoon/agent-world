@@ -419,7 +419,9 @@ function announce(snapshot: WorldSnapshot): void {
     // 확인 필요면 무엇을 기다리는지까지 알린다.
     const what = a.status === "blocked" && a.pending ? ` — ${bubbleText(a) ?? ""}` : "";
     hud.toast(STATUS_LABEL[a.status], `${a.title} — ${where}${what}`, STATUS_VAR[a.status], () => select(a.id));
-    if (notify && !pushed && document.visibilityState !== "visible") {
+    // 서비스 워커와 같은 규칙: 보이고 창이 앞에 있을 때만 토스트로 그친다. 보이기만 하고 앞에 있지 않으면(옆에 띄운 창,
+    // 두 번째 모니터) 사람은 다른 앱을 쓰는 중이라 토스트를 못 본다.
+    if (notify && !pushed && !(document.visibilityState === "visible" && document.hasFocus())) {
       try {
         const n = new Notification(`${STATUS_LABEL[a.status]} · ${a.title}`, { body: `${where}${what}`, tag: a.id });
         n.onclick = () => {
