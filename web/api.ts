@@ -37,10 +37,11 @@ export class ApiError extends Error {
   }
 }
 
-export async function post<T = Record<string, unknown>>(path: string, body: Record<string, unknown>): Promise<T> {
+/** keepalive 는 페이지가 닫히는 중에도 요청을 마저 보낸다(pagehide). */
+export async function post<T = Record<string, unknown>>(path: string, body: Record<string, unknown>, keepalive = false): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method: "POST", headers: { "content-type": "application/json", ...headers() }, body: JSON.stringify(body) });
+    res = await fetch(path, { method: "POST", headers: { "content-type": "application/json", ...headers() }, body: JSON.stringify(body), keepalive });
   } catch {
     throw new ApiError(t("서버에 닿지 못했습니다."));
   }
@@ -78,11 +79,23 @@ export interface KeyInput {
 
 const queues = new Map<string, Promise<void>>();
 
-/** pane 에 입력을 보낸다. 같은 pane 으로 가는 입력은 보낸 순서대로 하나씩 처리한다. */
-export function sendInput(paneId: string, input: KeyInput): Promise<void> {
+function enqueue(paneId: string, run: () => Promise<unknown>): Promise<void> {
   const next = (queues.get(paneId) ?? Promise.resolve()).catch(() => {}).then(async () => {
-    await post("/api/keys", { paneId, ...input });
+    await run();
   });
   queues.set(paneId, next);
   return next;
+}
+
+/** pane 에 입력을 보낸다. 같은 pane 으로 가는 입력은 보낸 순서대로 하나씩 처리한다. */
+export function sendInput(paneId: string, input: KeyInput): Promise<void> {
+  return enqueue(paneId, () => post("/api/keys", { paneId, ...input }));
+}
+
+/**
+ * 위로 넘겨 둔 앱 화면(스크롤백 없는 에이전트)을 맨 아래로 돌린다. 앞서 보낸 키 뒤에 간다. pages 는 이 화면이 넘긴 쪽 수 —
+ * 화면에서 넘긴 정도를 읽을 수 없는 앱에만 쓴다.
+ */
+export function sendToBottom(paneId: string, pages: number): Promise<void> {
+  return enqueue(paneId, () => post("/api/term/bottom", { paneId, pages }));
 }

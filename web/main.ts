@@ -63,6 +63,8 @@ const hud = new Hud({
 });
 
 const terminal = new TermOverlay();
+// 새로고침·탭 닫기로 크게 보기가 끝나도 넘겨 둔 앱 화면은 돌려 둔다.
+addEventListener("pagehide", () => terminal.pageHide());
 terminal.onError = (message) => hud.toast(t("입력을 보내지 못했습니다"), message, "var(--blocked)");
 terminal.onGone = (title) => hud.toast(t("터미널을 닫았습니다"), t("{title} — 이 pane 이 herdr 에서 닫혔습니다.", { title }), "var(--idle)");
 terminal.onToggle = (open) => {

@@ -4,7 +4,7 @@
 // 터미널 에뮬레이터 없이 줄마다 span 으로 그리면 된다. 표와 테두리가 어긋나지 않도록 한글 같은
 // 전각 문자는 2칸, 글꼴에 없을 법한 기호는 1칸 너비의 상자에 넣는다.
 import { rideFrame } from "./beat.ts";
-import { get, sendInput, headers } from "./api.ts";
+import { get, post, sendInput, sendToBottom, headers } from "./api.ts";
 import { withKey } from "./key.ts";
 import { tapOnPress } from "./haptic.ts";
 import { drawnClass } from "./cells.ts";
@@ -1790,6 +1790,11 @@ export class TermOverlay {
   private paged = 0;
   private pagedAt = 0;
   /**
+   * 열었을 때 이미 위로 넘겨져 있던 agy 화면 — agy 는 넘긴 자리에 머물러 pane 화면이 옛 장면에 멈춘다. "지금 화면으로"를 띄워
+   * 돌릴 수 있게만 하고, 닫을 때 저절로 돌리지는 않는다(PC 앞의 사람이 일부러 올려 둔 것일 수 있다).
+   */
+  private stuck = false;
+  /**
    * 휠 신호를 받는 pane(Claude Code)인지 — 굴리거나 끈 만큼 마우스 휠 신호를 보내 앱이 줄 단위로 굴리게 한다. 쪽 단위로
    * 끊기는 PageUp 보다 손을 잘 따라온다. 이때 paged 는 횟수가 아니라 "올려 두었다"는 표시이고, 돌아갈 때는 Ctrl+End 다.
    */
@@ -2018,6 +2023,8 @@ export class TermOverlay {
   }
 
   open(paneId: string, title: string, sub: string, cols: number | undefined, rows: number | undefined): void {
+    // 연 채로 다른 pane 으로 옮기면 앞 pane 에서 넘겨 둔 화면을 먼저 돌린다 — 횟수를 지우면 아무도 돌리지 않는다.
+    if (!this.root.hidden && this.screen.pane !== paneId) this.leave();
     this.cols = cols && cols > 20 ? cols : 120;
     this.rows = rows && rows > 2 ? rows : 0;
     this.title.textContent = title;
@@ -2027,13 +2034,16 @@ export class TermOverlay {
     this.pages = undefined;
     this.wheels = false;
     this.paged = 0;
+    this.stuck = false;
     this.rollPending = 0;
     this.rollRest = 0;
-    void get<{ page: boolean; wheel?: boolean }>(`/api/term/back?pane=${encodeURIComponent(paneId)}`)
+    void get<{ page: boolean; wheel?: boolean; below?: number }>(`/api/term/back?pane=${encodeURIComponent(paneId)}`)
       .then((r) => {
         if (this.screen.pane !== paneId) return;
         this.pages = r.page;
         this.wheels = r.page && r.wheel === true;
+        this.stuck = r.page && (r.below ?? 0) > 0;
+        this.syncBack();
       })
       .catch(() => {});
     this.syncBack();
@@ -2057,15 +2067,27 @@ export class TermOverlay {
     this.flush();
     this.setHeld("ctrl", false);
     this.setHeld("alt", false);
-    // 넘겨 둔 앱 화면은 지금 화면으로 돌려 두고 닫는다 — PC 에서 보는 화면도 같은 pane 이다.
-    this.unpage();
+    this.leave();
     this.root.hidden = true;
     this.screen.stop();
     this.onToggle?.(false);
   }
 
+  /** 이 화면이 넘겨 둔 앱 화면은 지금 화면으로 돌려 두고 떠난다 — PC 에서 보는 화면도 같은 pane 이다. */
+  private leave(): void {
+    this.stuck = false;
+    this.unpage();
+  }
+
+  /** 페이지가 닫힌다(새로고침, 탭 닫기). 줄 서서 기다릴 수 없어 바로, 닫히는 중에도 가는 요청으로 보낸다. */
+  pageHide(): void {
+    if (this.root.hidden || this.paged <= 0) return;
+    void post("/api/term/bottom", this.wheels ? { paneId: this.screen.pane, wheel: true } : { paneId: this.screen.pane, pages: this.paged }, true).catch(() => {});
+    this.paged = 0;
+  }
+
   private toggleBack(): void {
-    if (this.paged > 0) this.unpage();
+    if (this.paged > 0 || this.stuck) this.unpage();
     else if (this.pages) {
       this.page(1);
       this.screen.toTop();
@@ -2119,19 +2141,25 @@ export class TermOverlay {
     next();
   }
 
-  /** 넘겨 둔 앱 화면을 맨 아래로 돌린다. 앱이 그새 스스로 내려갔어도 남는 PageDown·Ctrl+End 는 해가 없다. */
+  /**
+   * 넘겨 둔 앱 화면을 맨 아래로 돌린다. 앱이 그새 스스로 내려갔어도 남는 PageDown·Ctrl+End 는 해가 없다.
+   * 휠 신호를 받는 앱(Claude)은 Ctrl+End 로 돌아온다. 그 밖은 서버가 맡는다 — agy 는 넘긴 동안 쌓인 출력만큼 더 내려가야 해서
+   * 넘긴 횟수로는 못 돌아오고, 서버가 화면의 "↓ N lines" 표시가 사라질 때까지 내린다.
+   */
   private unpage(): void {
     this.rollPending = 0;
     this.rollRest = 0;
-    if (this.paged <= 0) return;
-    this.send({ text: this.wheels ? CTRL_END : PAGE_DOWN.repeat(this.paged + 2), raw: true });
+    if (this.paged <= 0 && !this.stuck) return;
+    if (this.wheels) this.send({ text: CTRL_END, raw: true });
+    else void sendToBottom(this.screen.pane, Math.max(0, this.paged)).catch((e: Error) => this.onError?.(e.message));
     this.paged = 0;
+    this.stuck = false;
     this.screen.toBottom();
     this.syncBack();
   }
 
   private syncBack(): void {
-    const on = this.screen.scrollback > 0 || this.paged > 0;
+    const on = this.screen.scrollback > 0 || this.paged > 0 || this.stuck;
     this.backBtn.textContent = on ? t("지금 화면으로") : t("지난 출력 보기");
     this.screen.el.classList.toggle("back", on);
   }

@@ -27,6 +27,8 @@ import {
   herdrTerm,
   type Kind,
 } from "./herdr.ts";
+import { agy } from "./adapters/agy.ts";
+import { agyLinesBelow, agyToBottom } from "./agyscroll.ts";
 import { AnswerError } from "./asking.ts";
 import { claudeComposer, squash } from "./composer.ts";
 import { MAX_IMAGE_BYTES, MAX_IMAGES, imagePath, saveImage } from "./images.ts";
@@ -84,6 +86,10 @@ const SUBMIT_STUCK_MS = 1000;
 const SUBMIT_PRESSES = 3;
 /** 입력창에서 보낸 글을 알아볼 때 견주는 첫 줄의 길이(공백을 뺀 글자 수). */
 const SUBMIT_MARK_CHARS = 12;
+const PAGE_DOWN = "\x1b[6~";
+const CTRL_END = "\x1b[1;5F";
+/** 화면이 넘겼다고 알려 오는 쪽 수의 상한. */
+const MAX_PAGES = 200;
 /** Claude Code 는 긴 붙여넣기를 입력창에 이 표시로 접어 둔다. */
 const PASTED_MARK = /\[Pasted text #\d+/;
 
@@ -222,7 +228,11 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
     try {
       const pane = (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId);
       if (pane?.agent === "claude") await submitToClaude(paneId, prompt, pane.agent_status);
-      else await herdrPrompt(paneId, prompt);
+      else {
+        // 위로 넘겨 둔 agy 는 지시를 받아도 그 자리에 머물러, 보낸 지시와 그 답이 pane 화면에도 미리보기에도 안 보인다.
+        if (agy.matches(pane?.agent ?? "")) await agyToBottom(paneId).catch(() => {});
+        await herdrPrompt(paneId, prompt);
+      }
     } catch (e) {
       if (e instanceof HerdrError && e.code === "timeout") {
         throw new Reject(
@@ -403,9 +413,11 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
           const recent = (await herdrTerm(paneId, "recent", visible + 1)).split(/\r?\n/).length;
           // 셸처럼 화면이 덜 찬 pane 도 스크롤백이 없을 수 있다 — 넘김 키는 에이전트에게만 보낸다.
           const agent = recent <= visible && !readonly ? (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId)?.agent : undefined;
+          // 이미 위로 넘겨져 있는 agy 면 아래에 남은 줄 수 — 화면이 "지금 화면으로"를 띄운다.
+          const below = agent && agy.matches(agent) ? agyLinesBelow(await herdrScreen(paneId)) : 0;
           // 휠 신호(SGR 마우스)는 마우스를 받지 않는 앱의 입력창에 글자로 찍힐 수 있다. herdr 는 pane 이 마우스를 켰는지
           // 알려 주지 않아, 실측한 Claude Code 에만 보낸다(전체 화면이면 줄 단위로 굴리고, 아니면 말없이 버린다).
-          return json({ scrollback: recent > visible, page: Boolean(agent), wheel: /claude/i.test(agent ?? "") });
+          return json({ scrollback: recent > visible, page: Boolean(agent), wheel: /claude/i.test(agent ?? ""), below });
         } catch (e) {
           return herdrDown(e, req);
         }
@@ -494,6 +506,20 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
         keysRefresh = setTimeout(refresh, KEYS_REFRESH_MS);
       },
     ),
+    // 위로 넘겨 둔 앱 화면(스크롤백 없는 에이전트)을 맨 아래로. agy 는 화면의 "↓ N lines" 가 사라질 때까지 내리고(agyscroll.ts),
+    // 넘긴 정도를 화면에서 읽을 수 없는 앱은 화면이 넘긴 쪽 수(pages)보다 조금 더 PageDown 을 보낸다. wheel 은 Claude 의 Ctrl+End.
+    "/api/term/bottom": mutate(async (body) => {
+      const paneId = text(body, "paneId");
+      if (!watched(paneId)) await need("pane", paneId);
+      if (body.wheel === true) await herdrRaw(paneId, CTRL_END);
+      else {
+        const agent = (await herdrSnapshot()).agents.find((p) => p.pane_id === paneId)?.agent ?? "";
+        const pages = Math.min(MAX_PAGES, Math.max(0, Math.floor(Number(body.pages) || 0)));
+        if (agy.matches(agent)) await agyToBottom(paneId);
+        else if (pages > 0) await herdrRaw(paneId, PAGE_DOWN.repeat(pages + 2));
+      }
+      poke(paneId);
+    }),
     // 하던 일 멈추기. 키 단추의 Esc 와 달리 지금 일하는 중일 때만 보낸다 — 질문이 떠 있으면 Esc 는 그 질문을 거절한다.
     // Esc 는 세 하네스(Claude·Codex·agy) 모두 지금 턴을 끊는다. 그래도 일하는 중으로 남는 경우가 둘 있다(Claude 2.1.328 실측):
     //   - 일하는 중에 보내 줄 선 지시가 있으면, 끊는 즉시 그 지시로 새 턴을 시작한다 → Esc 를 한 번 더 눌러 그것도 끊는다.
