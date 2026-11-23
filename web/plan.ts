@@ -25,6 +25,8 @@ interface LineNote {
   from: number;
   to: number;
   body: string;
+  /** 보낸 때의 파일 이름과 그 줄 원문 — 닿지 않은 초안을 다음 카드로 옮길 때 줄이 그대로인지 맞춰 본다. */
+  sent?: { name: string; lines: string[] };
 }
 
 /** 한 카드에 적던 것. */
@@ -160,6 +162,7 @@ export class PlanReader {
     if (!d) this.drafts.set(this.agentId, (d = { card, text: "", notes: [] }));
     if (card !== undefined && d.card !== card) {
       if (d.card !== undefined && !d.unsent) d.notes = [];
+      else if (d.unsent && this.plan) this.carry(d, this.plan);
       d.card = card;
       d.unsent = false;
     }
@@ -271,23 +274,38 @@ export class PlanReader {
     const d = this.draft();
     const wish = d.text.trim();
     if (!plan || d.notes.length === 0) return wish;
-    const src = plan.text.replace(/\r\n?/g, "\n").split("\n");
-    const blocks = d.notes.map((c) => {
-      const width = String(c.to).length;
-      const quoted = src.slice(c.from - 1, c.to).map((line, i) => `${String(c.from + i).padStart(width)} ${line}`);
-      // 원문에 ``` 가 있어도 닫히지 않게 그보다 긴 울타리를 쓴다.
-      const longest = Math.max(0, ...quoted.flatMap((l) => (l.match(/`+/g) ?? []).map((r) => r.length)));
-      const fence = "`".repeat(Math.max(3, longest + 1));
-      return `${plan.name}:${span(c)}\n${fence}\n${quoted.join("\n")}\n${fence}\n${c.body}`;
-    });
+    const src = lines(plan.text);
+    const blocks = d.notes.map((c) => noteBlock(plan.name, c, src.slice(c.from - 1, c.to)));
     const notes = [`Comments on lines of the plan file (line numbers are the file's, each quoting the lines as they were):`, ...blocks].join("\n\n");
     return wish ? `${notes}\n\nAlso:\n\n${wish}` : notes;
   }
 
+  /**
+   * 닿지 않은 초안을 새 카드로 옮긴다. 그 사이 플랜이 바뀌었을 수 있다(확인만 못 했고 실은 닿아 고쳐졌거나, 엔진 창에서
+   * 따로 답했다) — 줄 원문이 그대로인 댓글만 줄에 남기고, 달라진 것은 보낸 때의 인용째 글 칸으로 옮긴다. 줄 번호만 믿으면
+   * 옛 댓글이 엉뚱한 줄을 인용해 간다.
+   */
+  private carry(d: Draft, plan: Plan): void {
+    const src = lines(plan.text);
+    const moved: string[] = [];
+    d.notes = d.notes.filter((c) => {
+      if (!c.sent) return true;
+      const now = src.slice(c.from - 1, c.to);
+      const same = now.length === c.sent.lines.length && now.every((l, i) => l === c.sent!.lines[i]);
+      if (!same) moved.push(noteBlock(c.sent.name, c, c.sent.lines));
+      return same;
+    });
+    if (!moved.length) return;
+    d.text = [...moved, d.text.trim()].filter(Boolean).join("\n\n");
+    // 글 칸은 창을 열 때 초안을 읽었다 — 옮긴 것이 보이게 고쳐 둔다.
+    if (this.ui) this.ui.note.value = d.text;
+  }
+
   private async send(a: AgentView): Promise<void> {
     const ui = this.ui;
-    const card = this.plan?.card;
-    if (!ui || !this.onRevise || this.sending || card === undefined || ui.send.disabled) return;
+    const plan = this.plan;
+    const card = plan?.card;
+    if (!ui || !plan || !this.onRevise || this.sending || card === undefined || ui.send.disabled) return;
     const text = this.compose();
     if (text.length > MAX_REVISE) {
       this.showError(t("고칠 점이 너무 깁니다."));
@@ -300,6 +318,8 @@ export class PlanReader {
     // 답을 기다리는 사이 카드가 내려가 스냅샷(sync)이 먼저 올 수 있다 — 닿았다고 확인될 때까지는 지우지 않게 둔다.
     const draft = this.draft();
     draft.unsent = true;
+    const src = lines(plan.text);
+    for (const c of draft.notes) c.sent = { name: plan.name, lines: src.slice(c.from - 1, c.to) };
     try {
       await this.onRevise(a, card, text);
       // 닿았다 — 적던 것은 버린다. 창은 다음 스냅샷에서 닫힌다.
@@ -354,6 +374,20 @@ export class PlanReader {
         if (body.querySelector(".plan-wait")) body.replaceChildren(h("p", { class: "plan-wait" }, t("플랜을 읽지 못했습니다."), " ", e.message));
       });
   }
+}
+
+function lines(text: string): string[] {
+  return text.replace(/\r\n?/g, "\n").split("\n");
+}
+
+/** 줄 댓글 하나: 파일:줄, 울타리 친 원문(줄 번호 붙임), 댓글. */
+function noteBlock(name: string, c: LineNote, quote: string[]): string {
+  const width = String(c.to).length;
+  const quoted = quote.map((line, i) => `${String(c.from + i).padStart(width)} ${line}`);
+  // 원문에 ``` 가 있어도 닫히지 않게 그보다 긴 울타리를 쓴다.
+  const longest = Math.max(0, ...quoted.flatMap((l) => (l.match(/`+/g) ?? []).map((r) => r.length)));
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return `${name}:${span(c)}\n${fence}\n${quoted.join("\n")}\n${fence}\n${c.body}`;
 }
 
 /** 줄 범위를 글로: 12, 12–14. */

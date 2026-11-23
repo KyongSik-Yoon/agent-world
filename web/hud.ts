@@ -27,11 +27,14 @@ function matches(a: AgentView, query: string): boolean {
 /** 목록과 상태 창 사이가 이보다 좁으면 알림을 그 사이에 두지 않는다. */
 const TOAST_ROOM_PX = 360;
 
+/** ms 가 Infinity 면 저절로 사라지지 않는다 — 누르거나 밀어서 닫는다. */
 function swipeAway(el: HTMLElement, ms: number): void {
+  const stays = !Number.isFinite(ms);
   let deadline = performance.now() + ms;
-  let timer = setTimeout(() => el.remove(), ms);
+  let timer = stays ? undefined : setTimeout(() => el.remove(), ms);
   // 손을 뗀 뒤 남은 시간만큼 더 둔다. 다 썼더라도 읽을 틈은 준다.
   const resume = (): void => {
+    if (stays) return;
     deadline = Math.max(deadline, performance.now() + 2500);
     timer = setTimeout(() => el.remove(), deadline - performance.now());
   };
@@ -375,7 +378,8 @@ export class Hud {
     Object.assign(this.toasts.style, { top: `${Math.round(top) + 8}px`, left: `${Math.round(left)}px`, right: `${Math.round(right)}px` });
   }
 
-  toast(title: string, text: string, color: string, onClick?: () => void): void {
+  /** stay: 누르거나 밀어 닫을 때까지 둔다(그 알림에만 남은 것을 되찾는 길이 있을 때). */
+  toast(title: string, text: string, color: string, onClick?: () => void, stay = false): void {
     const el = h("div", { class: "toast" }, h("b", {}, title), h("span", {}, text));
     el.style.setProperty("--c", color);
     el.addEventListener("click", () => {
@@ -386,7 +390,7 @@ export class Hud {
     this.toasts.append(el);
     while (this.toasts.childElementCount > 4) this.toasts.firstElementChild?.remove();
     this.raiseToasts();
-    swipeAway(el, 7000);
+    swipeAway(el, stay ? Infinity : 7000);
   }
 
   /** 되돌릴 수 있는 일을 알린다 — 단추를 누르면 undo 를 부른다. */

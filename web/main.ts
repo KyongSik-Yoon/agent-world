@@ -90,6 +90,7 @@ planReader.onLost = (a, message, text) =>
       () => hud.toast(t("복사했습니다"), t("고칠 점"), "var(--accent)"),
       () => hud.toast(t("복사하지 못했습니다"), t("고칠 점"), "var(--blocked)"),
     ),
+    true,
   );
 terminal.onPlan = (paneId) => {
   const agent = hud.latest?.agents.find((a) => a.paneId === paneId);
