@@ -12,8 +12,8 @@ const WEB = join(ROOT, "web");
 
 /** 이름표 층(web/world/labels.ts)에 드는 요소들. 여기에 transition·animation 을 걸면 장면이 쉬는 박자에도 화면이 나간다. */
 const OVERLAY = /\.(labels|label-slot|tag|plot-sign|bubble|plate|sign-name)(?![\w-])/;
-/** 제 requestAnimationFrame 을 돌려도 되는 곳 — 장면의 박자 자체. 나머지는 beat.ts 의 rideFrame 에 얹는다. */
-const RAF_OK = new Set(["web/world/scene.ts", "web/beat.ts"]);
+/** 제 requestAnimationFrame 을 돌려도 되는 곳 — 장면의 박자 자체(전체 보기는 walk.ts 가 그 박자다). 나머지는 beat.ts 의 rideFrame 에 얹는다. */
+const RAF_OK = new Set(["web/world/scene.ts", "web/beat.ts", "web/all/walk.ts"]);
 
 interface Problem {
   file: string;

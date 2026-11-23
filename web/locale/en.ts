@@ -400,4 +400,17 @@ export const en: Record<string, string> = {
   "{n}% 사용": "{n}% used",
   "{n}% 남음": "{n}% left",
   "Claude Code 는 계정 전체 사용량을 3분마다 물어 옵니다. 다른 하네스는 이 PC 에 남긴 값이라, 다른 기기에서 쓴 만큼은 그 하네스를 여기서 다시 쓸 때 반영됩니다.": "Claude Code usage is asked for the whole account every 3 minutes. Other harnesses show what they left on this machine, so usage from other devices shows up the next time that harness runs here.",
+
+  // ── 전체 보기(/all) ──
+  "전체 보기": "All worlds",
+  "다른 PC 의 월드까지 한 화면에 모아 봅니다": "See the worlds on your other machines on one screen",
+  "열쇠가 맞지 않습니다": "That key does not match",
+  "잠김 — 눌러서 열쇠 넣기": "Locked — tap to enter its key",
+  "연결 끊김": "Unreachable",
+  "이 서버는 전체 보기를 내주지 않습니다(AGENT_WORLD_WORLDS 가 없습니다).": "This server does not serve the all-worlds view (AGENT_WORLD_WORLDS is not set).",
+  "서버와 연결이 끊겼습니다. 다시 붙는 중…": "Lost the connection to the server. Reconnecting…",
+  "{name} 열기": "Unlock {name}",
+  "서버를 띄울 때 찍힌 주소(…/#k=열쇠)를 붙여 넣으세요. 이 브라우저가 기억합니다.": "Paste the address printed when the server started (…/#k=key). This browser will remember it.",
+  "그 PC 의 Agent World 가 찍어 준 주소(…/#k=열쇠)나 열쇠를 붙여 넣으세요. 이 기기에 한 번만 넣으면 됩니다.": "Paste the address that machine's Agent World printed (…/#k=key), or just the key. You only do this once on this device.",
+  "열쇠 모양이 아닙니다.": "That does not look like a key.",
 };

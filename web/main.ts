@@ -8,7 +8,7 @@ import { STATUS_VAR, h, icon, store, stored } from "./dom.ts";
 import { STATUS_LABEL, bubbleText, needsAttention } from "./format.ts";
 import { Hud } from "./hud.ts";
 import { lang, localizeStatic, t, setLang } from "./i18n.ts";
-import { acceptKey, withKey } from "./key.ts";
+import { acceptKey, key, withKey } from "./key.ts";
 import { setSolo } from "./beat.ts";
 import { swipeToClose } from "./sheet.ts";
 import { PlanReader } from "./plan.ts";
@@ -561,6 +561,24 @@ document.addEventListener("visibilitychange", () => {
   dropped = true;
   connect();
 });
+
+// 전체 보기로: 서버에 전체 보기의 주소가 설정돼 있을 때만 보인다(이 서버가 중계를 겸하거나, AGENT_WORLD_ALL).
+// 다른 PC 의 전체 보기로 갈 때는 이 월드의 열쇠를 주소 뒤(#)에 실어 간다 — 그 화면이 이 월드를 열쇠 입력 없이 연다.
+// 주소는 서버 설정에서만 온다. 링크로 받은 주소로 열쇠를 보내지 않는다.
+const allBtn = document.getElementById("btn-all")!;
+void fetch("/api/identity", { headers: headers() })
+  .then((res) => (res.ok ? (res.json() as Promise<{ all?: string }>) : undefined))
+  .then((identity) => {
+    const all = identity?.all;
+    if (!all) return;
+    allBtn.hidden = false;
+    allBtn.addEventListener("click", () => {
+      const to = new URL(all, location.href);
+      if (to.origin !== location.origin) to.hash = `w=${encodeURIComponent(location.origin)}&wk=${key}`;
+      location.href = to.href;
+    });
+  })
+  .catch(() => {});
 
 const buildBtn = document.getElementById("btn-build")!;
 

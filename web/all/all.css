@@ -1,0 +1,113 @@
+/* 전체 보기(/all). 쉬는 동안 움직이는 것이 없어야 한다 — transition·animation 을 쓰지 않는다(걷기는 walk.ts). */
+:root {
+  --working: #f5a524;
+  --done: #2fbf71;
+  --blocked: #f0506e;
+  --idle: #8a93a6;
+  --body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+}
+body[data-theme="day"] {
+  --sky: linear-gradient(180deg, #6fbcee 0%, #a9d8f5 38%, #dcefee 100%);
+  --sky-flat: #a9d8f5;
+  --ink: #1a2238;
+  --panel: rgba(255, 255, 255, 0.8);
+  --sign: #ffffff;
+  --grass: #9ad67f; --grass-2: #86c96d; --grass-3: #b3e39b; --rim: #6fae5c;
+  --rock-1: #c9b79d; --rock-2: #b09c82; --rock-3: #96836c;
+  --sand: #e9dcc0; --stone: #e6dfd3; --stone-line: #cfc6b6;
+  --wall: #f3ecdf; --wall-2: #dbd0bf; --door: #8a5a3c; --pane: #9cc9e6;
+  --tree-1: #4fae62; --tree-2: #3c9652; --tree-3: #2f7f47; --trunk: #8a5a3c;
+  --pebble: #9aa1b0; --pebble-2: #b7bdc9;
+  --plate: rgba(22, 28, 46, 0.86);
+  --roof-dim: 1;
+}
+body[data-theme="night"] {
+  --sky: radial-gradient(ellipse at 72% 6%, #2b3a78 0%, transparent 42%), linear-gradient(180deg, #080c1f 0%, #141a36 55%, #2a2648 100%);
+  --sky-flat: #141a36;
+  --ink: #eef1fb;
+  --panel: rgba(18, 21, 36, 0.76);
+  --sign: #232a4d;
+  --grass: #14505c; --grass-2: #10434f; --grass-3: #1a5f68; --rim: #0b2f3b;
+  --rock-1: #3c3f66; --rock-2: #2f3256; --rock-3: #242746;
+  --sand: #2b3270; --stone: #3a3a7a; --stone-line: #4b4c94;
+  --wall: #4a4f8c; --wall-2: #3a3f76; --door: #2a2440; --pane: #f2d27a;
+  --tree-1: #1f6c6a; --tree-2: #185a5c; --tree-3: #12494e; --trunk: #3a2f4a;
+  --pebble: #4a4f78; --pebble-2: #5c6190;
+  --plate: rgba(8, 10, 20, 0.86);
+  --roof-dim: 0.55;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; color: var(--ink); font: 500 14px/1.4 var(--body); background: var(--sky) fixed; background-color: var(--sky-flat); display: flex; flex-direction: column; }
+header { flex: none; display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; flex-wrap: wrap; }
+header h1 { font: 700 16px var(--body); margin: 0 8px 0 0; }
+#totals { display: flex; gap: 6px; flex-wrap: wrap; }
+#conn { font-size: 13px; background: var(--panel); border-radius: 999px; padding: 4px 12px; }
+#conn.bad { color: var(--blocked); }
+.chip { display: inline-flex; align-items: center; gap: 0.35em; font-weight: 600; color: #fff; }
+.chip[hidden] { display: none; }
+.chip::before { content: ""; width: 0.6em; height: 0.6em; border-radius: 50%; background: var(--c); }
+.chip[data-s="working"] { --c: var(--working); } .chip[data-s="blocked"] { --c: var(--blocked); } .chip[data-s="done"] { --c: var(--done); } .chip[data-s="idle"] { --c: var(--idle); }
+.chip.big { color: var(--ink); background: var(--panel); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+
+/* 섬들 — 화면에 다 들어오게 main.ts 가 칸 수(--cols)를 정한다. */
+#grid { flex: 1; min-height: 0; display: grid; gap: 4px 12px; padding: 0 16px calc(14px + env(safe-area-inset-bottom)); grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
+.world { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent; container-type: size; }
+.world:focus-visible { outline: 3px solid #3b6ef5; outline-offset: -3px; border-radius: 18px; }
+/* 칸의 폭과 높이 중 모자란 쪽에 맞춘다. isolation 은 캐릭터의 z-index 가 섬 밖(덮개 위)으로 새지 않게 한다. */
+.isle { position: relative; width: min(100cqw, 100cqh * 720 / 520); aspect-ratio: 720 / 520; container-type: inline-size; transform-origin: 50% 48%; isolation: isolate; }
+.world:not([data-state="open"]) .isle { opacity: 0.4; filter: saturate(0.35); }
+.world[data-state="down"], .world[data-state="wait"] { cursor: default; }
+.ground { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.f-grass { fill: var(--grass); } .f-grass2 { fill: var(--grass-2); } .f-grass3 { fill: var(--grass-3); } .f-rim { fill: var(--rim); }
+.f-rock1 { fill: var(--rock-1); } .f-rock2 { fill: var(--rock-2); } .f-rock3 { fill: var(--rock-3); }
+.f-sand { fill: var(--sand); } .s-sand { stroke: var(--sand); } .f-stone { fill: var(--stone); } .s-stone { stroke: var(--stone-line); fill: none; }
+.f-wall { fill: var(--wall); } .f-wall2 { fill: var(--wall-2); } .f-door { fill: var(--door); } .f-pane { fill: var(--pane); }
+.roof1 { fill: var(--r1); } .roof2 { fill: var(--r2); } .roof1, .roof2 { filter: brightness(var(--roof-dim)); }
+.f-t1 { fill: var(--tree-1); } .f-t2 { fill: var(--tree-2); } .f-t3 { fill: var(--tree-3); } .f-trunk { fill: var(--trunk); }
+.f-pebble { fill: var(--pebble); } .f-pebble2 { fill: var(--pebble-2); }
+
+/* 문패 — 섬이 작으면 번호만 남긴다. */
+.signs, .actors { position: absolute; inset: 0; pointer-events: none; }
+.doorsign { position: absolute; transform: translate(-50%, -100%); display: flex; gap: 0.4em; white-space: nowrap; background: var(--sign); color: var(--ink); font: 600 clamp(8px, 1.7cqw, 12px) var(--body); padding: 0.1em 0.55em; border-radius: 0.45em; border-left: 0.3em solid hsl(var(--h) 55% 60%); }
+.doorsign i { font-style: normal; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 520px) { .doorsign b + i { display: none; } .doorsign { padding: 0 0.4em; } }
+
+/* 캐릭터 — 요소 하나에 몸(배경 그림)·발밑 고리(::before)·빛기둥(::after). 치수는 em 이고, 섬이 .actors 의 글자 크기로 줄인다. */
+.a { position: absolute; width: 4.4em; height: 3.3em; margin: -3em 0 0 -2.2em; background: center / contain no-repeat; --c: var(--idle); }
+.a[data-v="claude"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='2 9 38 24'%3E%3Cpath d='M8 11H34V19H38V23H34V31H31.5V27H30V31H27.5V27H14.5V31H12V27H10.5V31H8V23H4V19H8Z' fill='%23D77757'/%3E%3Cpath d='M8 11H34V14H8Z' fill='%23E58A68'/%3E%3Crect x='11.75' y='14.6' width='2.8' height='4.6' fill='%2309090B'/%3E%3Crect x='27.45' y='14.6' width='2.8' height='4.6' fill='%2309090B'/%3E%3C/svg%3E"); }
+.a[data-v="agy"] { height: 4em; margin-top: -3.7em; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='8 16 96 82'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%2334A853'/%3E%3Cstop offset='.35' stop-color='%23FBBC04'/%3E%3Cstop offset='.6' stop-color='%23EA4335'/%3E%3Cstop offset='1' stop-color='%234285F4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' d='M89.6992 93.695C94.3659 97.195 101.366 94.8617 94.9492 88.445C75.6992 69.7783 79.7825 18.445 55.8659 18.445C31.9492 18.445 36.0325 69.7783 16.7825 88.445C9.78251 95.445 17.3658 97.195 22.0325 93.695C40.1159 81.445 38.9492 59.8617 55.8659 59.8617C72.7825 59.8617 71.6159 81.445 89.6992 93.695Z'/%3E%3C/svg%3E"); }
+.a[data-v="bot"] { height: 3.9em; margin-top: -3.6em; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 20'%3E%3Crect x='2' y='1' width='18' height='15' rx='3.5' fill='%232b3246'/%3E%3Crect x='6' y='6' width='3' height='4' fill='%23fff'/%3E%3Crect x='13' y='6' width='3' height='4' fill='%23fff'/%3E%3Crect x='4' y='16' width='4' height='4' fill='%231c2233'/%3E%3Crect x='14' y='16' width='4' height='4' fill='%231c2233'/%3E%3C/svg%3E"); }
+.a[data-s="working"] { --c: var(--working); } .a[data-s="blocked"] { --c: var(--blocked); } .a[data-s="done"] { --c: var(--done); }
+.a[data-s="idle"] { opacity: 0.55; }
+.a::before { content: ""; position: absolute; left: 50%; bottom: -0.8em; width: 5.4em; height: 2.2em; margin-left: -2.7em; border: 0.38em solid var(--c); border-radius: 50%; z-index: -1; }
+.a[data-s="idle"]::before { display: none; }
+.a[data-s="blocked"]::after, .a[data-s="done"]::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 3em; height: 10em; margin-left: -1.5em; background: linear-gradient(0deg, var(--c), transparent); opacity: 0.5; z-index: -1; }
+
+.nameplate { position: absolute; left: 50%; bottom: 2cqh; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; max-width: 94%; background: var(--plate); color: #fff; border-radius: 999px; padding: 5px 14px; font-size: 13px; white-space: nowrap; }
+.nameplate .name { overflow: hidden; text-overflow: ellipsis; }
+.nameplate .note { opacity: 0.85; }
+.nameplate .note[hidden] { display: none; }
+.nameplate .lock { width: 1.1em; height: 1.1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; display: none; }
+.world[data-state="locked"] .lock { display: block; }
+.world.ask .nameplate { box-shadow: 0 0 0 2px var(--blocked); }
+
+#cover { position: fixed; inset: 0; z-index: 10; opacity: 0; background: var(--sky); background-color: var(--sky-flat); pointer-events: none; }
+
+dialog { border: 0; border-radius: 16px; padding: 20px; width: min(420px, calc(100vw - 32px)); background: var(--sign); color: var(--ink); font: inherit; }
+dialog::backdrop { background: rgba(10, 14, 30, 0.45); }
+dialog h2 { margin: 0 0 6px; font: 700 16px var(--body); }
+dialog p { margin: 0 0 12px; font-size: 13px; opacity: 0.85; }
+dialog input { width: 100%; font: 14px ui-monospace, monospace; padding: 9px 10px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent); background: transparent; color: inherit; }
+#key-error { color: var(--blocked); min-height: 1.4em; margin: 6px 0 4px; opacity: 1; }
+dialog .row { display: flex; justify-content: flex-end; gap: 8px; }
+dialog button { font: 600 13px var(--body); min-height: 36px; padding: 0 14px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent); background: transparent; color: inherit; cursor: pointer; }
+dialog button.primary { background: #3b6ef5; border-color: #3b6ef5; color: #fff; }
+
+@media (max-width: 700px) {
+  body { display: block; }
+  #grid { grid-template-columns: minmax(0, 1fr); gap: 14px; grid-auto-rows: auto; }
+  .world { container-type: inline-size; padding-bottom: 6px; }
+  .isle { width: 100cqw; }
+  .nameplate { bottom: 0; }
+}

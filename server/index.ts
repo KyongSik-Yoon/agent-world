@@ -8,6 +8,7 @@ import { basename, join, resolve } from "node:path";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 
 import index from "../web/index.html";
+import allIndex from "../web/all.html";
 import type { SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
 import { controlRoutes } from "./control.ts";
 import { fontRoutes } from "./fonts.ts";
@@ -207,7 +208,8 @@ const PAGE_GUARDS: Record<string, string> = {
 let pageBuild: string | undefined;
 
 async function bundledPage(): Promise<Record<string, { GET: (req: Request) => Response }>> {
-  const built = await Bun.build({ entrypoints: [join(import.meta.dir, "..", "web", "index.html")], minify: true });
+  // 화면은 둘이다: 월드(index.html)와, 여러 PC 를 모아 보는 전체 보기(all.html → /all). 전체 보기는 three 를 끌어오지 않는다.
+  const built = await Bun.build({ entrypoints: ["index.html", "all.html"].map((name) => join(import.meta.dir, "..", "web", name)), minify: true });
   if (!built.success) {
     console.error(say(L("화면을 묶지 못했습니다:", "Could not bundle the page:")), built.logs.join("\n"));
     process.exit(1);
@@ -228,8 +230,9 @@ async function bundledPage(): Promise<Record<string, { GET: (req: Request) => Re
       "cache-control": isPage ? "no-cache" : "public, max-age=31536000, immutable",
       etag: `"${Bun.hash(raw).toString(16)}"`,
     };
-    if (isPage) pageBuild = base.etag;
-    routes[isPage ? "/" : `/${basename(out.path)}`] = {
+    const isAll = isPage && basename(out.path) === "all.html";
+    if (isPage && !isAll) pageBuild = base.etag;
+    routes[isAll ? "/all" : isPage ? "/" : `/${basename(out.path)}`] = {
       GET: (req) => {
         if (req.headers.get("if-none-match") === base.etag) return new Response(null, { status: 304, headers: base });
         const accepts = req.headers.get("accept-encoding") ?? "";
@@ -475,7 +478,7 @@ async function appFiles(): Promise<Record<string, { GET: (req: Request) => Respo
 }
 
 /** 화면(HTML·JS·CSS). 개발 중에는 Bun 이 고칠 때마다 다시 묶어 주고, 평소에는 미리 묶어 압축해 둔 것을 내보낸다. */
-const page = (DEV ? { "/": index } : await bundledPage()) as Record<string, typeof index>;
+const page = (DEV ? { "/": index, "/all": allIndex } : await bundledPage()) as Record<string, typeof index>;
 
 const app = await appFiles();
 
