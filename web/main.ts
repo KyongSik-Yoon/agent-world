@@ -567,14 +567,16 @@ document.addEventListener("visibilitychange", () => {
 // 주소는 서버 설정에서만 온다. 링크로 받은 주소로 열쇠를 보내지 않는다.
 const allBtn = document.getElementById("btn-all")!;
 void fetch("/api/identity", { headers: headers() })
-  .then((res) => (res.ok ? (res.json() as Promise<{ all?: string }>) : undefined))
+  .then((res) => (res.ok ? (res.json() as Promise<{ all?: string; origins?: string[] }>) : undefined))
   .then((identity) => {
     const all = identity?.all;
     if (!all) return;
     allBtn.hidden = false;
     allBtn.addEventListener("click", () => {
       const to = new URL(all, location.href);
-      if (to.origin !== location.origin) to.hash = `w=${encodeURIComponent(location.origin)}&wk=${key}`;
+      // 전체 보기는 이 월드를 제 설정에 적힌 주소로 안다. 지금 열린 주소와 다를 수 있어, 이 서버가 불리는 주소를 다 보낸다.
+      const mine = [...new Set([location.origin, ...(identity?.origins ?? [])])];
+      if (to.origin !== location.origin) to.hash = `w=${encodeURIComponent(mine.join(","))}&wk=${key}`;
       location.href = to.href;
     });
   })

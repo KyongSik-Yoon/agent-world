@@ -296,6 +296,14 @@ function tailnetOwner(): Promise<string | null> {
   return owner;
 }
 
+/**
+ * 이 서버가 불리는 주소들. 전체 보기는 이 월드를 제 설정에 적힌 주소(보통 tailnet 주소)로 알고 있는데, 화면은 다른
+ * 주소(localhost)로 열려 있을 수 있다. "전체 보기로" 단추가 열쇠와 함께 이 주소들을 다 실어 보내 어느 쪽으로 적혀 있든 맞게 한다.
+ */
+function ownOrigins(): string[] {
+  return [...[...TAILNET_HOSTS].map((host) => `https://${host}`), `http://127.0.0.1:${port}`, `http://localhost:${port}`];
+}
+
 /** 믿을 수 있는 이름으로 들어온 요청인지, 그리고 다른 출처의 페이지가 보낸 것은 아닌지. */
 async function trusted(req: Request): Promise<boolean> {
   const host = (req.headers.get("host") ?? "").toLowerCase();
@@ -499,7 +507,7 @@ const listen = (at: number) =>
     ...fontRoutes(),
     ...termFontRoutes(),
     // 묻는 쪽이 준 값(n)에 열쇠로 답을 달아, 이 서버가 열쇠를 가진 진짜 Agent World 임을 보인다.
-    "/api/identity": { GET: guarded((req) => json({ ...identity, build: pageBuild, all: ALL_URL ?? (relay ? "/all" : undefined), proof: proofOf(KEY, new URL(req.url).searchParams.get("n") ?? "", identity.socket) })) },
+    "/api/identity": { GET: guarded((req) => json({ ...identity, build: pageBuild, all: ALL_URL ?? (relay ? "/all" : undefined), origins: ALL_URL ? ownOrigins() : undefined, proof: proofOf(KEY, new URL(req.url).searchParams.get("n") ?? "", identity.socket) })) },
     "/api/snapshot": {
       GET: guarded(async () => json(await world.snapshot())),
     },

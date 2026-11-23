@@ -38,18 +38,23 @@ try {
 const saveKeys = (): void => store(STORE, JSON.stringify(keys));
 
 /**
- * 월드 화면의 "전체 보기로" 단추가 주소 뒤에 실어 보낸 열쇠(`#w=<월드 주소>&wk=<열쇠>`). 받자마자 주소에서 지우고,
- * 중계 서버가 그 주소를 제 월드 목록에 있는 것으로 열어 줬을 때만 기억한다.
+ * 월드 화면의 "전체 보기로" 단추가 주소 뒤에 실어 보낸 열쇠(`#w=<월드 주소들>&wk=<열쇠>`). 받자마자 주소에서 지우고,
+ * 중계 서버가 그 주소를 제 월드 목록에 있는 것으로 열어 줬을 때만 기억한다. 주소가 여럿인 것은 그 월드가 여러 이름
+ * (tailnet 주소, localhost)으로 불리기 때문이다 — 중계의 설정에 적힌 것 하나가 맞는다.
  */
-let handed: { id: string; key: string } | undefined;
+let handed: { ids: string[]; key: string } | undefined;
 {
   const m = /(?:^#|&)w=([^&]+)&wk=([0-9a-f]{32,})/.exec(location.hash);
   if (m) {
-    try {
-      handed = { id: new URL(decodeURIComponent(m[1]!)).origin, key: m[2]! };
-    } catch {
-      // 주소 모양이 아니다.
+    const ids: string[] = [];
+    for (const part of decodeURIComponent(m[1]!).split(",")) {
+      try {
+        ids.push(new URL(part).origin);
+      } catch {
+        // 주소 모양이 아니다.
+      }
     }
+    if (ids.length) handed = { ids, key: m[2]! };
     history.replaceState(null, "", location.pathname + location.search);
   }
 }
@@ -127,7 +132,7 @@ function apply(ops: AllOp[]): void {
       delete keys[w.id];
       saveKeys();
     }
-    if (w.state === "open" && handed?.id === w.id && sent[w.id] === handed.key) {
+    if (w.state === "open" && handed?.ids.includes(w.id) && sent[w.id] === handed.key) {
       keys[w.id] = handed.key;
       saveKeys();
       handed = undefined;
@@ -159,7 +164,8 @@ function say(text: string, bad = false): void {
 async function connect(): Promise<void> {
   stream?.abort();
   const mine = (stream = new AbortController());
-  sent = handed ? { ...keys, [handed.id]: handed.key } : { ...keys };
+  sent = { ...keys };
+  if (handed) for (const id of handed.ids) sent[id] = handed.key;
   try {
     const res = await fetch("/api/all/events", { method: "POST", headers: { ...headers(), "content-type": "application/json" }, body: JSON.stringify({ keys: sent }), signal: mine.signal });
     if (res.status === 401) {
