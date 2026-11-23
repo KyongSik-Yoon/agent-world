@@ -291,6 +291,7 @@ html.js .reveal.in { opacity: 1; transform: none; }
       <a href="#world"><span lang="ko">한눈에 보기</span><span lang="en">Overview</span></a>
       <a href="#talk"><span lang="ko">지시와 답</span><span lang="en">Talk</span></a>
       <a href="#phone"><span lang="ko">휴대폰</span><span lang="en">Phone</span></a>
+      <a href="#all"><span lang="ko">여러 PC</span><span lang="en">All worlds</span></a>
       <a href="#how"><span lang="ko">동작 원리</span><span lang="en">How it works</span></a>
       <a href="#install"><span lang="ko">설치</span><span lang="en">Install</span></a>
     </nav>
@@ -544,10 +545,47 @@ html.js .reveal.in { opacity: 1; transform: none; }
       </p><p>
         <span lang="ko">다른 기기에서는 <code>tailscale serve</code> 로 tailnet 안에서만 엽니다. 공인 인터넷에는 내보내지 않습니다.</span>
         <span lang="en">Other devices reach it through <code>tailscale serve</code>, inside your tailnet only. It is never exposed to the public internet.</span>
-      </p><p>
-        <span lang="ko">PC 가 여러 대면 그중 한 대가 나머지를 모아 보여 줍니다. PC 마다 작은 섬이 하나씩 뜨고, 누르면 그 PC 의 월드로 들어갑니다. 열쇠를 넣지 않은 PC 는 잠긴 섬으로만 보입니다.</span>
-        <span lang="en">With several machines, one can gather the rest: each machine is a small island, and clicking it enters that machine's world. A machine you have not unlocked shows only as a locked island.</span>
       </p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 전체 보기 ───────── -->
+<section id="all">
+  <div class="wrap">
+    <div class="head center reveal">
+      <p class="kicker">All worlds</p>
+      <h2><span lang="ko">여러 PC 를 한 화면에</span><span lang="en">Every machine on one screen</span></h2>
+      <p>
+        <span lang="ko">PC 마다 Agent World 를 띄워 쓰고 있다면, 그중 한 대가 나머지를 모아 보여 줍니다. <code>/all</code> 을 열면 PC 마다 작은 섬이 하나씩 뜨고, 캐릭터가 서 있는 자리로 누가 일하고 누가 기다리는지 보입니다. 맨 위에는 모든 PC 를 합친 수가, 섬 아래에는 그 PC 의 수가 붙고, 섬을 누르면 그 PC 의 월드로 들어갑니다.</span>
+        <span lang="en">If you run Agent World on several machines, one of them can gather the rest. Open <code>/all</code> and each machine floats as a small island, its characters standing where their state puts them. Totals for every machine sit at the top, each machine's counts under its island, and clicking an island enters that machine's world.</span>
+      </p>
+    </div>
+    <figure class="reveal">
+      <div class="shot">
+        <img class="day-only" src="img/all.webp" width="2100" height="700" loading="lazy" alt="전체 보기 화면. 데스크톱과 노트북 섬에 집과 에이전트가 상태별 자리에 서 있고, 맨 위에 전체 합계, 섬 아래에 PC 별 수가 있다. 빌드 서버 섬은 잠겨 있다">
+        <img class="night-only" src="img/all-night.webp" width="2100" height="700" loading="lazy" alt="전체 보기의 밤 화면">
+      </div>
+      <figcaption>
+        <span lang="ko">가상의 프로젝트 시나리오로 띄운 세 PC 입니다. 빌드 서버는 아직 열쇠를 넣지 않아 잠긴 섬으로 보입니다.</span>
+        <span lang="en">Three machines running a made-up project scenario. The build server has not been unlocked yet, so it shows as a locked island.</span>
+      </figcaption>
+    </figure>
+    <div class="split" style="margin-top:28px;align-items:start">
+      <div class="text reveal" style="min-width:0">
+        <div class="head" style="margin:0"><p>
+          <span lang="ko">전체 보기는 보기만 합니다. 지시나 답은 섬을 눌러 그 월드에 들어가서 합니다. 열쇠는 월드마다 따로라서, 열쇠를 넣지 않은 PC 는 잠긴 섬으로만 보이고 그 안의 집·에이전트·상태는 서버가 아예 보내지 않습니다. 이미 쓰던 월드라면 그 화면의 <code>전체 보기</code> 버튼이 열쇠를 넘겨 줍니다. 모아 보여 주는 서버는 다른 PC 의 열쇠를 저장하지 않습니다.</span>
+          <span lang="en">The all view only looks; to prompt or answer, click into that world. Each world has its own key: a machine you have not unlocked shows only as a locked island, and the server never sends its houses, agents or states. A world you already use hands its key over through its <code>All worlds</code> button. The gathering server does not store the other machines' keys.</span>
+        </p></div>
+      </div>
+      <div class="reveal" style="min-width:0">
+        <div class="pre multi"><pre id="code-all" style="overflow-x:auto;padding-bottom:48px">AGENT_WORLD_WORLDS="laptop=https://lap.&lt;tailnet&gt;.ts.net:4780,build=https://build.&lt;tailnet&gt;.ts.net:4780" bun start
+AGENT_WORLD_ALL=https://desk.&lt;tailnet&gt;.ts.net:4780/all bun start</pre><button class="copy" type="button" data-copy="#code-all"><span lang="ko">복사</span><span lang="en">Copy</span></button></div>
+        <p class="note" style="text-align:left">
+          <span lang="ko">첫 줄은 모아 보여 줄 PC 에서, 둘째 줄은 나머지 PC 에서 띄웁니다(둘째 줄을 주면 그 월드 화면에 <code>전체 보기</code> 버튼이 생깁니다). 다른 PC 들은 <code>tailscale serve</code> 로 tailnet 에 내보낸 상태여야 하고, 모아 보여 줄 PC 도 같은 계정으로 tailnet 에 올라가 있어야 합니다. 알림은 모이지 않고 월드마다 따로 켭니다.</span>
+          <span lang="en">Start the first line on the machine that gathers and the second on the others (it adds an <code>All worlds</code> button to their world). The other machines must be served on the tailnet with <code>tailscale serve</code>, and the gathering machine must be on the tailnet under the same account. Notifications are not gathered; turn them on per world.</span>
+        </p>
+      </div>
     </div>
   </div>
 </section>
