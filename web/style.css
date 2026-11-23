@@ -2359,8 +2359,11 @@ dialog.dlg.plan-dlg[open] {
 }
 
 .plan-dlg .names span {
+  overflow: hidden;
   color: var(--ink-3);
   font: 11.5px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 응답 글과 같은 그림(.prose)을 읽기 좋은 크기로 키운다 — 좁은 상태 창이 아니라 화면 가운데의 넓은 창이다. */
@@ -2457,6 +2460,123 @@ dialog.dlg p.plan-note {
 
 .plan-foot .btn {
   flex: none;
+}
+
+/* 고칠 점 칸이 한 줄을 다 쓰고, 단추들이 그 오른쪽(좁으면 아래 줄 오른쪽)에 붙는다. */
+.plan-foot.rv-foot .rv-note {
+  flex: 1 1 260px;
+  max-height: 168px;
+}
+
+.plan-acts {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.plan-count {
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.plan-count[hidden] {
+  display: none;
+}
+
+.plan-dlg header .btn[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+/* 원문 줄 보기: 번호를 눌러 댓글을 단다. 글은 플랜 파일 그대로(접기만 한다). */
+.prose.plan-body.plan-src {
+  padding: 10px 12px 18px 0;
+}
+
+.plan-lines {
+  font: 12.5px/1.6 var(--mono);
+}
+
+.plan-lines .row {
+  display: flex;
+  align-items: flex-start;
+}
+
+.plan-lines .row.on {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.plan-lines .ln {
+  flex: none;
+  width: 4.2em;
+  padding: 0 0.9em 0 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+  user-select: none;
+}
+
+.plan-lines .row.on .ln {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.plan-lines .tx {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.plan-cmt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0 8px 4.2em;
+  padding: 6px 6px 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  background: var(--soft);
+  font: 13px/1.5 var(--font);
+}
+
+.plan-cmt .where {
+  flex: none;
+  color: var(--accent);
+  font: 700 11.5px/1.75 var(--mono);
+}
+
+.plan-cmt .say {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+}
+
+.plan-cmt .btn.icon {
+  flex: none;
+}
+
+.plan-cmt.edit {
+  align-items: flex-end;
+}
+
+.plan-cmt.edit .rv-note {
+  max-height: 120px;
+  background: var(--panel-solid);
+}
+
+@media (hover: hover) {
+  .plan-lines .ln:hover {
+    color: var(--accent);
+  }
 }
 
 .pending {

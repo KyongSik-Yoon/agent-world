@@ -78,6 +78,10 @@ const planReader = new PlanReader();
 planReader.onClose = () => terminal.focus();
 planReader.canApprove = () => hud.latest?.control === true;
 planReader.onApprove = (a) => approvePlan(a);
+planReader.onRevise = async (a, card, text) => {
+  await post("/api/plan/revise", { paneId: a.paneId ?? "", card, text });
+  hud.toast(t("고칠 점을 보냈습니다"), a.title, "var(--accent)");
+};
 terminal.onPlan = (paneId) => {
   const agent = hud.latest?.agents.find((a) => a.paneId === paneId);
   if (agent) planReader.open(agent);

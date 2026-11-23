@@ -102,7 +102,11 @@ Worth knowing:
   terminal; it follows the file as the agent revises it and closes once the plan is answered. The status-window card
   and the plan view also have `Approve and start`, so you can approve without opening the terminal. It is sent only
   while the card is still up, so pressing it after you already answered in the terminal does not type `1` into the
-  input. Asking for changes happens in the card's text field — use `Ctrl+X Tab` in the large terminal.
+  input. You can also ask for changes there: type them in the box under the plan and press `Ask for changes`
+  (Ctrl+Enter). It goes to the card as the same answer as its text field, so the agent stays in plan mode, revises the
+  plan, and asks again. `Line comments` shows the source with line numbers; click a number (and another for a range)
+  to comment on those lines, and each comment is sent with its line numbers and the quoted lines. What you typed
+  stays while that card is up, even if you close the view, and is not sent if you already answered in the terminal.
 - **Review reports from desk-review.** When [desk-review](https://github.com/KyongSik-Yoon/cc-desktop-mod/tree/main/desk-review)'s
   `/desk-review:simplify-review` finishes, the status window gets `Read review` (`R`). The report is drawn in a side
   pane next to the terminal, which is hard to see on a phone, so the button reads the same report from the session log

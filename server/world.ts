@@ -10,7 +10,7 @@ import { agy } from "./adapters/agy.ts";
 import { claude } from "./adapters/claude.ts";
 import { codex } from "./adapters/codex.ts";
 import type { Harness, LogFile } from "./adapters/types.ts";
-import { AskingPanes, type Card } from "./asking.ts";
+import { AskingPanes, answerPlan, type Card } from "./asking.ts";
 import { AgyDialogs } from "./dialog.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Lang, type Text } from "./text.ts";
@@ -120,7 +120,7 @@ export class World {
   /** herdr 는 쉰다고 하지만 화면에 확인 창을 띄워 답을 기다리는 agy pane 들. */
   private readonly dialogs = new AgyDialogs();
   /** 플랜 승인 카드가 떠 있는 pane 의 플랜 파일. 카드(세션·뜬 시각)마다 한 번 로그에서 찾고, 못 찾은 것도 적어 다시 찾지 않는다. */
-  private readonly plans = new Map<string, { card: string; path: string | undefined }>();
+  private readonly plans = new Map<string, { card: string; since: number | undefined; path: string | undefined }>();
   /** herdr pane 안에서 돌던 세션을 마지막으로 본 시각. pane 을 닫은 세션이 "herdr 밖 세션"으로 되살아나지 않게 한다. */
   private readonly lastInHerdr = new Map<string, number>();
   /** 완료 상태인 pane 의 herdr 상태 변경 번호 — 확인 기록을 남길 때 쓴다. */
@@ -672,16 +672,35 @@ export class World {
     let found = this.plans.get(paneId);
     if (found?.card !== key) {
       const log = session ? await claude.resolve(session) : null;
-      found = { card: key, path: log ? await planPathIn(log) : undefined };
+      found = { card: key, since: card.since, path: log ? await planPathIn(log) : undefined };
       this.plans.set(paneId, found);
     }
     return found.path ? planMtime(found.path) : undefined;
   }
 
   /** 승인을 기다리는 플랜의 글. 화면은 에이전트만 가리키고, 어느 파일인지는 서버가 정한다. 카드가 내려갔으면 undefined. */
-  async planText(agentId: string): Promise<PlanText | undefined> {
-    const path = this.plans.get(agentId)?.path;
-    return path ? readPlan(path) : undefined;
+  /** card: 그 글을 띄운 카드의 표식 시각 — 고칠 점을 보낼 때 같은 카드인지 맞춰 본다. */
+  async planText(agentId: string): Promise<(PlanText & { card?: number }) | undefined> {
+    const found = this.plans.get(agentId);
+    const plan = found?.path ? await readPlan(found.path) : undefined;
+    return plan && { ...plan, card: found?.since };
+  }
+
+  /**
+   * 플랜 카드에 고칠 점을 답한다(카드의 글 칸에 적고 Enter 한 것과 같다). card 는 화면이 읽은 카드의 표식 시각 — 그 사이
+   * 터미널에서 답해 카드가 내려갔거나 고친 플랜으로 새 카드가 떴으면 보내지 않는다. 옛 플랜에 단 말이 새 플랜의 답이 된다.
+   * 보냈으면 true, 그 카드가 없으면 false.
+   */
+  async revisePlan(paneId: string, card: number, text: string): Promise<boolean> {
+    const now = (await this.asking.check()).get(paneId);
+    if (!now?.plan || now.since !== card) return false;
+    await answerPlan(now, { kind: "revise", text });
+    return true;
+  }
+
+  /** 그 카드(표식 시각)가 아직 떠 있는지. */
+  async planCardUp(paneId: string, card: number): Promise<boolean> {
+    return (await this.asking.check()).get(paneId)?.since === card;
   }
 
   /** 마지막 턴의 리뷰 보고. 그 뒤로 새 지시가 갔거나 로그를 놓았으면 undefined. */

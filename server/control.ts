@@ -27,6 +27,7 @@ import {
   herdrTerm,
   type Kind,
 } from "./herdr.ts";
+import { AnswerError } from "./asking.ts";
 import { claudeComposer, squash } from "./composer.ts";
 import { MAX_IMAGE_BYTES, MAX_IMAGES, imagePath, saveImage } from "./images.ts";
 import { ModelError, modelCatalog, startFlags, switchModel } from "./models.ts";
@@ -67,6 +68,8 @@ const SUBMIT_CHECK_MS = 20_000;
 const SUBMIT_POLL_MS = 100;
 /** 플랜 승인 키를 보낸 뒤 카드가 내려가기를(desk-plan 이 표식 파일을 지우기를) 기다리는 시간. */
 const PLAN_APPROVE_MS = 3_000;
+/** 플랜 카드의 고칠 점 — 줄 댓글을 원문과 함께 싣는다. 파이프 한 번에 들어가야 한다(asking.ts MAX_ANSWER_BYTES). */
+const MAX_REVISE = 16_000;
 /** 멈춤 키(Esc)를 보낸 뒤 herdr 가 일하는 중을 벗어나기를 기다리는 시간. 세 하네스 모두 1초 안에 완료로 내려왔다. */
 const STOP_SETTLE_MS = 1_500;
 /** Claude 의 백그라운드 에이전트를 끄고 기다리는 시간. 끈 소식에 답하는 짧은 턴이 이어질 수 있어 조금 넉넉히 둔다. */
@@ -530,6 +533,28 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       poke(paneId);
       for (const until = Date.now() + PLAN_APPROVE_MS; await world.waitingOnPlan(paneId); await Bun.sleep(SUBMIT_POLL_MS)) {
         if (Date.now() > until) throw new Reject(L("승인 키를 보냈지만 카드가 그대로입니다. 터미널 화면을 확인해 주세요.", "The approve key was sent but the card is still up. Check the terminal."), 504, "plan_unconfirmed");
+      }
+    }),
+    // 플랜 카드에 고칠 점을 답한다 — 카드의 글 칸에 적고 Enter 한 것과 같다. 키를 흉내 내지 않고 카드가 답을 기다리는
+    // 파이프에 써 넣는다(asking.ts answerPlan). 화면이 읽은 그 카드에만 보내고, 카드가 내려가는(또는 고친 플랜으로 새
+    // 카드가 뜨는) 것까지 본다.
+    "/api/plan/revise": mutate(async (body) => {
+      const paneId = await need("pane", text(body, "paneId"));
+      const card = body.card;
+      const wish = text(body, "text", MAX_REVISE).trim();
+      if (typeof card !== "number") throw new Reject(L("card 는 숫자여야 합니다.", "card must be a number."), 400);
+      if (!wish) throw new Reject(L("고칠 점을 적어 주세요.", "Write what to change."), 400, "empty");
+      const gone = L("그 플랜 카드는 이미 내려갔습니다. 터미널에서 먼저 답했거나 플랜이 바뀌었을 수 있습니다.", "That plan card is gone. It may have been answered in the terminal or the plan changed.");
+      try {
+        if (!(await world.revisePlan(paneId, card, wish))) throw new Reject(gone, 409, "no_plan");
+      } catch (e) {
+        if (!(e instanceof AnswerError)) throw e;
+        if (e.reason === "too_long") throw new Reject(L("고칠 점이 너무 깁니다.", "That is too long."), 400, "too_long");
+        throw new Reject(e.reason === "gone" ? gone : L("고칠 점을 다 보내지 못했습니다. 터미널 화면을 확인해 주세요.", "Could not send all of it. Check the terminal."), 409, "no_plan");
+      }
+      poke(paneId);
+      for (const until = Date.now() + PLAN_APPROVE_MS; await world.planCardUp(paneId, card); await Bun.sleep(SUBMIT_POLL_MS)) {
+        if (Date.now() > until) throw new Reject(L("고칠 점을 보냈지만 카드가 그대로입니다. 터미널 화면을 확인해 주세요.", "The changes were sent but the card is still up. Check the terminal."), 504, "plan_unconfirmed");
       }
     }),
     "/api/seen": mutate(async (body) => {
