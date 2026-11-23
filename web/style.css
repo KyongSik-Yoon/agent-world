@@ -2502,12 +2502,12 @@ dialog.dlg p.plan-note {
   font: 12.5px/1.6 var(--mono);
 }
 
-.plan-lines .row {
+.plan-lines .pl-row {
   display: flex;
   align-items: flex-start;
 }
 
-.plan-lines .row.on {
+.plan-lines .pl-row.on {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
@@ -2524,7 +2524,7 @@ dialog.dlg p.plan-note {
   user-select: none;
 }
 
-.plan-lines .row.on .ln {
+.plan-lines .pl-row.on .ln {
   color: var(--accent);
   font-weight: 700;
 }
@@ -2576,6 +2576,13 @@ dialog.dlg p.plan-note {
 @media (hover: hover) {
   .plan-lines .ln:hover {
     color: var(--accent);
+  }
+}
+
+/* 손가락으로 줄 번호를 누르기 쉽게 줄 간격을 넓힌다. */
+@media (pointer: coarse) {
+  .plan-lines {
+    line-height: 2;
   }
 }
 

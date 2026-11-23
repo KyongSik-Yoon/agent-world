@@ -199,7 +199,7 @@ export class PlanReader {
       const n = i + 1;
       const on = (pick && n >= pick.from && n <= pick.to) || d.notes.some((c) => n >= c.from && n <= c.to);
       const no = h("button", { class: "ln", type: "button", "data-n": String(n), title: t("이 줄에 댓글") }, String(n));
-      box.append(h("div", { class: on ? "row on" : "row" }, no, h("span", { class: "tx" }, line || " ")));
+      box.append(h("div", { class: on ? "pl-row on" : "pl-row" }, no, h("span", { class: "tx" }, line || " ")));
       d.notes.forEach((c, k) => {
         if (c.to === n) box.append(this.noteRow(c, k));
       });
