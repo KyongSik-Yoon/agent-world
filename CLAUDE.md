@@ -17,6 +17,12 @@
 - 움직임은 장면 프레임에 얹는다(`web/beat.ts`, `web/world/labels.ts`). CSS 애니메이션·이름표 transition·따로 도는 rAF 를 더하지 않는다.
   린트 예외(`perf-ok: <이유>`)는 쉬지 않고 돌지 않는 까닭을 쓸 때만 단다. 읽는 법과 측정 함정은 `.claude/skills/ui-perf/SKILL.md`.
 
+## 전체 보기
+
+- `/all`(`web/all.html`, `web/all/`, `server/all.ts`)은 여러 PC 의 월드를 섬 하나씩으로 모아 보여 준다. 읽기만 하고, 조작은 섬을 눌러 그 월드의 주소로 넘어가서 한다.
+- three 를 끌어오지 않는다. 섬은 SVG 한 장이고 걷기는 `web/all/walk.ts` 의 rAF 하나(데스크톱 30장, 손가락 기기 8장)다. 쉬는 동안 0장이어야 한다 — CSS transition·animation 을 더하지 않는다. `bun run perf` 의 "전체 보기" 시나리오가 본다.
+- 중계는 다른 월드의 열쇠를 갖지 않는다. 화면이 보낸 열쇠가 맞는 월드만 내용을 싣고, 아니면 잠긴 것으로만 알린다(이름·주소뿐). 요약(`WorldDigest`)에 활동·제목·터미널을 더하지 않는다.
+
 ## 터미널 화면
 
 - 미리보기·크게 보기(`web/term.ts`, `.term` 스타일)를 고칠 때는 먼저 `.claude/skills/term-view/SKILL.md` 를 읽는다. 줄을 가르는 순서와

@@ -8,7 +8,7 @@
 //
 // 읽는 법과 함정은 .claude/skills/ui-perf/SKILL.md.
 import { $, type Subprocess } from "bun";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, existsSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CDP } from "./cdp.ts";
@@ -118,6 +118,30 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
+    // 전체 보기(/all)는 3D 장면이 없다. 걷는 캐릭터가 없으면 화면이 한 장도 나가지 않아야 한다.
+    name: "전체 보기·쉼",
+    what: "/all — 월드 둘, 상태가 그대로다",
+    scene: [0, 1],
+    run: async (p) => {
+      await p.loadAll();
+      return p.measure(8);
+    },
+  },
+  {
+    name: "전체 보기·걷기",
+    what: "/all — 곁 월드의 상태가 1초에 한 번 바뀐다(걷기 박자는 30장을 넘지 않는다)",
+    scene: [15, 33],
+    run: async (p) => {
+      await p.loadAll();
+      return p.measure(8, async (until) => {
+        for (let i = 0; performance.now() < until; i++) {
+          flipSide(i);
+          await Bun.sleep(1000);
+        }
+      });
+    },
+  },
+  {
     name: "끌기·박자 거르기",
     what: "?perf-skip=1 — 120Hz 화면처럼 한 박자씩 걸러 그린다",
     scene: [20, 34],
@@ -166,6 +190,24 @@ class Page {
     await Bun.sleep(3000);
   }
 
+  /** 전체 보기를 연다 — 곁 월드의 열쇠를 이 출처에 적어 두고, 섬 둘이 열릴 때까지 기다린다. */
+  async loadAll(): Promise<void> {
+    if (!side) throw new Error("곁 월드가 없다");
+    const [base, hash] = this.url.split("#");
+    await this.cdp.send("Page.navigate", { url: `${base}all#${hash}` });
+    await Bun.sleep(1500);
+    await this.cdp.eval(`localStorage.setItem("agent-world.worlds", ${JSON.stringify(JSON.stringify({ [side.origin]: side.key }))}); location.reload()`);
+    const until = performance.now() + 20_000;
+    let open = 0;
+    while (performance.now() < until && open < 2) {
+      await Bun.sleep(500);
+      open = await this.cdp.eval<number>(`document.querySelectorAll('a.world[data-state="open"]').length`).catch(() => 0);
+    }
+    if (open < 2) throw new Error(`전체 보기의 섬이 열리지 않았다(${open}/2)`);
+    await this.cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await Bun.sleep(4000);
+  }
+
   async rect(selector: string): Promise<{ x: number; y: number; w: number; h: number }> {
     const r = await this.cdp.eval(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()`);
     if (!r) throw new Error(`${selector} 가 없다`);
@@ -212,7 +254,9 @@ class Page {
     const done = new Promise<void>((r) => this.cdp.on("Tracing.tracingComplete", () => r()));
     await this.cdp.send("Tracing.start", { traceConfig: { includedCategories: ["viz", "devtools.timeline"] }, transferMode: "ReportEvents" });
     const metrics = async () => Object.fromEntries((await this.cdp.send("Performance.getMetrics")).metrics.map((m: any) => [m.name, m.value]));
-    const r0 = await this.cdp.eval<number>("window.__renders");
+    // 전체 보기에서는 걷기 박자가 그린 장을 센다(web/all/walk.ts).
+    const frames = "window.__all ? window.__all.frames : window.__renders";
+    const r0 = await this.cdp.eval<number>(frames);
     const m0 = await metrics();
     const c0 = cpu(this.profile);
     const t0 = performance.now();
@@ -221,7 +265,7 @@ class Page {
     const left = until - performance.now();
     if (left > 0) await Bun.sleep(left);
     const dt = (performance.now() - t0) / 1000;
-    const r1 = await this.cdp.eval<number>("window.__renders");
+    const r1 = await this.cdp.eval<number>(frames);
     const m1 = await metrics();
     const c1 = cpu(this.profile);
     await this.cdp.send("Tracing.end");
@@ -277,6 +321,7 @@ const tmp = mkdtempSync(join(tmpdir(), "aw-perf-"));
 const runtime = process.env.XDG_RUNTIME_DIR && existsSync(process.env.XDG_RUNTIME_DIR) ? process.env.XDG_RUNTIME_DIR : tmp;
 /** 가상 herdr 의 소켓. 경로가 길면 소켓을 못 만들어 XDG_RUNTIME_DIR 에 짧게 둔다. */
 const socket = join(runtime, `awperf-${process.pid}.sock`);
+const sockets: string[] = [];
 let cleaned = false;
 function cleanup(): void {
   if (cleaned) return;
@@ -295,6 +340,7 @@ function cleanup(): void {
   }
   rmSync(tmp, { recursive: true, force: true });
   rmSync(socket, { force: true });
+  for (const s of sockets) rmSync(s, { force: true });
 }
 // Ctrl-C, timeout, 닫힌 터미널 — 어떻게 끊겨도 띄운 크롬·서버·가상 herdr 를 남기지 않는다.
 for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]] as const) {
@@ -312,7 +358,22 @@ function freePort(): number {
   return port;
 }
 
-async function startServer(dir: string, label: string, socket: string): Promise<string> {
+/** 전체 보기 시나리오의 곁 월드: 제 가상 herdr(시나리오 사본)에 붙은 서버 하나. 사본의 상태를 바꿔 캐릭터를 걷게 한다. */
+let side: { origin: string; key: string; file: string } | undefined;
+function flipSide(i: number): void {
+  if (!side) return;
+  const state = JSON.parse(readFileSync(side.file, "utf8")) as { agents: Array<{ pane_id: string; agent_status: string; state_change_seq?: number }>; panes: Array<{ pane_id: string; agent_status?: string; state_change_seq?: number }> };
+  const agent = state.agents[i % state.agents.length]!;
+  const next = ["working", "blocked", "done", "idle"].filter((s) => s !== agent.agent_status)[i % 3]!;
+  for (const p of [agent, state.panes.find((x) => x.pane_id === agent.pane_id)]) {
+    if (!p) continue;
+    p.agent_status = next;
+    p.state_change_seq = 1000 + i;
+  }
+  writeFileSync(side.file, JSON.stringify(state));
+}
+
+async function startServer(dir: string, label: string, socket: string, extra: Record<string, string> = {}): Promise<string> {
   const port = freePort();
   const home = join(tmp, label);
   for (const sub of ["state", "config", "claude", "codex", "agy"]) mkdirSync(join(home, sub), { recursive: true });
@@ -334,6 +395,7 @@ async function startServer(dir: string, label: string, socket: string): Promise<
         AGENT_WORLD_RAISE: "0",
         AGENT_WORLD_LANG: "ko",
         AGENT_WORLD_DEV: "",
+        ...extra,
       },
       stdout: Bun.file(log),
       stderr: Bun.file(`${log}.err`),
@@ -416,7 +478,17 @@ async function main(): Promise<number> {
   children.push(Bun.spawn(["bun", "dev/mock-herdr.ts", socket, join(ROOT, "dev/perf/scenario.json")], { cwd: ROOT, stdout: "ignore", stderr: "ignore" }));
   for (let i = 0; i < 40 && !existsSync(socket); i++) await Bun.sleep(100);
 
-  const builds: Build[] = [{ label: "이번", url: await startServer(ROOT, "이번", socket) }];
+  // 곁 월드를 먼저 띄우고, 이번 판의 서버가 그것을 모아 보는 중계를 겸하게 한다.
+  const sideSocket = join(runtime, `awperf-${process.pid}-side.sock`);
+  const sideFile = join(tmp, "side-scenario.json");
+  copyFileSync(join(ROOT, "dev/perf/scenario.json"), sideFile);
+  children.push(Bun.spawn(["bun", "dev/mock-herdr.ts", sideSocket, sideFile], { cwd: ROOT, stdout: "ignore", stderr: "ignore" }));
+  for (let i = 0; i < 40 && !existsSync(sideSocket); i++) await Bun.sleep(100);
+  const sideUrl = new URL(await startServer(ROOT, "곁", sideSocket));
+  side = { origin: sideUrl.origin, key: /k=([0-9a-f]+)/.exec(sideUrl.hash)![1]!, file: sideFile };
+  sockets.push(sideSocket);
+
+  const builds: Build[] = [{ label: "이번", url: await startServer(ROOT, "이번", socket, { AGENT_WORLD_WORLDS: `곁=${side.origin}` }) }];
   if (compareRef) {
     const dir = join(tmp, "base");
     mkdirSync(dir);

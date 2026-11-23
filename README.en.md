@@ -189,6 +189,9 @@ remembers it and plain `http://127.0.0.1:4780` works. `bun run url` prints the a
 | `AGENT_WORLD_LANG` | Default language: `en` for English, Korean otherwise. Each browser can switch with the `EN`/`한` button in the top bar (remembered) or by opening `?lang=en`. |
 | `AGENT_WORLD_READONLY=1` | Read-only. Refuses prompts, keystrokes, creating, closing and `Open in herdr` (moving herdr's screen). Viewing still needs the key. |
 | `AGENT_WORLD_TRUST_HOSTS` | The address(es) used when serving through `tailscale serve` (`host.tailnet.ts.net:4780`, comma-separated). Only requests from the account that put this machine on the tailnet are accepted. |
+| `AGENT_WORLD_WORLDS` | Gather the Agent Worlds on your other machines on one screen (`laptop=https://lap.<tailnet>.ts.net:4780,build=https://…`, comma-separated). See "Several machines on one screen" below. |
+| `AGENT_WORLD_NAME` | The name on this machine's island in the all-worlds view (defaults to the host name). |
+| `AGENT_WORLD_ALL` | The address of the all-worlds view to return to from this world (`https://desk.<tailnet>.ts.net:4780/all`). Adds an `All worlds` button to the top bar. |
 | `AGENT_WORLD_OUTSIDE=1` | Also show sessions outside herdr (other terminals, desktop apps) while attached to herdr. |
 | `AGENT_WORLD_RAISE=0` | Do not bring the terminal window to the front on `Open in herdr`. |
 | `HERDR_SOCKET_PATH` | herdr socket path (default `~/.config/herdr/herdr.sock`). |
@@ -222,6 +225,35 @@ At start the server also prints the tailnet address with the key — open that o
 from the tailnet must carry the key and come from the account that put this machine on the tailnet. Use
 `tailscale serve` in HTTPS mode only: requests arriving through `tailscale funnel` (public internet) are refused, and
 raw `--tcp` forwarding should not be used because the sender cannot be identified.
+
+## Several machines on one screen
+
+If you run Agent World on more than one machine, one of them can gather the rest. Open `/all` and each machine is a
+small floating island; where the characters stand tells you who is working and who is waiting. Click an island to
+enter that machine's world.
+
+```sh
+# the machine that gathers (the others are already served on the tailnet as described above)
+AGENT_WORLD_WORLDS="laptop=https://lap.<tailnet>.ts.net:4780,build=https://build.<tailnet>.ts.net:4780" bun start
+
+# the other machines — adds an `All worlds` button to their top bar
+AGENT_WORLD_ALL=https://desk.<tailnet>.ts.net:4780/all bun start
+```
+
+- The all-worlds view only shows. To prompt an agent or answer a question, click the island and do it in that world.
+- Each world has its own key. A world you have not unlocked is shown as a locked island only — the server does not
+  send its houses, agents or statuses at all. Click it and paste that machine's key (or its keyed address); you do
+  this once per device.
+- For a world you already use there is nothing to type: its `All worlds` button carries the key over, and clicking
+  an island carries the key into that world.
+- The gathering server does not store the other machines' keys. It only uses the key your browser sent to connect,
+  and drops the connection when you close the view.
+- The other worlds accept tailnet requests from the same account only, so the gathering machine must be on the
+  tailnet under that account (tagged devices are refused).
+- Notifications are not gathered. Turn them on per world and per device, as before.
+
+The all-worlds view does not use the 3D scene. An island is one drawing and a character only walks when its status
+changes, so nothing is redrawn while everything is still.
 
 ## How it knows
 
