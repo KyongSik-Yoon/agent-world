@@ -8,7 +8,7 @@
 // 보낼 때 댓글마다 파일:줄과 그 줄 원문을 붙여 고칠 점 글 앞에 싣는다(desk-plan 의 reviseReason 과 같은 모양).
 // 적던 것은 창을 닫아도 그 카드가 떠 있는 동안 남는다.
 import type { AgentView } from "../shared/types.ts";
-import { get } from "./api.ts";
+import { ApiError, get } from "./api.ts";
 import { h, icon, prose } from "./dom.ts";
 import { t } from "./i18n.ts";
 
@@ -32,6 +32,11 @@ interface Draft {
   card: number | undefined;
   text: string;
   notes: LineNote[];
+  /**
+   * 보냈는데 카드만 내려가고 Claude 에 닿지 않았다(desk-plan 이 답을 알아보지 못했거나 확인하지 못했다). 카드가 없어도
+   * 지우지 않고, 다음 카드에 줄 댓글까지 그대로 옮긴다 — 플랜이 그대로여서 같은 말을 다시 보내게 된다.
+   */
+  unsent?: boolean;
 }
 
 /** 서버가 받는 길이(control.ts MAX_REVISE). */
@@ -62,6 +67,8 @@ export class PlanReader {
   onApprove: ((a: AgentView) => void) | undefined;
   /** 고칠 점을 보낸다. 카드가 내려가는 것까지 확인되면 끝난다. 실패하면 던진다 — 적던 것은 그대로 둔다. */
   onRevise: ((a: AgentView, card: number, text: string) => Promise<void>) | undefined;
+  /** 보낸 고칠 점이 카드와 함께 사라졌다(창은 카드를 따라 닫힌다). text 는 보낸 글. */
+  onLost: ((a: AgentView, message: string, text: string) => void) | undefined;
 
   get isOpen(): boolean {
     return this.dlg !== undefined;
@@ -152,8 +159,9 @@ export class PlanReader {
     let d = this.drafts.get(this.agentId);
     if (!d) this.drafts.set(this.agentId, (d = { card, text: "", notes: [] }));
     if (card !== undefined && d.card !== card) {
-      if (d.card !== undefined) d.notes = [];
+      if (d.card !== undefined && !d.unsent) d.notes = [];
       d.card = card;
+      d.unsent = false;
     }
     return d;
   }
@@ -289,12 +297,20 @@ export class PlanReader {
     this.sending = true;
     this.showError("");
     this.updateFoot();
+    // 답을 기다리는 사이 카드가 내려가 스냅샷(sync)이 먼저 올 수 있다 — 닿았다고 확인될 때까지는 지우지 않게 둔다.
+    const draft = this.draft();
+    draft.unsent = true;
     try {
       await this.onRevise(a, card, text);
-      // 보냈다 — 카드가 내려갔으니 적던 것은 버린다. 창은 다음 스냅샷에서 닫힌다.
+      // 닿았다 — 적던 것은 버린다. 창은 다음 스냅샷에서 닫힌다.
       this.drafts.delete(a.id);
     } catch (e) {
-      if (this.dlg === dlg) this.showError((e as Error).message);
+      // 카드는 내려갔는데 닿지 않았다 — 창은 카드를 따라 닫히므로 밖에서 알리고, 적던 것은 다음 카드까지 둔다.
+      if (e instanceof ApiError && e.status === 502) this.onLost?.(a, e.message, text);
+      else {
+        draft.unsent = false;
+        if (this.dlg === dlg) this.showError((e as Error).message);
+      }
     } finally {
       this.sending = false;
       if (this.dlg === dlg) this.updateFoot();
@@ -310,7 +326,7 @@ export class PlanReader {
 
   /** 새 스냅샷에 맞춘다: 카드가 내려갔으면(승인·거절·세션 종료) 닫고, 에이전트가 플랜을 고쳤으면 다시 읽는다. */
   sync(agents: readonly AgentView[]): void {
-    for (const id of this.drafts.keys()) if (!agents.some((a) => a.id === id && a.plan)) this.drafts.delete(id);
+    for (const [id, d] of this.drafts) if (!d.unsent && !agents.some((a) => a.id === id && a.plan)) this.drafts.delete(id);
     if (!this.dlg) return;
     const plan = agents.find((a) => a.id === this.agentId)?.plan;
     if (!plan) this.dlg.close();

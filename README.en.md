@@ -107,6 +107,9 @@ Worth knowing:
   plan, and asks again. `Line comments` shows the source with line numbers; click a number (and another for a range)
   to comment on those lines, and each comment is sent with its line numbers and the quoted lines. What you typed
   stays while that card is up, even if you close the view, and is not sent if you already answered in the terminal.
+  After sending, Agent World checks the session log that Claude actually got the text. If the card closed but the
+  text did not arrive (for example, desk-plan did not understand the answer), a notice says so and what you wrote,
+  line comments included, waits for the next plan card.
 - **Review reports from desk-review.** When [desk-review](https://github.com/KyongSik-Yoon/cc-desktop-mod/tree/main/desk-review)'s
   `/desk-review:simplify-review` finishes, the status window gets `Read review` (`R`). The report is drawn in a side
   pane next to the terminal, which is hard to see on a phone, so the button reads the same report from the session log

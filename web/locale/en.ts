@@ -74,6 +74,8 @@ export const en: Record<string, string> = {
   "달기": "Add",
   "고칠 점이 너무 깁니다.": "That is too long.",
   "고칠 점을 보냈습니다": "Sent the changes",
+  "고칠 점이 전해지지 않았습니다": "The changes did not reach Claude",
+  "적은 것은 다음 플랜 카드에 남겨 두었습니다. 누르면 복사합니다.": "What you wrote is kept for the next plan card. Click to copy it.",
   "플랜 카드의 Approve and start 를 누릅니다 (1)": "Presses Approve and start on the plan card (1)",
   "플랜을 승인했습니다": "Plan approved",
   "플랜을 승인하지 못했습니다": "Couldn't approve the plan",

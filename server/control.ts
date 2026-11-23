@@ -70,6 +70,8 @@ const SUBMIT_CHECK_MS = 20_000;
 const SUBMIT_POLL_MS = 100;
 /** 플랜 승인 키를 보낸 뒤 카드가 내려가기를(desk-plan 이 표식 파일을 지우기를) 기다리는 시간. */
 const PLAN_APPROVE_MS = 3_000;
+/** 플랜 카드가 내려간 뒤 고칠 점이 세션 로그에 실리기를 기다리는 시간. */
+const REVISE_LANDED_MS = 3_000;
 /** 플랜 카드의 고칠 점 — 줄 댓글을 원문과 함께 싣는다. 파이프 한 번에 들어가야 한다(asking.ts MAX_ANSWER_BYTES). */
 const MAX_REVISE = 16_000;
 /** 멈춤 키(Esc)를 보낸 뒤 herdr 가 일하는 중을 벗어나기를 기다리는 시간. 세 하네스 모두 1초 안에 완료로 내려왔다. */
@@ -571,16 +573,27 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       if (typeof card !== "number") throw new Reject(L("card 는 숫자여야 합니다.", "card must be a number."), 400);
       if (!wish) throw new Reject(L("고칠 점을 적어 주세요.", "Write what to change."), 400, "empty");
       const gone = L("그 플랜 카드는 이미 내려갔습니다. 터미널에서 먼저 답했거나 플랜이 바뀌었을 수 있습니다.", "That plan card is gone. It may have been answered in the terminal or the plan changed.");
+      let sent: { log?: string; from: number } | false;
       try {
-        if (!(await world.revisePlan(paneId, card, wish))) throw new Reject(gone, 409, "no_plan");
+        sent = await world.revisePlan(paneId, card, wish);
       } catch (e) {
         if (!(e instanceof AnswerError)) throw e;
         if (e.reason === "too_long") throw new Reject(L("고칠 점이 너무 깁니다.", "That is too long."), 400, "too_long");
         throw new Reject(e.reason === "gone" ? gone : L("고칠 점을 다 보내지 못했습니다. 터미널 화면을 확인해 주세요.", "Could not send all of it. Check the terminal."), 409, "no_plan");
       }
+      if (!sent) throw new Reject(gone, 409, "no_plan");
       poke(paneId);
       for (const until = Date.now() + PLAN_APPROVE_MS; await world.planCardUp(paneId, card); await Bun.sleep(SUBMIT_POLL_MS)) {
         if (Date.now() > until) throw new Reject(L("고칠 점을 보냈지만 카드가 그대로입니다. 터미널 화면을 확인해 주세요.", "The changes were sent but the card is still up. Check the terminal."), 504, "plan_unconfirmed");
+      }
+      // 카드가 내려간 것만으로는 닿았는지 모른다 — desk-plan 이 답을 알아보지 못하면 취소로 거절해도 카드는 내려간다.
+      const unknown = L("카드는 내려갔지만 Claude 가 고칠 점을 받았는지 확인하지 못했습니다. 터미널 화면을 확인해 주세요.", "The card closed, but it could not be confirmed that Claude got the changes. Check the terminal.");
+      if (!sent.log) throw new Reject(unknown, 502, "plan_unconfirmed");
+      for (const until = Date.now() + REVISE_LANDED_MS; ; await Bun.sleep(SUBMIT_POLL_MS)) {
+        const landed = await world.reviseLanded(sent.log, sent.from, wish);
+        if (landed === "yes") return;
+        if (landed === "no") throw new Reject(L("카드는 내려갔지만 고칠 점이 Claude 에 전해지지 않았습니다. desk-plan 이 답을 알아보지 못했을 수 있습니다.", "The card closed, but Claude did not get the changes. desk-plan may not have understood the answer."), 502, "plan_lost");
+        if (Date.now() > until) throw new Reject(unknown, 502, "plan_unconfirmed");
       }
     }),
     "/api/seen": mutate(async (body) => {

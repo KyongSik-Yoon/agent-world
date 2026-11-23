@@ -111,3 +111,55 @@ export async function readPlan(path: string): Promise<PlanText | undefined> {
     return undefined;
   }
 }
+
+/** 고칠 점을 보낸 뒤 로그에 붙는 만큼만 본다 — 그보다 길게 붙었으면 확인하지 않는다. */
+const MAX_LANDED_SCAN = 4 * 1024 * 1024;
+
+/** tool_result 블록의 글: 글자열이거나 text 블록들. */
+function resultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((c) => (isRecord(c) && c.type === "text" && typeof c.text === "string" ? c.text : "")).join("\n");
+}
+
+/**
+ * 플랜 카드에 보낸 고칠 점이 Claude 에 닿았는지, 세션 로그의 from 바이트 뒤에 붙은 줄로 가린다.
+ * 카드가 내려간 것만으로는 모른다 — desk-plan 이 답을 알아보지 못하면 취소로 거절해도 카드는 내려간다.
+ * "yes": 그 글을 실은 tool_result 가 있다. "no": 글 없이 오류로 끝난 tool_result 가 있다(취소·닫기 같은 다른 답).
+ * undefined: 아직 아무 답도 없다(엔진 창으로 넘어갔거나 로그가 늦다).
+ */
+export async function reviseLanded(logPath: string, from: number, text: string): Promise<"yes" | "no" | undefined> {
+  let file;
+  try {
+    file = await open(logPath, "r");
+  } catch {
+    return undefined;
+  }
+  try {
+    const size = (await file.stat()).size;
+    if (size <= from || size - from > MAX_LANDED_SCAN) return undefined;
+    const buf = Buffer.alloc(size - from);
+    await file.read(buf, 0, buf.length, from);
+    let other = false;
+    for (const line of buf.toString("utf8").split("\n")) {
+      if (!line.includes('"tool_result"')) continue;
+      let row: unknown;
+      try {
+        row = JSON.parse(line);
+      } catch {
+        continue; // 쓰는 중인 끝줄.
+      }
+      if (!isRecord(row) || row.type !== "user" || row.isSidechain === true || !isRecord(row.message) || !Array.isArray(row.message.content)) continue;
+      for (const block of row.message.content) {
+        if (!isRecord(block) || block.type !== "tool_result") continue;
+        if (resultText(block.content).includes(text)) return "yes";
+        if (block.is_error === true) other = true;
+      }
+    }
+    return other ? "no" : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    await file.close();
+  }
+}

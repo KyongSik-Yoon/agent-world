@@ -84,6 +84,13 @@ planReader.onRevise = async (a, card, text) => {
   await post("/api/plan/revise", { paneId: a.paneId ?? "", card, text });
   hud.toast(t("고칠 점을 보냈습니다"), a.title, "var(--accent)");
 };
+planReader.onLost = (a, message, text) =>
+  hud.toast(t("고칠 점이 전해지지 않았습니다"), `${t("적은 것은 다음 플랜 카드에 남겨 두었습니다. 누르면 복사합니다.")} ${message}`, "var(--blocked)", () =>
+    navigator.clipboard.writeText(text).then(
+      () => hud.toast(t("복사했습니다"), t("고칠 점"), "var(--accent)"),
+      () => hud.toast(t("복사하지 못했습니다"), t("고칠 점"), "var(--blocked)"),
+    ),
+  );
 terminal.onPlan = (paneId) => {
   const agent = hud.latest?.agents.find((a) => a.paneId === paneId);
   if (agent) planReader.open(agent);

@@ -3,6 +3,7 @@
 // 누가 있고 어떤 상태인지는 herdr 가 정본이고, 무엇을 하고 있는지·모델·effort 는 로그에서 읽는다.
 // herdr 에 없는 세션(다른 터미널, 데스크톱 앱)은 로그만으로 찾아 상태를 추정한다.
 import { statSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 import type { Activity, AgentStatus, AgentView, PaneView, ReviewReport, SkillView, TabView, WorkspaceView, WorldSnapshot } from "../shared/types.ts";
@@ -14,7 +15,7 @@ import { AskingPanes, answerPlan, type Card } from "./asking.ts";
 import { AgyDialogs } from "./dialog.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Lang, type Text } from "./text.ts";
-import { planMtime, planPathIn, readPlan, type PlanText } from "./plan.ts";
+import { planMtime, planPathIn, readPlan, reviseLanded, type PlanText } from "./plan.ts";
 import { findReview, readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
 import { agySkills, claudeSkills } from "./skills.ts";
@@ -689,13 +690,20 @@ export class World {
   /**
    * 플랜 카드에 고칠 점을 답한다(카드의 글 칸에 적고 Enter 한 것과 같다). card 는 화면이 읽은 카드의 표식 시각 — 그 사이
    * 터미널에서 답해 카드가 내려갔거나 고친 플랜으로 새 카드가 떴으면 보내지 않는다. 옛 플랜에 단 말이 새 플랜의 답이 된다.
-   * 보냈으면 true, 그 카드가 없으면 false.
+   * 보냈으면 닿았는지 확인할 세션 로그와 보내기 전 그 크기(로그를 못 찾았으면 log 없음), 그 카드가 없으면 false.
    */
-  async revisePlan(paneId: string, card: number, text: string): Promise<boolean> {
+  async revisePlan(paneId: string, card: number, text: string): Promise<{ log?: string; from: number } | false> {
     const now = (await this.asking.check()).get(paneId);
     if (!now?.plan || now.since !== card) return false;
+    const log = now.sessionId ? ((await claude.resolve(now.sessionId)) ?? undefined) : undefined;
+    const from = log ? await stat(log).then((s) => s.size, () => 0) : 0;
     await answerPlan(now, { kind: "revise", text });
-    return true;
+    return { log, from };
+  }
+
+  /** 보낸 고칠 점이 Claude 에 닿았는지(server/plan.ts reviseLanded). */
+  reviseLanded(log: string, from: number, text: string): Promise<"yes" | "no" | undefined> {
+    return reviseLanded(log, from, text);
   }
 
   /** 그 카드(표식 시각)가 아직 떠 있는지. */
