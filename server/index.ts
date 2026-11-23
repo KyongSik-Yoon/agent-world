@@ -16,6 +16,7 @@ import { MAX_IMAGE_BYTES } from "./images.ts";
 import { herdrAlive, herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag, herdrSocketPath } from "./herdr.ts";
 import { raiseHerdrWindow } from "./raise.ts";
 import { addressFile, isOurs, type Address } from "./address.ts";
+import { createRelay } from "./all.ts";
 import { accessKey, keyMatches, keyedUrl, proofOf, writePrivate } from "./key.ts";
 import { Pusher, asTarget, pushPublicKey } from "./push.ts";
 import { L, defaultLang, langOf, say } from "./text.ts";
@@ -58,6 +59,21 @@ const world = new World(!READONLY, process.env.AGENT_WORLD_OUTSIDE === "1");
 /** 화면을 닫아 둔 브라우저에 보내는 알림. 구독이 없으면 아무 일도 하지 않는다. */
 const pusher = new Pusher(READONLY);
 void pusher.load();
+/** 다른 PC 의 월드까지 모아 보여 주는 전체 보기의 중계(AGENT_WORLD_WORLDS 를 줬을 때만). */
+const relay = createRelay();
+/** 이 월드의 화면에서 돌아갈 전체 보기의 주소(AGENT_WORLD_ALL). 화면이 이 주소로 열쇠를 실어 보내므로 설정으로만 받는다. */
+const ALL_URL = (() => {
+  const given = process.env.AGENT_WORLD_ALL?.trim();
+  if (!given) return undefined;
+  try {
+    const url = new URL(given);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.href;
+  } catch {
+    // 아래에서 알린다.
+  }
+  console.error(say(L(`AGENT_WORLD_ALL 이 주소가 아닙니다: ${given}`, `AGENT_WORLD_ALL is not a URL: ${given}`)));
+  return undefined;
+})();
 const encoder = new TextEncoder();
 type Client = ReadableStreamDefaultController<Uint8Array>;
 /** 붙어 있는 화면들. 값은 전체 스냅샷을 한 번 받았는지 — 받은 화면에는 바뀐 것만 보낸다. */
@@ -132,13 +148,14 @@ async function tick(force = false): Promise<void> {
     return;
   }
   // 보는 사람이 없으면 드문드문만 만든다 — 상태가 바뀐 시각을 크게 놓치지 않을 만큼만.
-  if (!force && clients.size === 0 && Date.now() - (latest?.at ?? 0) < IDLE_TICK_MS) return;
+  if (!force && clients.size === 0 && !relay?.watching() && Date.now() - (latest?.at ?? 0) < IDLE_TICK_MS) return;
   ticking = true;
   try {
     const snapshot = await world.snapshot();
     latest = snapshot;
     // 달라진 것이 없으면 아무것도 보내지 않는다 — 조용한 동안에는 브라우저가 아무 일도 하지 않는다.
     publish(snapshot);
+    relay?.update(snapshot);
     pusher.observe(snapshot);
   } catch (e) {
     console.error(say(L("스냅샷 실패:", "Snapshot failed:")), e);
@@ -479,9 +496,19 @@ const listen = (at: number) =>
     ...fontRoutes(),
     ...termFontRoutes(),
     // 묻는 쪽이 준 값(n)에 열쇠로 답을 달아, 이 서버가 열쇠를 가진 진짜 Agent World 임을 보인다.
-    "/api/identity": { GET: guarded((req) => json({ ...identity, build: pageBuild, proof: proofOf(KEY, new URL(req.url).searchParams.get("n") ?? "", identity.socket) })) },
+    "/api/identity": { GET: guarded((req) => json({ ...identity, build: pageBuild, all: ALL_URL ?? (relay ? "/all" : undefined), proof: proofOf(KEY, new URL(req.url).searchParams.get("n") ?? "", identity.socket) })) },
     "/api/snapshot": {
       GET: guarded(async () => json(await world.snapshot())),
+    },
+    // 전체 보기의 스트림. 화면이 그 기기에 기억한 월드별 열쇠를 본문으로 보낸다(EventSource 는 본문을 못 실어 fetch 로 읽는다).
+    "/api/all/events": {
+      POST: guarded(async (req) => {
+        if (!relay) return json({ error: "not found" }, 404);
+        const body = (await req.json().catch(() => null)) as { keys?: unknown } | null;
+        const keys = body?.keys && typeof body.keys === "object" ? (body.keys as Record<string, string>) : {};
+        void tick(true);
+        return relay.stream(keys, req.signal);
+      }),
     },
     "/api/events": {
       GET: guarded((req) => {

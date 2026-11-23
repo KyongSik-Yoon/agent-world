@@ -256,3 +256,35 @@ export interface SnapshotPatch extends Partial<Omit<WorldSnapshot, "agents" | "a
   order: string[];
   agents: AgentView[];
 }
+
+// ── 전체 보기(여러 PC 의 월드를 한 화면에) ─────────────────────────────
+
+/** 전체 보기가 그리는 상태. 모르는 상태(unknown)는 대기로 친다. */
+export type DigestStatus = "working" | "blocked" | "done" | "idle";
+
+export interface DigestHouse {
+  /** 스페이스 id. 본채가 닫힌 저장소 집터의 빈 본채는 집터의 열쇠다. */
+  id: string;
+  /** 스페이스 번호. 빈 본채는 0. */
+  n: number;
+  label: string;
+  /** 본채(또는 홀로 선 집)인지. 아니면 워크트리 별채다. */
+  main: boolean;
+}
+
+/** 월드 하나에서 전체 보기가 그리는 것만 추린 것. 활동·제목·터미널은 싣지 않는다. */
+export interface WorldDigest {
+  /** 그 월드의 출처(`https://host:4780`). 중계 서버 자신의 월드는 "local". */
+  id: string;
+  name: string;
+  /** 들어갈 주소. */
+  url: string;
+  /** open: 내용을 싣는다. locked: 이 화면이 맞는 열쇠를 주지 않았다 — 내용이 없다. down: 닿지 않는다. wait: 붙는 중. */
+  state: "open" | "locked" | "down" | "wait";
+  /** 집터들. 한 집터의 집은 왼쪽에서 오른쪽 차례다. */
+  lots: Array<{ key: string; houses: DigestHouse[] }>;
+  agents: Array<{ id: string; ws: string; v: string; s: DigestStatus }>;
+}
+
+/** 전체 보기로 가는 변화 하나. 배치나 주민이 바뀌면 월드를 통째로, 상태만 바뀌면 그것만. */
+export type AllOp = { t: "world"; w: WorldDigest } | { t: "s"; w: string; a: string; s: DigestStatus };
