@@ -492,10 +492,6 @@ body[data-ambient] .tag {
   padding: 5px 10px;
 }
 
-.btn.usage[hidden] {
-  display: none;
-}
-
 .usage-seg {
   display: inline-flex;
   align-items: center;
@@ -682,6 +678,11 @@ dialog.dlg.usage-dlg::backdrop {
 .btn.icon:has(> .ico) {
   display: inline-grid;
   place-items: center;
+}
+
+/* 숨긴 단추(hidden)는 위의 display 규칙들보다 앞선다. 없으면 아이콘이 든 단추는 hidden 이어도 보인다. */
+.btn[hidden] {
+  display: none !important;
 }
 
 .ico {
