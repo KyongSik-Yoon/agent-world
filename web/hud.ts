@@ -339,7 +339,7 @@ export class Hud {
   }
 
   /**
-   * 알림은 지금 맨 위에 있는 화면의 머리줄 바로 아래에 뜬다. 아래쪽은 입력창(상태 창의 도크, 터미널의 입력 줄)과
+   * 알림은 지금 맨 위에 있는 화면의 머리줄 바로 아래에 뜬다(휴대폰의 상태 창에서는 그 머리 위에 겹친다). 아래쪽은 입력창(상태 창의 도크, 터미널의 입력 줄)과
    * 방금 온 글이 있는 자리라 덮지 않는다. 머리줄의 높이는 화면마다 달라(두 줄로 접히는 휴대폰 위 막대, 상태 창 머리,
    * 터미널 머리) 띄울 때 잰다. 데스크톱에서는 목록과 상태 창 사이, 월드 위에 둔다.
    */
@@ -352,6 +352,7 @@ export class Hud {
     let top = this.topbar.getBoundingClientRect().bottom;
     let left = 0;
     let right = 0;
+    let overHead = false;
     const term = shown(document.getElementById("term-overlay"));
     const detail = shown(this.detail);
     if (term) {
@@ -359,8 +360,10 @@ export class Hud {
       left = term.left;
       right = vw - term.right;
     } else if (detail && detail.width >= vw - 1) {
-      // 휴대폰: 상태 창이 화면 전체를 쓴다.
-      top = this.belowDetailActions();
+      // 휴대폰: 상태 창이 화면 전체를 쓴다. 알림은 화면 맨 위, 상태 창 머리에 겹쳐 띄운다 — 머리 밑에 두면 할 일 단추 줄을
+      // 피하느라 화면 가운데쯤까지 내려온다. 머리의 단추(목록·닫기)는 잘못 눌려도 화면만 바뀌고 PC 에 닿지 않는다.
+      top = this.detail.querySelector(".d-head")!.getBoundingClientRect().top;
+      overHead = true;
     } else {
       const roster = shown(this.roster);
       const l = roster && roster.width < vw / 2 ? roster.right : 0;
@@ -375,6 +378,8 @@ export class Hud {
         right = vw - detail.right;
       }
     }
+    // 머리에 겹칠 때는 폭을 채운다 — 글 길이만큼이면 양옆으로 머리의 단추 끝이 삐져나온다.
+    this.toasts.classList.toggle("over-head", overHead);
     Object.assign(this.toasts.style, { top: `${Math.round(top) + 8}px`, left: `${Math.round(left)}px`, right: `${Math.round(right)}px` });
   }
 

@@ -1764,6 +1764,15 @@ kbd {
   color: var(--ink-2);
 }
 
+/* 휴대폰 상태 창의 머리 위에 겹칠 때(hud.ts placeToasts): 폭을 채우고, 되돌리기 단추는 오른쪽 끝으로. */
+#toasts.over-head {
+  align-items: stretch;
+}
+
+#toasts.over-head .toast span {
+  flex: 1;
+}
+
 @keyframes drop {
   from {
     opacity: 0;
