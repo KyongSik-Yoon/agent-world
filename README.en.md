@@ -30,14 +30,14 @@ opening `?lang=en`, or by setting `AGENT_WORLD_LANG=en`.
 
 | To | Do this |
 | --- | --- |
-| Send a prompt | The input at the bottom of the status window (`C`). Enter sends, Shift+Enter adds a line. Delivery is confirmed from the user turn that appears in the agent's log. |
+| Send a prompt | The input at the bottom of the status window (`C`). Enter sends, Shift+Enter adds a line. On touch devices, whose on-screen keyboard has no Shift+Enter, Enter adds a line and the send button sends. Delivery is confirmed from the user turn that appears in the agent's log; a prompt sent while Claude Code is working is queued, and counts as received once it is in the queue. |
 | Show an image | Paste it into the input, drop it, or pick it with `＋` (PNG, JPEG, GIF, WebP; 10MB each, 8 at a time). It goes with the prompt. |
 | Use a skill or command | In a Claude Code session, type `/` at the start of the input. Typing filters by name and description; pick with ↑↓ and Enter (or Tab) and `/name ` goes to the front of the input — it is not sent, so add the task after it. The list is the session's own skill list from its log plus what SKILL.md front matter says: skills users cannot invoke (`user-invocable: false`) are left out and slash-only ones (`disable-model-invocation: true`) are added. A few built-in model-only skills (`keybindings-help` and others) have no file to check; picking one gets a refusal from Claude. Of the built-in commands, only the ones that are safe to send from here — `/clear`, `/compact`, `/context` — are listed, at the top. Commands that open a dialog (`/usage`) or change the default for other sessions (`/model`) are not listed but can still be typed and sent.<br><br>Antigravity sessions get the same picker. Antigravity keeps no skill list in its log, so the list is read from disk: the project's `.agents/skills`, your `~/.gemini/config/skills`, and the skills of enabled plugins (`plugin:name`), leaving out `disable-slash-command: true`. Skills bundled with Antigravity are not listed but can be typed and sent. The commands at the top are `/clear`, `/compact`, `/rename` and the prompt commands `/plan`, `/goal`, `/grill-me`, `/teamwork`, `/boost`, `/browser`, `/schedule`, `/learn`. Commands that open a panel which swallows the next prompt (`/context`, `/usage`, `/codesearch`), `/btw` (its answer only shows in the terminal), and commands that change saved settings (`/model`, `/effort`) are left out. Antigravity does not log slash commands, and logs a prompt sent mid-turn only after that turn ends, so delivery is confirmed from its input history (`history.jsonl`). After `/clear` the session shows empty until the next prompt. |
 | Stop what it is doing | `Stop` at the right end of the status line while it works. It is the same as Esc in the terminal: the current turn ends and any text in its input stays (Claude Code, Codex, Antigravity). Claude Code goes straight on to a prompt you queued while it worked, so that turn is stopped as well, and so are any background agents. Because you stopped it, it does not walk to the plaza or notify you; it counts as seen. Not shown while it waits on a question, where Esc would decline it. |
 | Answer a question or permission request | When an agent needs input, the real dialog appears at the top of the status window. Press the number or key it shows with the quick-key row. |
-| Use the terminal directly | `` ` `` opens it large. While it is open, keystrokes go straight to the pane. `Scrollback` shows earlier output; for agents with no scrollback (Claude Code in fullscreen mode) it scrolls the app itself: Claude Code gets mouse-wheel signals for as far as you wheel or drag past the edge, so it follows line by line, and other agents get PageUp/PageDown a page at a time. Closing returns it to the live screen. Shift+Esc closes it. |
+| Use the terminal directly | `` ` `` opens it large. While it is open, keystrokes go straight to the pane, Korean input included. `Scrollback` shows earlier output; for agents with no scrollback (Claude Code in fullscreen mode) it scrolls the app itself: Claude Code gets mouse-wheel signals for as far as you wheel or drag past the edge, so it follows line by line, and other agents get PageUp/PageDown a page at a time. Closing returns it to the live screen. Shift+Esc closes it. |
 | Switch model or effort | `Switch…` at the end of the model row, for Claude Code and Codex sessions. It applies to that session only; sessions you start later keep the harness defaults (the slash commands would change those too, so the world uses Claude Code's "this session only" picker option and Codex's `/model … --reasoning=…`). Not while the agent is working, waiting on a question, or has unsent text in its input. Antigravity has no session-only switch, so its model is picked at start. |
-| See plans and usage | The top bar shows a logo and a percentage per harness — the most-used of its limit windows (5h, 7d …), orange from 70% and red from 90%. Click it for the plan name and, per window, how much is used, how much is left and when it resets. When the bar is narrow only the most-used harness stays. Nothing is fetched: these are the values each harness left on this machine, so usage from other devices shows up the next time that harness runs here, and a harness you have not used for a while is dimmed with the time of its reading. |
+| See plans and usage | The top bar shows a logo and a percentage per harness — the most-used of its limit windows (5h, 7d …), orange from 70% and red from 90%. Click it for the plan name and, per window, how much is used, how much is left and when it resets. When the bar is narrow only the most-used harness stays. Claude Code's usage is asked from its usage API (see How it knows); for the other harnesses these are the values they left on this machine, so their usage from other devices shows up the next time that harness runs here, and a harness you have not used for a while is dimmed with the time of its reading. A harness that left nothing is not shown. |
 | Mark a result as seen | A finished agent waits in the plaza until you press `Mark as seen` (`D`) in its status window, or send it a new prompt; then it walks home. Opening the window and moving on leaves it there. Undo from the toast. |
 | Widen the status window | Drag its left edge. The width is remembered; double-click to reset. |
 | Build a house | `＋ New house` (`B`) — folder, name, worktree or not, the agent to add with its model and effort, and its first prompt, in one go. The model and effort go in as launch flags (`--model`, `-m` …), so they apply to that session only. |
@@ -71,7 +71,7 @@ the app is in the background (Web Push). It is off by default, switched on per d
 Notifications for the same agent replace each other, and in Chromium browsers you only get the page's toast while you are looking at it.
 While you are using one of the devices with notifications on (its window is in front and was touched in the last 5 minutes, or on
 desktop Chrome the keyboard or mouse was used in any app in the last 2 minutes), notifications go to that device only — your
-phone and watch stay quiet while you sit at the PC. When you then walk away, whatever went only to the PC in the meantime and
+phone and watch stay quiet while you sit at the PC. When you then walk away, whatever went only to the PC in the meantime (within 7 minutes) and
 is still unchanged is sent to the phone as well. To have it notice you in other apps, allow the idle detection permission
 Chrome asks for on your first click in the page.
 On iOS it is available only in the installed home-screen app (16.4 or later). The text is encrypted so that only your
@@ -131,7 +131,7 @@ Worth knowing:
 herdr plugin install KyongSik-Yoon/agent-world
 ```
 
-It needs [Bun](https://bun.sh) (checked on 1.4.4). Once installed, herdr starts the server whenever herdr starts
+It needs herdr 0.9.5 or later and [Bun](https://bun.sh) (checked on 1.4.4). Once installed, herdr starts the server whenever herdr starts
 (and leaves it alone if one is already running for that session). The server stops by itself a minute after its herdr
 session ends. It adds four actions.
 
@@ -162,8 +162,8 @@ description = "Agent World: show address"
 Run an unbound action from inside a herdr pane with `herdr plugin action invoke restart --plugin kyongsik-yoon.agent-world`.
 
 The server attaches to that herdr session. The default session is at `http://127.0.0.1:4780`; a named session gets
-its own fixed port (see `AGENT_WORLD_PORT` below). To configure it, put the environment variables below as
-`NAME=value` lines in the `env` file of the folder printed by `herdr plugin config-dir kyongsik-yoon.agent-world`,
+its own fixed port (see `AGENT_WORLD_PORT` below). To configure it, put the `AGENT_WORLD_*` variables below as
+`NAME=value` lines (other names are ignored) in the `env` file of the folder printed by `herdr plugin config-dir kyongsik-yoon.agent-world`,
 then `restart`:
 
 ```sh
@@ -185,7 +185,7 @@ remembers it and plain `http://127.0.0.1:4780` works. `bun run url` prints the a
 
 | Environment variable | Meaning |
 | --- | --- |
-| `AGENT_WORLD_PORT` | Port. Without it, each herdr session uses a fixed one — 4780 for the default session, and for a named session one port in 4781–4879 derived from its socket path (the same session always gets the same port). If that port is taken it moves to the next one, and if a server is already running for the same herdr it just prints that address and exits. `bun run url` prints the current address. Bound to loopback only. |
+| `AGENT_WORLD_PORT` | Port. Without it, each herdr session uses a fixed one — 4780 for the default session, and for a named session one port in 4781–4879 derived from its socket path (the same session always gets the same port). If that port is taken it moves to the next one (ten ports in all; a port given with `AGENT_WORLD_PORT` is not moved, the server exits instead). If a server is already running for the same herdr it just prints that address and exits. `bun run url` prints the current address. Bound to loopback only. |
 | `AGENT_WORLD_LANG` | Default language: `en` for English, Korean otherwise. Each browser can switch with the `EN`/`한` button in the top bar (remembered) or by opening `?lang=en`. |
 | `AGENT_WORLD_READONLY=1` | Read-only. Refuses prompts, keystrokes, creating, closing and `Open in herdr` (moving herdr's screen). Viewing still needs the key. |
 | `AGENT_WORLD_TRUST_HOSTS` | The address(es) used when serving through `tailscale serve` (`host.tailnet.ts.net:4780`, comma-separated). Only requests from the account that put this machine on the tailnet are accepted. |
@@ -201,7 +201,7 @@ Camera: drag to rotate, `Space`+drag (or middle/right-button drag) to pan, wheel
 zoom and angle.
 
 Shortcuts: `N` next agent to check · `C` talk · `` ` `` terminal · `D` mark as seen · `R` read review · `B` build a house · `Enter` open
-in herdr · `/` search · `H` home · `T` day/night · `Esc` close. Shortcuts are off while you type in an input or the terminal.
+in herdr · `/` search · `H` home · `T` day/night (follow the device → day → night; it starts by following the device's light/dark) · `Esc` close. Shortcuts are off while you type in an input or the terminal.
 
 This server shows your terminal screens and can type into your terminals. So:
 
@@ -280,7 +280,7 @@ every 30 seconds and only a changed file is read again; account emails, ids and 
 
 | Harness | Plan and usage from |
 | --- | --- |
-| Claude Code | Every 3 minutes, `https://api.anthropic.com/api/oauth/usage` is asked with the sign-in token Claude Code left (`~/.claude/.credentials.json`, else the macOS Keychain or Linux Secret Service): 5h, 7d and per-model weekly limits such as Fable. The token is only read, never refreshed — once it expires the last values stay until Claude Code gets a new one. A 429 pauses it for 10 minutes. Start with `AGENT_WORLD_CLAUDE_USAGE_API=0` to turn it off. If the herdr web UI's status-line capture (`~/.herdr/statusline-last.json`) or a status-line script that leaves the usage API response (`$XDG_RUNTIME_DIR/claude-statusline/statusline-usage-cache.json`) is there, those are mixed in for fresher values. The plan name comes from the account in `~/.claude.json`. |
+| Claude Code | Every 3 minutes, `https://api.anthropic.com/api/oauth/usage` is asked with the sign-in token Claude Code left (`~/.claude/.credentials.json`, else the macOS Keychain or Linux Secret Service): 5h, 7d and per-model weekly limits such as Fable. The token is only read, never refreshed — once it expires the last values stay until Claude Code gets a new one. A 429, a server error or a failed connection pauses it for 10 minutes (up to an hour if the server asks for longer with `Retry-After`). Start with `AGENT_WORLD_CLAUDE_USAGE_API=0` to turn it off. If the herdr web UI's status-line capture (`~/.herdr/statusline-last.json`) or a status-line script that leaves the usage API response (`$XDG_RUNTIME_DIR/claude-statusline/statusline-usage-cache.json`) is there, those are mixed in for fresher values. The plan name comes from the account in `~/.claude.json`. |
 | Codex | `rate_limits` on the `token_count` rows of the session log (windows and plan), from the most recently used session. |
 | Antigravity | `/tmp/agy-statusline-<uid>/last-payload.json`, only if your status-line script leaves what it receives there. Antigravity does not write this file itself, so without such a script it does not appear. |
 
@@ -296,7 +296,7 @@ under `server/adapters/` to read their logs.
 server/   Bun server — herdr RPC, log tailing, snapshots pushed over SSE
   control.ts  control endpoints (prompts, keys, terminal mirror, create, close)
   models.ts   model lists per harness, launch flags, session-only model switches
-  usage.ts    plan and limit usage per harness, from the files the harnesses leave
+  usage.ts    plan and limit usage per harness, from the files the harnesses leave and Claude Code's usage API
   adapters/   log readers per harness
   text.ts     server messages in both languages
   key.ts      the access key and owner-only state files
@@ -315,7 +315,7 @@ docs/     the homepage (index.html) and screenshots
 ```
 
 `bun run probe` prints the current snapshot as a table without starting the server. `bun run url` prints the address
-(with the key) of the server running for this herdr session. `bun run i18n` checks that every UI string has an English entry.
+(with the key) of the server running for this herdr session, read from the `~/.local/state/agent-world/server*.json` the server writes. `bun run i18n` checks that every UI string has an English entry.
 `bun run perf:lint` and `bun run perf` check UI performance: the lint looks for things like endless CSS animations in the
 code, and the frame check runs the mock session in a GPU headless Chrome and verifies the page never presents more frames
 than the scene draws (`--compare` measures cost against an earlier version). Changes to web/ reach main only after the
