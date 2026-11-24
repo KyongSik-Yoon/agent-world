@@ -428,6 +428,56 @@ function selectWanted(snapshot: WorldSnapshot): void {
   select(id);
 }
 
+// 휴대폰은 가려진 브라우저를 통째로 내리곤 한다(다른 앱을 2분 쓰는 사이에도). 돌아오면 문서를 처음부터 다시 읽어 마을 첫 화면이
+// 뜨므로, 가려지는 순간 보던 자리를 적어 두고 다시 읽힌 문서가 첫 스냅샷에서 그 자리로 돌아간다. 적는 것은 가려질 때 한 번,
+// 읽는 것은 문서마다 한 번뿐이다. 앱을 닫았다 새로 연 것(navigate)은 마을에서 시작한다.
+const VIEW = "agent-world.view";
+type View = { sel: string | null; roster: boolean; fromRoster: boolean; term: string; rosterTop: number; detailTop: number };
+function saveView(): void {
+  const view: View = {
+    sel: selectedId,
+    roster: document.body.dataset.roster === "open",
+    fromRoster: cameFromRoster,
+    term: terminal.isOpen ? terminal.pane : "",
+    rosterTop: document.getElementById("roster-list")!.scrollTop,
+    detailTop: document.querySelector("#detail .d-body")?.scrollTop ?? 0,
+  };
+  store(VIEW, JSON.stringify(view));
+}
+addEventListener("pagehide", saveView);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveView();
+});
+let leftAt: View | null = (() => {
+  const raw = stored(VIEW);
+  store(VIEW, null);
+  const nav = (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type;
+  // 알림을 눌러 들어왔으면 그 에이전트가 먼저다.
+  if (!raw || wanted !== null || (nav !== "back_forward" && nav !== "reload")) return null;
+  try {
+    return JSON.parse(raw) as View;
+  } catch {
+    return null;
+  }
+})();
+function restoreView(snapshot: WorldSnapshot): void {
+  const view = leftAt;
+  leftAt = null;
+  if (!view || wanted !== null) return;
+  const id = view.sel;
+  const alive = typeof id === "string" && (snapshot.agents.some((a) => a.id === id) || snapshot.panes.some((p) => p.id === id) || snapshot.workspaces.some((w) => workspaceKey(w.id) === id));
+  if (alive) {
+    select(id);
+    cameFromRoster = view.fromRoster === true && phoneLayout.matches;
+    const body = document.querySelector("#detail .d-body");
+    if (body) body.scrollTop = Number(view.detailTop) || 0;
+  } else if (view.roster && phoneLayout.matches) {
+    setRoster(true);
+    document.getElementById("roster-list")!.scrollTop = Number(view.rosterTop) || 0;
+  }
+  if (view.term && snapshot.panes.some((p) => p.id === view.term)) openTerminal(view.term);
+}
+
 const lastStatus = new Map<string, AgentStatus>();
 let primed = false;
 
@@ -482,6 +532,7 @@ function show(snapshot: WorldSnapshot): void {
   planReader.sync(snapshot.agents);
   reviewReader.sync(snapshot.agents);
   builder.observe(snapshot);
+  restoreView(snapshot);
   selectWanted(snapshot);
   buildBtn.hidden = !snapshot.herdr || !snapshot.control;
 }
