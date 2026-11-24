@@ -1,5 +1,6 @@
 // 들머리: 서버의 스냅샷 흐름을 받아 장면과 HUD 에 나눠 주고, 둘 사이의 고르기·필터·단축키를 잇는다.
 import "./fonts.ts";
+import "./away.ts";
 import type { AgentStatus, AgentView, SnapshotPatch, WorldSnapshot } from "../shared/types.ts";
 import { get, post, hasAccess, headers, serverBuild } from "./api.ts";
 import { Builder } from "./build.ts";

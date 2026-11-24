@@ -18,6 +18,8 @@ import { herdrAlive, herdrFocus, herdrScreen, herdrSessionName, herdrSessionTag,
 import { raiseHerdrWindow } from "./raise.ts";
 import { addressFile, isOurs, type Address } from "./address.ts";
 import { createRelay } from "./all.ts";
+import { asAwayReport, recordAway } from "./away.ts";
+import pkg from "../package.json";
 import { accessKey, keyMatches, keyedUrl, proofOf, writePrivate } from "./key.ts";
 import { Pusher, asTarget, pushPublicKey } from "./push.ts";
 import { L, defaultLang, langOf, say } from "./text.ts";
@@ -645,6 +647,15 @@ const listen = (at: number) =>
         const body = (await req.json().catch(() => null)) as { endpoint?: unknown; present?: unknown } | null;
         if (typeof body?.endpoint !== "string" || typeof body.present !== "boolean") return json({ error: say(L("요청 본문이 제 모양이 아닙니다.", "The request body is malformed."), langOf(req)) }, 400);
         return json({ ok: await pusher.setPresent(body.endpoint, body.present) });
+      }),
+    },
+    // 휴대폰 화면이 "가려졌다 돌아왔다"를 알린다 — 그사이에 앱이 내려갔는지 세는 기록(away.ts).
+    "/api/away": {
+      POST: guarded(async (req) => {
+        const report = asAwayReport(await req.json().catch(() => null));
+        if (!report) return json({ error: say(L("요청 본문이 제 모양이 아닙니다.", "The request body is malformed."), langOf(req)) }, 400);
+        void recordAway(report, req.headers.get("user-agent") ?? "", pkg.version);
+        return json({ ok: true });
       }),
     },
     ...controlRoutes({ world, readonly: READONLY, guarded, json, refresh: () => void tick(true) }),
