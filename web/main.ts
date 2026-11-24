@@ -897,6 +897,10 @@ window.addEventListener("keydown", (e) => {
     case "enter": {
       // 다른 단추 위에서 누른 Enter 는 그 단추의 것이다 — 덩달아 herdr 화면을 옮기지 않는다.
       if (e.target instanceof HTMLElement && e.target.closest("button:not(.row), a")) break;
+      // 실제 자판의 Enter 만 받는다. 휴대폰에서 보내기를 누르면 그 단추가 잠기며 초점이 문서 바닥으로 떨어지는데, 그 뒤에 화면
+      // 자판에서 온 Enter 가 이 단축키가 되어 PC 의 herdr 화면을 옮기고 터미널 창을 앞으로 끌어왔다. 화면 자판의 키는 code 가
+      // 비어 오고, 손가락이 주 포인터인 기기에서는 이 단축키를 쓸 일이 없다(옮기기는 상태 창의 아이콘 단추로).
+      if ((e.code !== "Enter" && e.code !== "NumpadEnter") || matchMedia("(pointer: coarse)").matches) break;
       const a = hud.selected;
       if (a?.paneId) void openInHerdr(a);
       break;
