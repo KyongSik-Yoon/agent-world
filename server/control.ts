@@ -644,8 +644,12 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       const args = Array.isArray(body.args) ? body.args : [];
       if (args.length > 32 || args.some((a) => typeof a !== "string" || a.length > 2000)) throw new Reject(L("args 가 올바르지 않습니다.", "args is not valid."), 400);
       // 고른 모델·수준은 실행 인자로 넘긴다 — 그 세션에만 적용되고 하네스의 기본값은 그대로다(models.ts).
-      const flags = await startFlags(kind, text(body, "model", 120), text(body, "effort", 20));
+      const model = text(body, "model", 120);
+      const effort = text(body, "effort", 20);
+      const flags = await startFlags(kind, model, effort);
       await herdrStartAgent(paneId, kind, name, [...flags, ...(args as string[])]);
+      // 첫 응답 전에는 로그에 모델이 없다. 고른 값을 상세에 바로 보이게 적어 둔다(world.started).
+      world.agentStarted(paneId, { model, effort });
     }),
     "/api/model": mutate(async (body) => {
       const paneId = await need("agent", text(body, "paneId"));

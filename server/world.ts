@@ -138,6 +138,11 @@ export class World {
    * 동안은 바꾼 값을 보인다. 로그가 무엇이든 다른 값을 말하기 시작하면 로그를 믿는다.
    */
   private readonly switched = new Map<string, { model?: string; effort?: string; base?: { model?: string; effort?: string; session?: string } }>();
+  /**
+   * 월드에서 들일 때 고른 모델·수준. 하네스는 첫 응답을 적기 전까지 로그에 모델을 남기지 않아, 그동안 상세가 비어 있으면
+   * 고른 것이 들어갔는지 알 수 없다. 로그가 모델을 말하기 시작하면 지운다. seen 은 그 pane 이 에이전트로 보인 적이 있는지.
+   */
+  private readonly started = new Map<string, { model?: string; effort?: string; seen?: boolean }>();
   /** pane → 그 pane 에서 읽고 있는 맨 위 세션, 그리고 하네스가 모르는 세션을 받기 시작한 시각. */
   private readonly mainOf = new Map<string, { id: string; unknownSince?: number }>();
   private readonly usage = new UsageWatch();
@@ -291,6 +296,16 @@ export class World {
       view.contextTokens = view.review = view.reviewSent = undefined;
     }
     if (typed?.queued) view.queued = typed.queued;
+
+    const started = this.started.get(pane.pane_id);
+    if (started) {
+      started.seen = true;
+      if (view.model) this.started.delete(pane.pane_id);
+      else {
+        view.model = started.model;
+        view.effort ??= started.effort;
+      }
+    }
 
     const switched = this.switched.get(pane.pane_id);
     if (switched) {
@@ -557,6 +572,8 @@ export class World {
       for (const id of this.doneSeq.keys()) if (!alive.has(id)) this.doneSeq.delete(id);
       for (const id of this.unread.keys()) if (!alive.has(id)) this.unread.delete(id);
       for (const id of this.firstPrompt.keys()) if (!alive.has(id)) this.firstPrompt.delete(id);
+      // 에이전트가 나간 pane 에 남기지 않는다 — 그 셸에서 손으로 다시 띄운 세션에 앞 세션의 모델이 붙는다.
+      for (const [id, st] of this.started) if (!alive.has(id) || (st.seen && !hosts.has(id))) this.started.delete(id);
       for (const id of this.stopped.keys()) if (!alive.has(id)) this.stopped.delete(id);
       for (const id of this.mainOf.keys()) if (!alive.has(id)) this.mainOf.delete(id);
     }
@@ -621,6 +638,12 @@ export class World {
     if (seq === undefined) return false;
     this.seen.set(paneId, seq);
     return true;
+  }
+
+  /** 월드에서 고른 모델·수준으로 들였다고 적는다. 고르지 않은 칸(하네스의 기본값)은 비워 둔다. */
+  agentStarted(paneId: string, chosen: { model?: string; effort?: string }): void {
+    if (chosen.model || chosen.effort) this.started.set(paneId, { model: chosen.model || undefined, effort: chosen.effort || undefined });
+    else this.started.delete(paneId);
   }
 
   /** 그 세션의 모델·수준을 바꿨다고 적는다. 다음 응답이 로그에 적힐 때까지 바꾼 값을 보인다. */
