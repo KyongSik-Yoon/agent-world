@@ -355,6 +355,13 @@ function trimTrailing(line: string): string {
   return end === line.length ? line : line.slice(0, end);
 }
 
+/** trimTrailing 이 뗀 꼬리(공백과 색상 코드)를 지난 뒤의 스타일. */
+function tailStyle(style: Style, tail: string): Style {
+  let s = style;
+  for (const m of tail.matchAll(ESCAPE)) if (m[2] === "m") s = applySgr(s, (m[1] || "0").split(/[;:]/).map((x) => Number(x) || 0));
+  return s;
+}
+
 /** 그려 둔 줄 하나. 같은 글이 같은 스타일로 다시 오면 요소를 그대로 다시 쓴다. */
 interface Row {
   /** 줄이 시작할 때의 스타일 + 줄의 글. 이것이 같으면 그림도 같다. */
@@ -1573,7 +1580,8 @@ export class TermScreen {
     let rows = (reflow ? (stackPanes(raw) ?? raw) : raw).map((full) => {
       const line = reflow ? trimTrailing(full) : full;
       const row = pool.get(styleKey(style) + line)?.pop() ?? renderLine(line, style, reflow);
-      style = row.end;
+      // 다음 줄은 다듬기 전 줄의 끝 스타일을 이어받는다. 뗀 꼬리의 \e[0m 을 빼면 선택지 커서 줄의 색·굵기가 아래 줄로 번졌다.
+      style = line === full ? row.end : tailStyle(row.end, full.slice(line.length));
       return row;
     });
     this.rows = rows;
