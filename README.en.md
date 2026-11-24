@@ -49,7 +49,7 @@ opening `?lang=en`, or by setting `AGENT_WORLD_LANG=en`.
 
 <img src="docs/img/terminal.webp" alt="The terminal opened large, showing the agent's screen with its colours; keystrokes go straight to the pane" width="960">
 
-On a narrow screen such as a phone, the bar moves to the bottom, within reach of your thumb: the status counts, usage
+On a narrow screen such as a phone, the bar moves to the bottom, within reach of your thumb: usage, the status counts
 and `Next up` sit in one row. Tap the status counts and the list comes up as a drawer, with the less-used buttons
 (new house, bell, language, theme, home) in a row above the bar. The status window and terminal
 use the whole screen. On touch devices the terminal shows a row of keys the on-screen keyboard lacks (Esc, Tab,
