@@ -124,6 +124,25 @@ async function agyModels(): Promise<ModelChoice[]> {
   return agyLoading;
 }
 
+let agySplitAskedAt = 0;
+
+/**
+ * agy 의 로그는 모델을 수준이 붙은 id 한 덩어리로만 적는다(`gemini-4-neon-high`). 띄울 때 고른 대로 모델과 수준으로 가른다.
+ * 목록에 있는 모델·수준 조합일 때만 가른다 — 로그에는 맞춰 볼 이름("(High)")이 없어, 끝 글자만 보고 떼면 이름이 우연히 `-high` 로
+ * 끝나는 모델을 잘못 가른다. 목록에 없으면 그대로 두고, 목록이 묵었으면 다시 묻는다(화면은 다음 박자에 따라온다).
+ */
+export function splitAgyModel(id: string): { model: string; effort?: string } {
+  const level = /^(.+)-(low|medium|high|xhigh|max)$/.exec(id);
+  if (!level) return { model: id };
+  if (agyCache?.models.some((m) => m.id === level[1] && m.efforts.includes(level[2]!))) return { model: level[1]!, effort: level[2] };
+  // 못 가른 id 가 화면에 있는 동안 박자마다 프로세스를 띄우지 않게, 여기서 묻는 것은 목록의 수명에 한 번이다.
+  if (Date.now() - agySplitAskedAt > AGY_TTL_MS) {
+    agySplitAskedAt = Date.now();
+    void agyModels();
+  }
+  return { model: id };
+}
+
 /** 그 하네스에서 고를 수 있는 모델들. 모델을 고를 줄 모르는 하네스면 null. */
 export async function modelCatalog(kind: string): Promise<ModelCatalog | null> {
   const models = kind === "claude" ? CLAUDE : kind === "codex" ? await codexModels() : kind === "agy" ? await agyModels() : null;

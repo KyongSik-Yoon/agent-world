@@ -18,6 +18,7 @@ import { asText, type Lang, type Text } from "./text.ts";
 import { planMtime, planPathIn, readPlan, reviseLanded, type PlanText } from "./plan.ts";
 import { findReview, readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
+import { splitAgyModel } from "./models.ts";
 import { agySkills, claudeSkills } from "./skills.ts";
 import { activityText, currentPending, markCut, oneLine, refOf, type LogSummary } from "./summary.ts";
 import { TailedLog } from "./tail.ts";
@@ -217,6 +218,7 @@ export class World {
     view.hasLog = true;
     view.model = s.model;
     view.effort = s.effort;
+    if (harness.vendor === "agy" && s.model) ({ model: view.model, effort: view.effort } = splitAgyModel(s.model));
     view.permissionMode = s.permissionMode;
     view.harnessVersion = s.harnessVersion;
     view.branch = s.branch;
