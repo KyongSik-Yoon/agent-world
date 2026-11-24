@@ -311,6 +311,9 @@ export class World {
       view.contextTokens = view.review = view.reviewSent = view.artifact = view.artifactAnswered = undefined;
     }
     if (typed?.queued) view.queued = typed.queued;
+    // 승인을 바란 글에 답한 지시는 AGY 가 턴을 시작해야 로그에 적힌다(일하는 중이면 그 턴이 끝난 뒤). 입력 기록에 줄 선 것이
+    // 있으면 이미 답한 것이다 — 그 사이 카드가 여전히 답을 기다린다고 하면 같은 답을 또 보내게 된다.
+    if (view.artifact !== undefined && typed?.queued?.length) view.artifactAnswered = true;
 
     const started = this.started.get(pane.pane_id);
     if (started) {

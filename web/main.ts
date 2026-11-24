@@ -99,6 +99,13 @@ terminal.onPlan = (paneId) => {
   if (agent) planReader.open(agent);
 };
 
+// AGY 의 글에 대한 답은 평범한 지시다. 실패는 창이 제 안에 적고, 닿았으면 창이 닫히므로 토스트로 알린다.
+planReader.onArtifactSend = async (a, text, approve) => {
+  if (!a.paneId) throw new Error(t("이 세션은 herdr 밖에서 돌아 지시를 보낼 pane 이 없습니다."));
+  await post("/api/prompt", { paneId: a.paneId, text });
+  hud.toast(approve ? t("승인을 보냈습니다") : t("고칠 점을 보냈습니다"), a.title, "var(--accent)");
+};
+
 // 마지막 턴의 리뷰 보고를 읽고 고칠 항목을 골라 보내는 창.
 const reviewReader = new ReviewReader();
 reviewReader.canSend = () => hud.latest?.control === true;

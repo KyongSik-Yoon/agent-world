@@ -9,7 +9,8 @@
 // 적던 것은 창을 닫아도 그 카드가 떠 있는 동안 남는다.
 //
 // AGY 가 승인을 바라고 남긴 글(아티팩트, server/artifact.ts)도 이 창으로 읽는다. 그 글은 아무것도 막고 있지 않고 턴이
-// 끝나 있어 답은 평범한 지시다 — 이 창은 읽기만 하고, 승인이나 고칠 점은 상세 창의 입력줄로 보낸다.
+// 끝나 있어 답은 평범한 지시다 — 같은 글 칸과 줄 댓글로 적되, 카드 대신 지시로 보낸다(/api/prompt, 받음 확인까지).
+// 승인도 누를 키가 없어 승인한다는 지시를 보낸다. 적은 것이 있으면 그것을 반영해 진행하라고 함께 싣는다.
 import type { AgentView } from "../shared/types.ts";
 import { ApiError, get } from "./api.ts";
 import { h, icon, prose } from "./dom.ts";
@@ -72,7 +73,7 @@ export class PlanReader {
   private sending = false;
   /** 에이전트마다 적던 것 — 창을 닫았다 열어도 남는다. 다른 카드가 뜨면 줄 댓글은 버린다(줄 번호가 옛 플랜의 것이다). */
   private readonly drafts = new Map<string, Draft>();
-  private ui: { lineBtn: HTMLButtonElement; note: HTMLTextAreaElement; send: HTMLButtonElement; count: HTMLElement; error: HTMLElement } | undefined;
+  private ui: { lineBtn: HTMLButtonElement; note: HTMLTextAreaElement; send: HTMLButtonElement; approve: HTMLButtonElement; count: HTMLElement; error: HTMLElement } | undefined;
   /** 닫힌 뒤에 부른다 — 크게 보기가 열려 있으면 입력을 다시 그리로 돌린다. */
   onClose: (() => void) | undefined;
   /** 이 월드가 pane 을 조작할 수 있는지(보기 전용이 아닌지). */
@@ -83,6 +84,8 @@ export class PlanReader {
   onRevise: ((a: AgentView, card: number, text: string) => Promise<void>) | undefined;
   /** 보낸 고칠 점이 카드와 함께 사라졌다(창은 카드를 따라 닫힌다). text 는 보낸 글. */
   onLost: ((a: AgentView, message: string, text: string) => void) | undefined;
+  /** AGY 의 글에 대한 답(승인·고칠 점)을 지시로 보낸다. 닿지 않으면 던진다 — 적던 것은 그대로 둔다. */
+  onArtifactSend: ((a: AgentView, text: string, approve: boolean) => Promise<void>) | undefined;
 
   get isOpen(): boolean {
     return this.dlg !== undefined;
@@ -99,7 +102,9 @@ export class PlanReader {
     this.lines = false;
     this.pick = undefined;
     this.sending = false;
-    const editable = kind === "plan" && this.canApprove() && this.onApprove !== undefined && this.onRevise !== undefined;
+    const editable =
+      this.canApprove() &&
+      (kind === "plan" ? this.onApprove !== undefined && this.onRevise !== undefined : this.onArtifactSend !== undefined && a.artifactAnswered !== true);
     const close = h("button", { class: "btn icon", type: "button", title: t("닫기"), "aria-label": t("닫기") }, icon("close"));
     const file = h("span", {});
     const body = h("div", { class: "prose plan-body", tabindex: "-1" }, h("p", { class: "plan-wait" }, kind === "plan" ? t("플랜을 읽는 중…") : t("글을 읽는 중…")));
@@ -112,7 +117,7 @@ export class PlanReader {
       head.append(lineBtn);
       dlg.append(this.footer(a, lineBtn));
     } else if (kind === "artifact") {
-      dlg.append(h("p", { class: "plan-note" }, this.canApprove() ? t("읽기만 하는 창입니다. 승인이나 고칠 점은 닫고 입력줄로 보내세요.") : t("읽기만 하는 창입니다.")));
+      dlg.append(h("p", { class: "plan-note" }, a.artifactAnswered ? t("이미 답한 글입니다. 더 할 말은 닫고 입력줄로 보내세요.") : t("읽기만 하는 창입니다.")));
     } else {
       dlg.append(h("p", { class: "plan-note" }, t("읽기만 하는 창입니다. 승인하거나 고치려면 닫고 터미널에서 답하세요.")));
     }
@@ -149,7 +154,8 @@ export class PlanReader {
   }
 
   private footer(a: AgentView, lineBtn: HTMLButtonElement): HTMLElement {
-    const note = h("textarea", { class: "rv-note", rows: "1", maxlength: String(MAX_REVISE), placeholder: t("고칠 점 — 플랜 모드에 남아 고쳐 다시 묻습니다"), "aria-label": t("고칠 점") });
+    const plan = this.kind === "plan";
+    const note = h("textarea", { class: "rv-note", rows: "1", maxlength: String(MAX_REVISE), placeholder: plan ? t("고칠 점 — 플랜 모드에 남아 고쳐 다시 묻습니다") : t("고칠 점 — 글을 고쳐 다시 묻습니다"), "aria-label": t("고칠 점") });
     note.value = this.draft().text;
     note.addEventListener("input", () => {
       this.draft().text = note.value;
@@ -162,13 +168,15 @@ export class PlanReader {
         void this.send(a);
       }
     });
-    const send = h("button", { class: "btn", type: "button", title: t("적은 것을 플랜 카드의 고칠 점으로 보냅니다 (Ctrl+Enter)") }, icon("enter"), h("span", {}, t("고쳐 달라고 하기")));
+    const send = h("button", { class: "btn", type: "button", title: plan ? t("적은 것을 플랜 카드의 고칠 점으로 보냅니다 (Ctrl+Enter)") : t("적은 것을 고쳐 달라는 지시로 보냅니다 (Ctrl+Enter)") }, icon("enter"), h("span", {}, t("고쳐 달라고 하기")));
     send.addEventListener("click", () => void this.send(a));
-    const approve = h("button", { class: "btn primary", type: "button", title: t("플랜 카드의 Approve and start 를 누릅니다 (1)") }, icon("check"), h("span", {}, t("승인하고 시작")));
-    approve.addEventListener("click", () => this.onApprove?.(a));
+    const approve = plan
+      ? h("button", { class: "btn primary", type: "button", title: t("플랜 카드의 Approve and start 를 누릅니다 (1)") }, icon("check"), h("span", {}, t("승인하고 시작")))
+      : h("button", { class: "btn primary", type: "button", title: t("승인한다는 지시를 보냅니다. 적은 것이 있으면 반영해 진행하라고 함께 보냅니다") }, icon("check"), h("span", {}, t("승인하고 진행")));
+    approve.addEventListener("click", () => (plan ? this.onApprove?.(a) : void this.send(a, true)));
     const count = h("span", { class: "plan-count", hidden: "" });
     const error = h("p", { class: "rv-error", role: "alert", hidden: "" });
-    this.ui = { lineBtn, note, send, count, error };
+    this.ui = { lineBtn, note, send, approve, count, error };
     this.updateFoot();
     return h("footer", { class: "plan-foot rv-foot" }, error, note, h("div", { class: "plan-acts" }, count, send, approve));
   }
@@ -196,6 +204,8 @@ export class PlanReader {
     ui.count.textContent = t("줄 댓글 {n}개", { n });
     ui.send.disabled = this.sending || this.plan?.card === undefined || (!d.text.trim() && n === 0);
     ui.send.lastElementChild!.textContent = this.sending ? t("보내는 중…") : t("고쳐 달라고 하기");
+    // 승인 카드의 승인은 키 하나라 글을 기다리지 않는다. AGY 의 승인은 지시라 받은 글이 있어야 무엇을 승인하는지 안다.
+    if (this.kind === "artifact") ui.approve.disabled = this.sending || this.plan === undefined;
   }
 
   private toggleLines(): void {
@@ -319,7 +329,8 @@ export class PlanReader {
     if (this.ui) this.ui.note.value = d.text;
   }
 
-  private async send(a: AgentView): Promise<void> {
+  private async send(a: AgentView, approve = false): Promise<void> {
+    if (this.kind === "artifact") return this.sendArtifact(a, approve);
     const ui = this.ui;
     const plan = this.plan;
     const card = plan?.card;
@@ -355,6 +366,41 @@ export class PlanReader {
     }
   }
 
+  /**
+   * AGY 의 글에 답한다. 고칠 점이면 글을 고쳐 다시 묻게 하고, 승인이면 진행하게 한다 — 적은 것이 있으면 반영하라고 함께 싣는다.
+   * 지시는 받음 확인까지 기다린다. 닿으면 적던 것을 버리고 창을 닫는다(로그에 지시가 적히면 카드가 접힌다).
+   */
+  private async sendArtifact(a: AgentView, approve: boolean): Promise<void> {
+    const ui = this.ui;
+    const plan = this.plan;
+    if (!ui || !plan || !this.onArtifactSend || this.sending || (approve ? ui.approve.disabled : ui.send.disabled)) return;
+    const body = this.compose();
+    const head = approve
+      ? body
+        ? t("{name} 확인했습니다. 승인합니다 — 아래를 반영해 진행해 주세요.", { name: plan.name })
+        : t("{name} 확인했습니다. 승인합니다 — 이대로 진행해 주세요.", { name: plan.name })
+      : t("{name} 에 고칠 점이 있습니다. 아래를 반영해 글을 고친 뒤 다시 승인을 청해 주세요.", { name: plan.name });
+    const text = body ? `${head}\n\n${body}` : head;
+    if (text.length > MAX_REVISE) {
+      this.showError(t("고칠 점이 너무 깁니다."));
+      return;
+    }
+    const dlg = this.dlg;
+    this.sending = true;
+    this.showError("");
+    this.updateFoot();
+    try {
+      await this.onArtifactSend(a, text, approve);
+      this.drafts.delete(a.id);
+      if (this.dlg === dlg) dlg?.close();
+    } catch (e) {
+      if (this.dlg === dlg) this.showError((e as Error).message);
+    } finally {
+      this.sending = false;
+      if (this.dlg === dlg) this.updateFoot();
+    }
+  }
+
   private showError(message: string): void {
     const el = this.ui?.error;
     if (!el) return;
@@ -364,7 +410,7 @@ export class PlanReader {
 
   /** 새 스냅샷에 맞춘다: 카드가 내려갔으면(승인·거절·세션 종료) 닫고, 에이전트가 플랜을 고쳤으면 다시 읽는다. */
   sync(agents: readonly AgentView[]): void {
-    for (const [id, d] of this.drafts) if (!d.unsent && !agents.some((a) => a.id === id && a.plan)) this.drafts.delete(id);
+    for (const [id, d] of this.drafts) if (!d.unsent && !agents.some((a) => a.id === id && (a.plan || (a.artifact && !a.artifactAnswered)))) this.drafts.delete(id);
     if (!this.dlg) return;
     const agent = agents.find((a) => a.id === this.agentId);
     const stamp = agent && stampOf(agent, this.kind);
@@ -379,6 +425,8 @@ export class PlanReader {
     void get<Plan>(`/api/${this.kind}?agent=${encodeURIComponent(this.agentId)}`)
       .then((plan) => {
         if (this.dlg !== dlg || this.at !== at) return;
+        // AGY 의 글에는 카드가 없다 — 고쳐진 시각을 카드 삼아, 글이 바뀌면 옛 줄 번호에 단 댓글을 놓는다.
+        if (this.kind === "artifact") plan.card = plan.at;
         const again = this.plan !== undefined;
         // 다른 카드의 글이면 고르던 줄도 놓는다.
         if (this.plan?.card !== plan.card) this.pick = undefined;
