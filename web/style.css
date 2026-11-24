@@ -3571,7 +3571,6 @@ dialog.dlg .warn {
 
 /* ── 터미널 크게 보기의 화면 키 줄 ───────────────────────────────── */
 
-#btn-roster,
 .soft-keys {
   display: none;
 }
@@ -3737,43 +3736,127 @@ dialog.dlg .warn {
     height: 100dvh;
   }
 
+  /*
+   * 막대는 화면 아래, 엄지가 닿는 자리에 선다. 늘 보이는 것은 한 줄 — 상태 숫자(목록을 여닫는 단추)·사용량·다음 확인.
+   * 목록 서랍을 열면 그 위에 덜 쓰는 단추 줄(집 짓기·전체 보기·알림·말·테마·홈)이 함께 나타난다.
+   * 서랍이 막대 바로 위에 붙어야 하므로 막대의 높이를 여기서 정한다: 단추 높이 × 줄 수 + 줄 사이 + 안쪽 여백·테두리.
+   */
+  body {
+    --bar-btn: 40px;
+    --bar-h: calc(var(--bar-btn) + 14px);
+    --bar-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  body[data-roster="open"] {
+    --bar-h: calc(var(--bar-btn) * 2 + 20px);
+  }
+
   #topbar {
-    top: max(6px, env(safe-area-inset-top));
+    top: auto;
     left: 6px;
     right: 6px;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 6px 8px;
+    bottom: var(--bar-bottom);
+    box-sizing: border-box;
+    height: var(--bar-h);
+    /* 첫 줄이 맨 아래에 놓이고, 넘친 단추(덜 쓰는 것)는 그 위 줄로 올라간다. */
+    flex-wrap: wrap-reverse;
+    align-content: flex-start;
+    gap: 0 4px;
+    padding: 6px;
+    z-index: 26;
   }
 
-  #btn-roster {
-    display: inline-grid;
-    place-items: center;
+  #topbar > :is(.btn, #chips) {
+    box-sizing: border-box;
+    height: var(--bar-btn);
+    min-height: 0;
   }
 
-  .brand {
-    margin-right: 0;
-  }
-
-  .brand-name,
+  .brand,
+  #topbar .spacer,
   #conn,
   #help {
     display: none;
   }
 
-  /* 상태 칩은 둘째 줄로 내려 가로로 민다. 알림과 말 바꾸는 단추도 그 줄 끝에 둔다 — 첫 줄에는 자리가 없다. */
+  /*
+   * 상태 숫자 넷은 알약 하나로 합쳐 목록을 여닫는 단추가 된다(main.ts). 칸마다 여백을 두면 숫자의 자릿수에 따라 잘린다 —
+   * 묶음이 남는 폭을 고르게 나눠 쓰게 해, 넷이 모두 두 자리여도 360px 폭에 들어간다.
+   */
   #chips {
-    order: 10;
+    order: 1;
     flex: 1 1 0;
     min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
+    align-items: center;
+    justify-content: space-evenly;
+    gap: 2px;
+    padding: 0 6px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--soft);
+    overflow: hidden;
+    cursor: pointer;
   }
 
-  #btn-notify,
-  #btn-lang,
+  #chips .chip {
+    flex: none;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    /* 누름은 묶음이 받는다. 칸 하나는 손가락으로 집기에 작다. */
+    pointer-events: none;
+  }
+
+  body[data-roster="open"] #chips {
+    border-color: var(--accent);
+  }
+
   #btn-usage {
+    order: 2;
+  }
+
+  #btn-next {
+    order: 3;
+  }
+
+  #topbar :is(#btn-usage, #btn-next) {
+    padding-inline: 8px;
+  }
+
+  /* 줄을 가른다 — 이 뒤의 단추들은 윗줄이다. 가르는 칸도 줄 하나로 세어지므로 줄 사이(6px)는 이 칸의 높이로 주고
+     row-gap 은 두지 않는다(둘 다 두면 사이가 두 번 들어가 윗줄이 막대 위로 밀려 올라간다). 접힌 한 줄일 때는 없앤다. */
+  #topbar::after {
+    content: "";
+    order: 9;
+    flex-basis: 100%;
+    height: 6px;
+  }
+
+  body:not([data-roster="open"]) #topbar::after {
+    display: none;
+  }
+
+  /* 윗줄은 서랍을 열었을 때만. 글 단추는 왼쪽, 그림 단추는 오른쪽. */
+  #topbar :is(#btn-build, #btn-all, #btn-notify, #btn-lang, #btn-theme, #btn-home) {
     order: 11;
+  }
+
+  #topbar :is(#btn-build, #btn-all) {
+    order: 10;
+  }
+
+  #btn-notify {
+    margin-left: auto;
+  }
+
+  body:not([data-roster="open"]) #topbar :is(#btn-build, #btn-all, #btn-notify, #btn-lang, #btn-theme, #btn-home) {
+    display: none;
+  }
+
+  /* 알림은 화면 맨 위에 뜬다(hud.ts placeToasts) — 아래는 조작, 위는 알림. */
+  #toasts.at-top {
+    padding-top: env(safe-area-inset-top);
   }
 
   dialog.dlg.usage-dlg {
@@ -3787,23 +3870,16 @@ dialog.dlg .warn {
     background: rgba(10, 14, 30, 0.42);
   }
 
-  /* 첫 줄과 둘째 줄을 가른다. */
-  #topbar::after {
-    content: "";
-    order: 9;
-    flex-basis: 100%;
-    height: 0;
-    margin: -3px 0;
-  }
-
-  /* 영어 단추 이름은 더 길다. 첫 줄에 다 들어오게 조금 줄인다. */
+  /* 영어 단추 이름은 더 길다. 한 줄에 다 들어오게 조금 줄인다. */
   html[lang="en"] #topbar .btn:not(.icon) {
-    padding-inline: 9px;
+    padding-inline: 7px;
     font-size: 12px;
   }
 
-  #chips .chip {
-    flex: none;
+  /* 영어에서는 윗줄에 글 단추 둘(전체 보기·집 짓기)이 함께 서지 못한다 — 전체 보기는 그림만 남긴다. */
+  html[lang="en"] #topbar #btn-all {
+    gap: 0;
+    font-size: 0;
   }
 
   /* 목록은 아래에서 올라오는 서랍 — 평소에는 접혀 있어 마을이 보인다. */
@@ -3812,10 +3888,18 @@ dialog.dlg .warn {
     top: auto;
     left: 6px;
     right: 6px;
-    bottom: max(6px, env(safe-area-inset-bottom));
+    /* 막대 바로 위에 붙는다. */
+    bottom: calc(var(--bar-bottom) + var(--bar-h) + 6px);
     width: auto;
-    max-height: 62dvh;
+    max-height: min(62dvh, calc(100dvh - var(--bar-bottom) - var(--bar-h) - 12px - env(safe-area-inset-top)));
     z-index: 25;
+  }
+
+  /* 상태 창 위로 꺼낸 목록은 화면 바닥에 붙는다 — 막대는 상태 창 밑에 있다.
+     찾는 동안(자판이 뜬 동안) 막대를 치우는 안은 기각: 줄을 누르는 순간 막대가 돌아오며 서랍이 밀려 누름이 빗나간다. */
+  body:has(#detail:not([hidden])) #roster {
+    bottom: var(--bar-bottom);
+    max-height: 62dvh;
   }
 
   body[data-roster="open"] #roster {
@@ -3888,8 +3972,7 @@ dialog.dlg .warn {
   }
 
   /*
-   * 상태 창 머리의 단추는 위 막대의 단추와 같은 자리에 선다 — 목록 단추는 #btn-roster 자리, 닫기는 맨 끝 단추 자리.
-   * 위 막대는 max(6px, 안전 영역)에서 시작해 테두리 1px·안쪽 6px 아래, 옆으로는 6px·테두리 1px·안쪽 8px 안에 단추를 둔다.
+   * 상태 창 머리는 화면 맨 위에 선다 — 왼쪽에 목록 단추, 오른쪽 끝에 닫기.
    */
   #detail {
     inset: 0;
@@ -3980,13 +4063,34 @@ dialog.dlg .warn {
   z-index: 2000000 !important;
 }
 
-/* 아주 좁은 휴대폰: 로고를 접어 위 막대의 단추들이 한 줄에 들어오게 한다. */
+/* 아주 좁은 휴대폰: 막대의 글 단추를 조금 좁히고, 윗줄의 전체 보기는 그림만 남긴다. */
 @media (max-width: 380px) {
-  .brand {
-    display: none;
-  }
   #topbar .btn:not(.icon) {
-    padding-inline: 8px;
+    padding-inline: 7px;
+  }
+
+  #topbar #btn-all {
+    gap: 0;
+    font-size: 0;
+  }
+}
+
+/* 320px: 상태 숫자 넷이 모두 두 자리여도 잘리지 않게 사이를 더 좁힌다. */
+@media (max-width: 340px) {
+  #topbar {
+    gap: 0 3px;
+  }
+
+  #chips {
+    padding: 0 3px;
+  }
+
+  #chips .chip {
+    gap: 3px;
+  }
+
+  #topbar :is(#btn-usage, #btn-next) {
+    padding-inline: 5px;
   }
 }
 

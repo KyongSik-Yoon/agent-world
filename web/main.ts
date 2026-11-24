@@ -590,19 +590,38 @@ void fetch("/api/identity", { headers: headers() })
 
 const buildBtn = document.getElementById("btn-build")!;
 
-// 좁은 화면(휴대폰)에서는 목록을 접어 두고 단추로 여닫는다. 넓은 화면에서는 늘 보인다.
-const rosterBtn = document.getElementById("btn-roster")!;
+const phoneLayout = matchMedia("(max-width: 760px)");
+
+// 좁은 화면(휴대폰)에서는 목록을 접어 두고 여닫는다. 넓은 화면에서는 늘 보인다.
+// 여닫는 단추는 아래 막대의 상태 숫자 묶음이다 — 숫자를 보고 누르면 그 순서(확인 필요·완료·작업 중·대기)로 묶인 목록이 올라온다.
+// 넓은 화면에서 그 숫자들은 상태별로 거르는 단추인데, 휴대폰에서는 칸 하나가 손가락으로 집기에 작아 묶음째 단추 하나로 쓴다.
+const chipsEl = document.getElementById("chips")!;
 function setRoster(open: boolean): void {
   document.body.dataset.roster = open ? "open" : "closed";
-  rosterBtn.setAttribute("aria-expanded", String(open));
+  if (chipsEl.hasAttribute("aria-expanded")) chipsEl.setAttribute("aria-expanded", String(open));
   syncBack();
 }
-rosterBtn.addEventListener("click", () => setRoster(document.body.dataset.roster !== "open"));
+const toggleRoster = (): void => setRoster(document.body.dataset.roster !== "open");
+// 칸의 거르기보다 먼저 받아(capture) 묶음의 누름으로 삼는다.
+chipsEl.addEventListener(
+  "click",
+  (e) => {
+    if (!phoneLayout.matches) return;
+    e.stopPropagation();
+    toggleRoster();
+  },
+  true,
+);
+chipsEl.addEventListener("keydown", (e) => {
+  if (!phoneLayout.matches || e.target !== chipsEl || (e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault();
+  toggleRoster();
+});
 // 휴대폰의 서랍은 아래로 끌어내려도 닫힌다.
 swipeToClose(
   document.getElementById("roster")!,
   document.getElementById("roster-list")!,
-  () => document.body.dataset.roster === "open" && matchMedia("(max-width: 760px)").matches,
+  () => document.body.dataset.roster === "open" && phoneLayout.matches,
   () => setRoster(false),
 );
 // 상태 창 위로 꺼낸 목록은 뒤의 어두운 막(상태 창의 ::after)을 누르면 닫힌다. 막을 누른 손가락은 상태 창 안의 단추에 닿지 않는다.
@@ -620,7 +639,6 @@ const BACK_GUARD = "agent-world.back";
 /** 가운데 무대를 세우려면 두 창 사이와 창 높이가 이만큼은 돼야 한다(px). */
 const STAGE_MIN_WIDTH = 520;
 const STAGE_MIN_HEIGHT = 680;
-const phoneLayout = matchMedia("(max-width: 760px)");
 
 // 장면이 통째로 가려진 동안에는 그리지 않는다: 터미널 크게 보기, 그리고 휴대폰에서 화면 전체를 쓰는 상태 창.
 // 상태 창은 휴대폰에서 가장 오래 보는 화면인데, 그 뒤에서 장면이 초당 30장(창을 만질 때마다 2.5초씩 60장)을 그리고 있었다.
@@ -632,6 +650,23 @@ function syncCovered(): void {
 new MutationObserver(syncCovered).observe(document.getElementById("detail")!, { attributes: true, attributeFilter: ["hidden"] });
 phoneLayout.addEventListener("change", syncCovered);
 syncCovered();
+// 휴대폰 배치에서는 상태 숫자 묶음이 단추다. 넓은 화면에서 걸어 둔 상태 거르기는 풀 길이 없으니 들어설 때 푼다.
+function syncChipsRole(): void {
+  if (phoneLayout.matches) {
+    hud.clearStatusFilter();
+    chipsEl.setAttribute("role", "button");
+    chipsEl.tabIndex = 0;
+    chipsEl.setAttribute("aria-label", t("에이전트 목록"));
+    chipsEl.setAttribute("aria-expanded", String(document.body.dataset.roster === "open"));
+  } else {
+    chipsEl.setAttribute("role", "group");
+    chipsEl.removeAttribute("tabindex");
+    chipsEl.setAttribute("aria-label", t("상태별 에이전트 수"));
+    chipsEl.removeAttribute("aria-expanded");
+  }
+}
+phoneLayout.addEventListener("change", syncChipsRole);
+syncChipsRole();
 /** 지금 기록 칸이 우리가 얹은 지킴 칸인가. */
 const onGuard = (): boolean => (history.state as Record<string, unknown> | null)?.[BACK_GUARD] === true;
 /** 뒤로 가기로 닫을 맨 위의 것. 없으면 null. */
@@ -686,10 +721,14 @@ if (onGuard()) history.replaceState(null, "");
   const detailEl = document.getElementById("detail")!;
   const phone = matchMedia("(max-width: 760px)");
   const stageEl = document.getElementById("stage")!;
+  let phoneBar = 0;
   const syncInsets = (): void => {
     if (phone.matches) {
       hud.setStageRoom(false);
-      return scene.setInsets(0, 0);
+      // 아래 막대(접힌 한 줄)가 덮는 만큼 섬을 올린다. 서랍을 열어 막대가 두 줄이 돼도 섬은 그 자리에 둔다.
+      const bar = document.getElementById("topbar")!;
+      if (document.body.dataset.roster !== "open" && bar.offsetHeight > 0) phoneBar = window.innerHeight - bar.getBoundingClientRect().top;
+      return scene.setInsets(0, 0, phoneBar);
     }
     const left = rosterEl.getBoundingClientRect().right;
     const right = Math.max(0, detailEl.hidden ? 0 : window.innerWidth - detailEl.getBoundingClientRect().left);

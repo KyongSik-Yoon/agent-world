@@ -248,6 +248,14 @@ export class Hud {
   /** 상태 칩. 한 번 만들어 두고 수와 눌림만 고친다 — 스냅샷마다 새로 만들면 누르는 도중의 단추가 발밑에서 바뀐다. */
   private readonly chipEls = new Map<AgentStatus, { chip: HTMLButtonElement; count: HTMLElement }>();
 
+  /** 상태별 거르기를 푼다(휴대폰 배치에는 거는 단추도 푸는 단추도 없다). */
+  clearStatusFilter(): void {
+    if (this.statusFilter === null) return;
+    this.statusFilter = null;
+    this.applyFilter();
+    if (this.snapshot) this.render();
+  }
+
   private renderChips(): void {
     const agents = this.snapshot!.agents;
     const order: AgentStatus[] = ["blocked", "done", "working", "idle"];
@@ -349,7 +357,10 @@ export class Hud {
       const r = el?.getBoundingClientRect();
       return r && r.width > 0 && r.right > 0 && r.left < vw ? r : null;
     };
-    let top = this.topbar.getBoundingClientRect().bottom;
+    // 휴대폰에서는 막대가 화면 아래에 있다 — 알림은 화면 맨 위에 띄운다.
+    const bar = this.topbar.getBoundingClientRect();
+    const barBelow = bar.top > window.innerHeight / 2;
+    let top = barBelow ? 0 : bar.bottom;
     let left = 0;
     let right = 0;
     let overHead = false;
@@ -380,6 +391,7 @@ export class Hud {
     }
     // 머리에 겹칠 때는 폭을 채운다 — 글 길이만큼이면 양옆으로 머리의 단추 끝이 삐져나온다.
     this.toasts.classList.toggle("over-head", overHead);
+    this.toasts.classList.toggle("at-top", barBelow && top === 0);
     Object.assign(this.toasts.style, { top: `${Math.round(top) + 8}px`, left: `${Math.round(left)}px`, right: `${Math.round(right)}px` });
   }
 
