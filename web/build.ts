@@ -415,7 +415,7 @@ export class Builder {
   }
 
   /** 에이전트 고르기 칸들(종류·이름·인자·첫 지시)과, 그 값으로 에이전트를 띄우는 함수. */
-  private agentFields(optional: boolean): { fields: HTMLElement[]; chosen(): boolean; steps(): string[]; start(paneId: string, step: Step): Promise<string> } {
+  private agentFields(optional: boolean): { fields: HTMLElement[]; chosen(): boolean; check(): void; steps(): string[]; start(paneId: string, step: Step): Promise<string> } {
     const kind = h("select", {});
     if (optional) kind.append(h("option", { value: "" }, t("없음 — 셸만 둡니다")));
     const name = h("input", { type: "text", autocomplete: "off", spellcheck: "false", pattern: "[a-z][a-z0-9_\\-]{0,31}" });
@@ -457,8 +457,11 @@ export class Builder {
       ],
       chosen: () => kind.value !== "",
       steps: () => [starting(), t("에이전트가 준비되기를 기다리는 중…"), ...(prompt.value.trim() ? [t("첫 지시를 보내는 중…")] : [])],
-      start: async (paneId, step) => {
+      // 탭이나 스페이스를 열기 전에 부른다 — 이름이 틀렸는데 탭부터 열리지 않게.
+      check: () => {
         if (!AGENT_NAME.test(name.value)) throw new Error(t("주민 이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 32자까지 쓸 수 있습니다."));
+      },
+      start: async (paneId, step) => {
         step(starting());
         await post("/api/agent/start", { paneId, kind: kind.value, name: name.value, model: pick.model(), effort: pick.effort(), args: splitArgs(args.value) });
         step(t("에이전트가 준비되기를 기다리는 중…"));
@@ -524,6 +527,7 @@ export class Builder {
         ...agent.fields,
       ],
       async (step) => {
+        if (agent.chosen()) agent.check();
         const opening = worktree.checked ? t("워크트리를 만들고 스페이스를 여는 중…") : t("스페이스를 여는 중…");
         step.plan([made ? t("이미 지은 스페이스를 이어서 씁니다") : opening, ...(agent.chosen() ? agent.steps() : [])]);
         // 뒤 단계에서 실패해 다시 누르면, 이미 지은 집을 이어서 쓴다 — 집이 두 채 생기지 않게.
@@ -571,6 +575,7 @@ export class Builder {
     /** 실패 뒤 다시 눌렀을 때 탭을 또 열지 않도록, 이미 연 탭의 pane 을 기억한다. */
     let opened = "";
     this.dialog(t("새 주민 — {name}", { name: ws?.label ?? workspaceId }), t("들이기"), [field(t("어디에"), where), ...agent.fields], async (step) => {
+      agent.check();
       let target = where.value || opened;
       step.plan([...(target ? [] : [t("새 탭을 여는 중…")]), ...agent.steps()]);
       if (!target) {
