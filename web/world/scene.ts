@@ -148,6 +148,8 @@ export class WorldScene {
   private covered = false;
   /** 덮여 있어 다음 프레임을 걸지 않고 멈춰 있다. */
   private parked = false;
+  /** 앱이 가려져(다른 앱·탭·꺼진 화면) 그림 버퍼와 그림자 지도를 내려놓았다. */
+  private released = false;
   /** 이번 프레임이 앞 프레임에서 곧바로 이어 건 것이다(타이머로 쉬었다 온 것이 아니다). */
   private chained = false;
   /** 조작 중에 그리지 않고 넘길 남은 박자 수 — 빠른 화면에서 초당 60장 언저리로 묶는다(ACTIVE_FRAME_MS). */
@@ -250,6 +252,34 @@ export class WorldScene {
     this.resize();
     this.overview(false);
     requestAnimationFrame(this.tick);
+    document.addEventListener("visibilitychange", () => this.setAway(document.visibilityState === "hidden"));
+  }
+
+  /**
+   * 휴대폰은 가려진 앱을 메모리가 큰 것부터 내리고, 내려간 앱은 돌아올 때 문서를 처음부터 다시 읽는다. 가려지는 순간 큰 GPU 버퍼
+   * 둘 — 캔버스의 그림 버퍼와 그림자 지도 — 을 내려놓고, 돌아오면 그 자리에서 다시 잡아 한 장 그린다(휴대폰 크기 헤드리스에서
+   * GPU 메모리 184 → 137MB). 데스크톱은 내려갈 일이 없어 하지 않는다.
+   *
+   * WebGL 컨텍스트를 통째로 버리면(forceContextLoss) 곱절이 빠지지만 쓰지 않는다 — three 가 되살릴 때마다 옛 내부 상태를
+   * 붙들어, 오갈 때마다 JS 힙이 1.8MB 씩 쌓였다(40번에 7 → 78MB). 이 방식은 40번에 7.3 → 7.6MB 로 그대로다.
+   */
+  private setAway(away: boolean): void {
+    if (away === this.released || (away && !touchDevice.matches)) return;
+    this.released = away;
+    if (away) {
+      this.renderer.setSize(1, 1, false);
+      this.scene.traverse((o) => {
+        const shadow = (o as Partial<THREE.DirectionalLight>).shadow;
+        if (!shadow?.map) return;
+        shadow.map.dispose();
+        shadow.map = null;
+      });
+      return;
+    }
+    this.resize();
+    // 그림자 지도는 다음 프레임에 새로 잡아 그린다. 돌아온 첫 화면에 빈 캔버스가 비치지 않게 여기서 바로 한 장 그린다.
+    this.shadowAt = 0;
+    if (!this.covered) this.frame();
   }
 
   /** 좌우 패널이 덮은 폭과 가운데 아래 무대가 덮은 높이를 알려 준다. 시야는 다음 프레임들에 걸쳐 부드럽게 옮겨 간다. */
@@ -288,6 +318,8 @@ export class WorldScene {
   }
 
   private resize(): void {
+    // 내려놓은 동안에는 버퍼를 다시 잡지 않는다 — 돌아올 때 지금 크기로 한 번 잡는다.
+    if (this.released) return;
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
     this.camera.aspect = w / h;
