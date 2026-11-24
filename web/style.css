@@ -3815,15 +3815,16 @@ dialog.dlg .warn {
    * 자주 누르는 둘(상태 숫자·다음 확인)이 가운데와 오른쪽이다 — 오른손으로 쥔 넓은 휴대폰에서 왼쪽 끝은 엄지에 멀다.
    * 목록 서랍을 열면 그 위에 덜 쓰는 단추 줄(집 짓기·전체 보기·알림·말·테마·홈)이 함께 나타난다.
    * 서랍이 막대 바로 위에 붙어야 하므로 막대의 높이를 여기서 정한다: 단추 높이 × 줄 수 + 줄 사이 + 안쪽 여백·테두리.
+   * 한 줄일 때와 두 줄일 때의 높이를 따로 두고, 서랍을 여닫을 때는 쓰는 쪽(#topbar)에서 고른다. body 의 변수 값을 바꾸면
+   * 그 변수가 모든 요소로 내려가 서랍을 여는 순간 문서 전체의 스타일을 다시 계산한다. 휴대폰 크기·CPU 6배 느리게, 상태 창 위에서
+   * 열 때(번갈아 3회): 다시 계산하는 요소 약 1200 → 535개(남은 것은 새로 짓는 목록), 스타일 36·39·28 → 22·15·18ms.
+   * 누름→첫 장(70·83·73 → 65·58·80ms)은 잡음 안이다.
    */
   body {
     --bar-btn: 40px;
-    --bar-h: calc(var(--bar-btn) + 14px);
+    --bar-h1: calc(var(--bar-btn) + 14px);
+    --bar-h2: calc(var(--bar-btn) * 2 + 20px);
     --bar-bottom: max(6px, env(safe-area-inset-bottom));
-  }
-
-  body[data-roster="open"] {
-    --bar-h: calc(var(--bar-btn) * 2 + 20px);
   }
 
   #topbar {
@@ -3832,13 +3833,17 @@ dialog.dlg .warn {
     right: 6px;
     bottom: var(--bar-bottom);
     box-sizing: border-box;
-    height: var(--bar-h);
+    height: var(--bar-h1);
     /* 첫 줄이 맨 아래에 놓이고, 넘친 단추(덜 쓰는 것)는 그 위 줄로 올라간다. */
     flex-wrap: wrap-reverse;
     align-content: flex-start;
     gap: 0 4px;
     padding: 6px;
     z-index: 26;
+  }
+
+  body[data-roster="open"] #topbar {
+    height: var(--bar-h2);
   }
 
   #topbar > :is(.btn, #chips) {
@@ -3963,10 +3968,10 @@ dialog.dlg .warn {
     top: auto;
     left: 6px;
     right: 6px;
-    /* 막대 바로 위에 붙는다. */
-    bottom: calc(var(--bar-bottom) + var(--bar-h) + 6px);
+    /* 막대 바로 위에 붙는다. 서랍이 보이는 동안 막대는 늘 두 줄이다. */
+    bottom: calc(var(--bar-bottom) + var(--bar-h2) + 6px);
     width: auto;
-    max-height: min(62dvh, calc(100dvh - var(--bar-bottom) - var(--bar-h) - 12px - env(safe-area-inset-top)));
+    max-height: min(62dvh, calc(100dvh - var(--bar-bottom) - var(--bar-h2) - 12px - env(safe-area-inset-top)));
     z-index: 25;
   }
 
