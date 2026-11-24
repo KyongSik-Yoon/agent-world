@@ -45,6 +45,12 @@ interface ModelPick {
 const AGENT_NAME = /^[a-z][a-z0-9_-]{0,31}$/;
 const READY_TIMEOUT_MS = 60_000;
 
+/** 대화상자의 진행 알림. 부르면 그 단계로 넘어간다. */
+type Step = ((text: string) => void) & {
+  /** 이번에 거칠 단계들을 차례대로 미리 알린다. */
+  plan(texts: string[]): void;
+};
+
 function field(label: string, control: HTMLElement, hint?: string): HTMLElement {
   return h("label", { class: "field" }, h("span", {}, label), control, hint ? h("small", {}, hint) : null);
 }
@@ -341,13 +347,17 @@ export class Builder {
 
   /**
    * 폼 대화상자를 띄운다. run 이 끝나면 닫히고, 던지면 오류를 보여 준 채 열려 있다.
-   * run 은 진행 상황을 step 으로 알릴 수 있다.
+   * run 은 진행 상황을 step 으로 알린다. 거칠 단계를 step.plan 으로 먼저 알려 두면 남은 단계까지 칸으로 보인다.
    */
-  private dialog(title: string, submitLabel: string, fields: Child[], run: (step: (text: string) => void) => Promise<void>, danger = false): HTMLDialogElement {
+  private dialog(title: string, submitLabel: string, fields: Child[], run: (step: Step) => Promise<void>, danger = false): HTMLDialogElement {
     const dlg = h("dialog", { class: "dlg" });
     const error = h("p", { class: "dlg-error" });
     error.hidden = true;
-    const progress = h("ol", { class: "dlg-steps" });
+    const track = h("div", { class: "dlg-track", "aria-hidden": "true" });
+    const stepText = h("span", { class: "dlg-step-text" });
+    const stepCount = h("span", { class: "dlg-step-count" });
+    const progress = h("div", { class: "dlg-steps", role: "status" }, track, h("div", { class: "dlg-step" }, stepText, stepCount));
+    progress.hidden = true;
     const cancel = h("button", { class: "btn", type: "button" }, t("취소"));
     const submit = h("button", { class: danger ? "btn danger solid" : "btn primary", type: "submit" }, submitLabel);
     const form = h("form", { method: "dialog" }, h("h2", {}, title), ...fields, progress, error, h("div", { class: "dlg-actions" }, cancel, submit));
@@ -361,17 +371,36 @@ export class Builder {
       if (submit.disabled) return;
       submit.disabled = true;
       error.hidden = true;
-      progress.replaceChildren();
-      let current: HTMLElement | undefined;
-      const step = (text: string) => {
-        current?.classList.add("ok");
-        current = h("li", {}, text);
-        progress.append(current);
+      // 칸 하나가 단계 하나다. 지나온 칸은 초록, 지금 칸은 장면 박자에 맞춰 깜빡이고, 남은 칸은 흐리다.
+      let labels: string[] = [];
+      let at = -1;
+      let failed = false;
+      const draw = () => {
+        progress.hidden = at < 0;
+        track.replaceChildren(...labels.map((_, i) => h("i", { class: i < at ? "ok" : i > at ? "" : failed ? "fail" : "cur" })));
+        stepText.textContent = labels[at] ?? "";
+        stepCount.textContent = labels.length > 1 ? `${at + 1} / ${labels.length}` : "";
       };
+      const step: Step = Object.assign(
+        (text: string) => {
+          const next = labels.indexOf(text, at + 1);
+          // 알려 두지 않은 단계는 지금 단계 바로 뒤에 끼운다.
+          if (next < 0) labels.splice(++at, 0, text);
+          else at = next;
+          draw();
+        },
+        {
+          plan: (texts: string[]) => {
+            labels = texts;
+          },
+        },
+      );
+      draw();
       run(step)
         .then(() => dlg.close())
         .catch((err: Error) => {
-          current?.classList.add("fail");
+          failed = true;
+          draw();
           error.textContent = err.message;
           error.hidden = false;
           form.dispatchEvent(new CustomEvent("failed", { detail: err }));
@@ -386,7 +415,7 @@ export class Builder {
   }
 
   /** 에이전트 고르기 칸들(종류·이름·인자·첫 지시)과, 그 값으로 에이전트를 띄우는 함수. */
-  private agentFields(optional: boolean): { fields: HTMLElement[]; chosen(): boolean; start(paneId: string, step: (text: string) => void): Promise<string> } {
+  private agentFields(optional: boolean): { fields: HTMLElement[]; chosen(): boolean; steps(): string[]; start(paneId: string, step: Step): Promise<string> } {
     const kind = h("select", {});
     if (optional) kind.append(h("option", { value: "" }, t("없음 — 셸만 둡니다")));
     const name = h("input", { type: "text", autocomplete: "off", spellcheck: "false", pattern: "[a-z][a-z0-9_\\-]{0,31}" });
@@ -416,6 +445,7 @@ export class Builder {
       syncName();
     });
     syncName();
+    const starting = () => t("{name} 띄우는 중…", { name: brandFor(kind.value).name });
 
     return {
       fields: [
@@ -426,9 +456,10 @@ export class Builder {
         field(t("첫 지시"), prompt),
       ],
       chosen: () => kind.value !== "",
+      steps: () => [starting(), t("에이전트가 준비되기를 기다리는 중…"), ...(prompt.value.trim() ? [t("첫 지시를 보내는 중…")] : [])],
       start: async (paneId, step) => {
         if (!AGENT_NAME.test(name.value)) throw new Error(t("주민 이름은 영문 소문자로 시작하고 소문자·숫자·-·_ 만 32자까지 쓸 수 있습니다."));
-        step(t("{name} 띄우는 중…", { name: brandFor(kind.value).name }));
+        step(starting());
         await post("/api/agent/start", { paneId, kind: kind.value, name: name.value, model: pick.model(), effort: pick.effort(), args: splitArgs(args.value) });
         step(t("에이전트가 준비되기를 기다리는 중…"));
         const agent = await this.waitFor((s) => s.agents.find((a) => a.id === paneId && a.status !== "unknown"), READY_TIMEOUT_MS);
@@ -493,10 +524,12 @@ export class Builder {
         ...agent.fields,
       ],
       async (step) => {
+        const opening = worktree.checked ? t("워크트리를 만들고 스페이스를 여는 중…") : t("스페이스를 여는 중…");
+        step.plan([made ? t("이미 지은 스페이스를 이어서 씁니다") : opening, ...(agent.chosen() ? agent.steps() : [])]);
         // 뒤 단계에서 실패해 다시 누르면, 이미 지은 집을 이어서 쓴다 — 집이 두 채 생기지 않게.
         if (made) step(t("이미 지은 스페이스를 이어서 씁니다"));
         else {
-          step(worktree.checked ? t("워크트리를 만들고 스페이스를 여는 중…") : t("스페이스를 여는 중…"));
+          step(opening);
           made = from
             ? await post<Created>("/api/worktree", { workspaceId: from.id, branch: branch.value, base: base.value, label: label.value, trust: trust.checked })
             : worktree.checked
@@ -539,6 +572,7 @@ export class Builder {
     let opened = "";
     this.dialog(t("새 주민 — {name}", { name: ws?.label ?? workspaceId }), t("들이기"), [field(t("어디에"), where), ...agent.fields], async (step) => {
       let target = where.value || opened;
+      step.plan([...(target ? [] : [t("새 탭을 여는 중…")]), ...agent.steps()]);
       if (!target) {
         step(t("새 탭을 여는 중…"));
         target = (await post<Created>("/api/tab", { workspaceId })).paneId ?? "";

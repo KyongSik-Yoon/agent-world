@@ -3470,23 +3470,66 @@ dialog.dlg .warn[hidden] {
   background: var(--soft);
 }
 
+/* 진행 막대 — 칸 하나가 단계 하나. 지금 칸은 장면 박자(body[data-beat])에 맞춰 흐려졌다 돌아온다. */
 .dlg-steps {
-  margin: 0;
-  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.dlg-steps[hidden] {
+  display: none;
+}
+
+.dlg-track {
+  display: flex;
+  gap: 4px;
+}
+
+.dlg-track i {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink-2) 20%, transparent);
+}
+
+.dlg-track i.ok {
+  background: var(--done);
+}
+
+.dlg-track i.cur {
+  background: var(--accent);
+}
+
+body[data-beat] .dlg-track i.cur {
+  opacity: 0.4;
+}
+
+.dlg-track i.fail {
+  background: var(--blocked);
+}
+
+.dlg-step {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
   color: var(--ink-2);
   font-size: 12px;
 }
 
-.dlg-steps:empty {
-  display: none;
+.dlg-step-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dlg-steps li.ok {
-  color: var(--done);
-}
-
-.dlg-steps li.fail {
-  color: var(--blocked);
+.dlg-step-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
 }
 
 .dlg-error {
