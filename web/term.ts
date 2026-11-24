@@ -238,10 +238,10 @@ function css(s: Style): string {
   return out;
 }
 
-const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F300}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{20000}-\u{3FFFD}]/u;
+const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F300}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{20000}-\u{3FFFD}\p{Emoji_Presentation}]/u;
 /** 고정폭 글꼴이 제 너비로 그려 주는 글자들 — 나머지는 상자에 넣어 칸을 맞춘다. */
 /** 두 칸 글자 가운데 그림 글자. 한글·한자와 달리 이미 두 칸쯤 넓어 키우지 않는다. */
-const EMOJI = /[\u{1F300}-\u{1FAFF}]/u;
+const EMOJI = /[\u{1F300}-\u{1FAFF}\p{Emoji_Presentation}\uFE0F]/u;
 const SAFE = /[ -\u024F\u2800-\u28FF]/;
 /** 한 덩어리로 긋는 가로줄 글자. */
 const RUNS = new Set(["\u2500", "\u2501", "\u2550"]);
@@ -249,6 +249,20 @@ const RUNS = new Set(["\u2500", "\u2501", "\u2550"]);
 
 /** 칸을 차지하지 않고 앞 글자에 얹히는 글자: 결합 문자, 이음 문자, 한글 자모의 가운뎃·끝소리. */
 const JOINS = /[\p{M}\u200D\u1160-\u11FF]/u;
+/**
+ * 그림 글자로 그리라는 표시(VS16). 한 칸 글자(⚠ ✔ ❤)에 붙으면 터미널은 그 글자를 두 칸에 그린다 — 결합 문자처럼 0칸으로
+ * 세면 그 뒤의 칸이 하나씩 밀려, 표의 ⚠️ 줄에서 나뉜 화면의 구분선을 못 찾았다.
+ */
+const VS16 = "\uFE0F";
+/** 글자 하나의 칸 수. prev 는 바로 앞 글자의 칸 수 — VS16 은 앞 글자가 한 칸일 때만 모자란 한 칸이다. */
+function charCols(ch: string, prev: number): number {
+  if (ch === VS16) return prev === 1 ? 1 : 0;
+  return JOINS.test(ch) ? 0 : WIDE.test(ch) ? 2 : 1;
+}
+/** ANSI_TOKEN 의 글자 조각 하나의 칸 수. VS16 은 앞 글자와 한 조각으로 온다(가를 때 떨어지지 않게). */
+function tokenCols(t: string): number {
+  return t.length > 1 && t.endsWith(VS16) ? 2 : JOINS.test(t) ? 0 : WIDE.test(t) ? 2 : 1;
+}
 /**
  * 터미널이 그림을 그릴 자리에 채워 두는 글자(kitty 그래픽 프로토콜). 뒤따르는 결합 문자 둘이 그림의 몇째 줄·칸인지를
  * 적는다. 그림 자체는 herdr 가 읽어 주는 화면에 없으므로, 그 자리를 빈칸으로 두고 옅게 칠해 그림이 있음을 알린다.
@@ -310,7 +324,7 @@ function cells(text: string, into: HTMLElement): void {
     }
     flush();
     const box = document.createElement("span");
-    box.className = WIDE.test(cell) ? (EMOJI.test(cell) ? "w2" : "w2 cjk") : "w1";
+    box.className = WIDE.test(cell) || cell.endsWith(VS16) ? (EMOJI.test(cell) ? "w2" : "w2 cjk") : "w1";
     box.textContent = cell;
     into.append(box);
   }
@@ -509,10 +523,8 @@ export function footerStart(lines: readonly string[]): number {
 export function displayCols(text: string, trimRightGap = false): number {
   const s = (trimRightGap ? text.replace(/ {20,}\S.*$/, "") : text).trimEnd();
   let cols = 0;
-  for (const ch of s) {
-    if (JOINS.test(ch)) continue;
-    cols += WIDE.test(ch) ? 2 : 1;
-  }
+  let prev = 0;
+  for (const ch of s) cols += prev = charCols(ch, prev);
   return cols;
 }
 
@@ -552,7 +564,7 @@ const FIT_MIN_PX = 8;
 const USER_SCROLL_MS = 1000;
 /** 오른쪽 정렬용으로 보고 줄일 공백의 길이. */
 const RIGHT_GAP = 8;
-const ANSI_TOKEN = /\x1b\[[0-9;:?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\s\S]/gu;
+const ANSI_TOKEN = /\x1b\[[0-9;:?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[^\p{M}‍]️|[\s\S]/gu;
 
 /** 상태줄 로고를 그리는 글자: 블록 글자와 Powerline 삼각형(agy 로고 아랫줄의 양 끝 \uE0BA·\uE0B8). STATUS_STRONG 과 같은 범위. */
 const STATUS_LOGO_CHAR = /[\u2580-\u259F\u{1FB00}-\u{1FBFF}\uE0B0-\uE0D7]/u;
@@ -609,7 +621,7 @@ export function unfoldLine(line: string, cut: number): string {
       else out += t;
       continue;
     }
-    const w = JOINS.test(t) ? 0 : WIDE.test(t) ? 2 : 1;
+    const w = tokenCols(t);
     if (col < cut) {
       col += w;
       continue;
@@ -639,10 +651,12 @@ const RULE_CHAR = /[─━┄┅┈┉╌╍═]/;
 export function blankColumns(texts: readonly string[]): boolean[] | null {
   const cells = texts.map((text) => {
     const out: boolean[] = [];
+    let prev = 0;
     for (const ch of text) {
-      if (JOINS.test(ch)) continue;
-      out.push(ch === " " || RULE_CHAR.test(ch));
-      if (WIDE.test(ch)) out.push(false);
+      const w = (prev = charCols(ch, prev));
+      if (!w) continue;
+      out.push(ch !== VS16 && (ch === " " || RULE_CHAR.test(ch)));
+      if (w === 2) out.push(false);
     }
     return out;
   });
@@ -719,7 +733,7 @@ function edgeLooks(line: string, from: number): [string, string] {
       if (col >= from && !first) first = look;
       last = look;
     }
-    if (!JOINS.test(t)) col += WIDE.test(t) ? 2 : 1;
+    col += tokenCols(t);
   }
   return [first, last];
 }
@@ -732,7 +746,7 @@ export function splitColumns(line: string, n: number): [string, string] {
   for (const [t] of line.matchAll(ANSI_TOKEN)) {
     if (col < n) head += t;
     else tail += t;
-    if (!t.startsWith("\x1b") && !JOINS.test(t)) col += WIDE.test(t) ? 2 : 1;
+    if (!t.startsWith("\x1b")) col += tokenCols(t);
   }
   return [head, tail];
 }
@@ -806,10 +820,11 @@ const BG_CODE = /\x1b\[48;(?:2;\d+;\d+;\d+|5;\d+)m/g;
 function dividerCols(text: string): [number[], number] {
   const at: number[] = [];
   let col = 0;
+  let prev = 0;
   for (const ch of text) {
-    if (JOINS.test(ch)) continue;
-    if (DIVIDER.test(ch)) at.push(col);
-    col += WIDE.test(ch) ? 2 : 1;
+    const w = (prev = charCols(ch, prev));
+    if (w && DIVIDER.test(ch)) at.push(col);
+    col += w;
   }
   return [at, col];
 }
@@ -821,11 +836,16 @@ const STRAIGHT = /[\u2500-\u250B\u254C-\u2551\u2574-\u257F]/;
 /** 그 칸에 놓인 글자(없으면 ""). 곧은 줄은 ""로 돌려, 남는 상자 글자가 모서리·이음매뿐이게 한다. */
 function charAt(text: string, col: number): string {
   let at = 0;
+  let prev = 0;
   for (const ch of text) {
-    if (JOINS.test(ch)) continue;
+    const w = (prev = charCols(ch, prev));
+    if (!w || ch === VS16) {
+      at += w;
+      continue;
+    }
     if (at === col) return STRAIGHT.test(ch) ? "" : ch;
     if (at > col) return "";
-    at += WIDE.test(ch) ? 2 : 1;
+    at += w;
   }
   return "";
 }
@@ -1035,9 +1055,10 @@ export function dropColumns(line: string, drop: readonly boolean[]): string {
       out += t;
       continue;
     }
-    if (!JOINS.test(t)) {
+    const w = tokenCols(t);
+    if (w) {
       kept = !drop[col];
-      col += WIDE.test(t) ? 2 : 1;
+      col += w;
     }
     if (kept) out += t;
   }
