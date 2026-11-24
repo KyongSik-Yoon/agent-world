@@ -51,6 +51,8 @@ type Step = ((text: string) => void) & {
   plan(texts: string[]): void;
 };
 
+let promptSeq = 0;
+
 function field(label: string, control: HTMLElement, hint?: string): HTMLElement {
   return h("label", { class: "field" }, h("span", {}, label), control, hint ? h("small", {}, hint) : null);
 }
@@ -349,7 +351,7 @@ export class Builder {
    * 폼 대화상자를 띄운다. run 이 끝나면 닫히고, 던지면 오류를 보여 준 채 열려 있다.
    * run 은 진행 상황을 step 으로 알린다. 거칠 단계를 step.plan 으로 먼저 알려 두면 남은 단계까지 칸으로 보인다.
    */
-  private dialog(title: string, submitLabel: string, fields: Child[], run: (step: Step) => Promise<void>, danger = false): HTMLDialogElement {
+  private dialog(title: string, submitLabel: string, fields: Child[], run: (step: Step) => Promise<void>, danger = false, actionsIn?: HTMLElement): HTMLDialogElement {
     const dlg = h("dialog", { class: "dlg" });
     const error = h("p", { class: "dlg-error" });
     error.hidden = true;
@@ -360,7 +362,10 @@ export class Builder {
     progress.hidden = true;
     const cancel = h("button", { class: "btn", type: "button" }, t("취소"));
     const submit = h("button", { class: danger ? "btn danger solid" : "btn primary", type: "submit" }, submitLabel);
-    const form = h("form", { method: "dialog" }, h("h2", {}, title), ...fields, progress, error, h("div", { class: "dlg-actions" }, cancel, submit));
+    // actionsIn 을 주면 단추를 그 상자(첫 지시 칸) 안에 둔다 — 글 칸과 단추가 한 덩어리여야 듣는 음성 입력 도구가 있다.
+    // 상세 창의 입력줄처럼 상자의 바로 아래 자식으로 넣는다(감싸는 칸을 두지 않는다).
+    const form = h("form", { method: "dialog" }, h("h2", {}, title), ...fields, progress, error, actionsIn ? null : h("div", { class: "dlg-actions" }, cancel, submit));
+    actionsIn?.append(cancel, submit);
     dlg.append(form);
     cancel.addEventListener("click", () => dlg.close());
     dlg.addEventListener("close", () => dlg.remove());
@@ -376,7 +381,9 @@ export class Builder {
       let at = -1;
       let failed = false;
       const draw = () => {
+        const shown = !progress.hidden;
         progress.hidden = at < 0;
+        if (!shown && !progress.hidden) progress.scrollIntoView({ block: "nearest" });
         track.replaceChildren(...labels.map((_, i) => h("i", { class: i < at ? "ok" : i > at ? "" : failed ? "fail" : "cur" })));
         stepText.textContent = labels[at] ?? "";
         stepCount.textContent = labels.length > 1 ? `${at + 1} / ${labels.length}` : "";
@@ -403,6 +410,8 @@ export class Builder {
           draw();
           error.textContent = err.message;
           error.hidden = false;
+          // 단추가 첫 지시 칸 안에 있으면 오류는 그 아래에 뜬다 — 낮은 화면에서 접힌 곳 밑에 숨지 않게 보이는 데까지 굴린다.
+          error.scrollIntoView({ block: "nearest" });
           form.dispatchEvent(new CustomEvent("failed", { detail: err }));
         })
         .finally(() => {
@@ -415,13 +424,14 @@ export class Builder {
   }
 
   /** 에이전트 고르기 칸들(종류·이름·인자·첫 지시)과, 그 값으로 에이전트를 띄우는 함수. */
-  private agentFields(optional: boolean): { fields: HTMLElement[]; chosen(): boolean; check(): void; steps(): string[]; start(paneId: string, step: Step): Promise<string> } {
+  private agentFields(optional: boolean): { fields: HTMLElement[]; box: HTMLElement; chosen(): boolean; check(): void; steps(): string[]; start(paneId: string, step: Step): Promise<string> } {
     const kind = h("select", {});
     if (optional) kind.append(h("option", { value: "" }, t("없음 — 셸만 둡니다")));
     const name = h("input", { type: "text", autocomplete: "off", spellcheck: "false", pattern: "[a-z][a-z0-9_\\-]{0,31}" });
     const args = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: t("예: --add-dir ~/notes") });
     const pick = this.modelPick("start");
-    const prompt = h("textarea", { rows: "3", placeholder: t("에이전트가 준비되면 바로 보낼 말 (비워 두면 보내지 않습니다)") });
+    const promptId = `first-prompt-${++promptSeq}`;
+    const prompt = h("textarea", { id: promptId, rows: "3", placeholder: t("에이전트가 준비되면 바로 보낼 말 (비워 두면 보내지 않습니다)") });
     let touched = false;
     name.addEventListener("input", () => {
       touched = true;
@@ -447,13 +457,16 @@ export class Builder {
     syncName();
     const starting = () => t("{name} 띄우는 중…", { name: brandFor(kind.value).name });
 
+    // 상세 창의 입력줄과 같은 짜임(.compose 안에 글 칸과 단추)이다. <label> 로 감싸지 않는다 — 단추의 글이 글 칸의 이름에 섞인다.
+    const box = h("div", { class: "compose stack" }, prompt);
     return {
+      box,
       fields: [
         field(t("주민 (에이전트)"), kind),
         pick.el,
         field(t("주민 이름"), name, t("herdr 에서 이 에이전트를 부르는 이름 — 영문 소문자로 시작, 소문자·숫자·-·_")),
         field(t("실행 인자"), args, t("선택 사항")),
-        field(t("첫 지시"), prompt),
+        h("div", { class: "field" }, h("label", { for: promptId }, t("첫 지시")), box),
       ],
       chosen: () => kind.value !== "",
       steps: () => [starting(), t("에이전트가 준비되기를 기다리는 중…"), ...(prompt.value.trim() ? [t("첫 지시를 보내는 중…")] : [])],
@@ -550,6 +563,8 @@ export class Builder {
         if (from) this.deps.toast(t("별채를 지었습니다"), label.value || branch.value || (from.repo ?? from.label), "var(--done)");
         else this.deps.toast(t("집을 지었습니다"), label.value || cwd.value, "var(--done)");
       },
+      false,
+      agent.box,
     );
     if (from) branch.focus();
     else {
@@ -586,7 +601,7 @@ export class Builder {
       }
       await agent.start(target, step);
       this.deps.select(target);
-    });
+    }, false, agent.box);
   }
 
   async newTab(workspaceId: string): Promise<void> {
