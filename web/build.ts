@@ -57,6 +57,56 @@ function field(label: string, control: HTMLElement, hint?: string): HTMLElement 
   return h("label", { class: "field" }, h("span", {}, label), control, hint ? h("small", {}, hint) : null);
 }
 
+/** 칸 둘을 한 줄에 반반씩. cls 가 "tail" 이면 칸 + 체크(체크는 제 폭만). */
+function row(cls: string, ...children: Child[]): HTMLElement {
+  return h("div", { class: `field-row ${cls}`.trim() }, ...children);
+}
+
+/** 덜 쓰는 칸을 접어 두는 줄. 접힌 동안에는 그 안에 든 값을 한 줄로 요약해 보여 준다. */
+function disclosure(label: string, summary: () => string, body: HTMLElement): { btn: HTMLElement; sync(): void } {
+  const sum = h("span", { class: "more-sum" });
+  const btn = h("button", { type: "button", class: "more-toggle", "aria-expanded": "false" }, h("span", { class: "more-caret", "aria-hidden": "true" }), h("b", {}, label), sum);
+  body.hidden = true;
+  const sync = () => {
+    sum.textContent = body.hidden ? summary() : "";
+  };
+  const set = (open: boolean) => {
+    body.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    sync();
+  };
+  btn.addEventListener("click", () => set(Boolean(body.hidden)));
+  body.addEventListener("input", sync);
+  body.addEventListener("change", sync);
+  // 접힌 칸이 틀렸으면 브라우저가 초점을 주지 못해 제출이 말없이 막힌다 — 펴서 보여 준다.
+  body.addEventListener("invalid", () => set(true), true);
+  sync();
+  return { btn, sync };
+}
+
+/** 집 짓기·새 주민 창의 칸들. 창마다 있는 것만 채운다. */
+interface FormParts {
+  dir?: { box: HTMLElement; list: HTMLElement };
+  /** 집 이름 */
+  label?: HTMLInputElement;
+  /** 워크트리로 지을지 고르는 체크. 별채는 늘 워크트리라 없다. */
+  worktree?: HTMLInputElement;
+  branch?: HTMLInputElement;
+  base?: HTMLInputElement;
+  trust?: HTMLInputElement;
+  /** 새 주민을 어디에 들일지 */
+  where?: HTMLSelectElement;
+  kind: HTMLSelectElement;
+  name: HTMLInputElement;
+  args: HTMLInputElement;
+  pick: ModelPick;
+  prompt: HTMLTextAreaElement;
+  promptId: string;
+  box: HTMLElement;
+  /** 주민 이름이 저절로 바뀌었을 때 부를 것(요약 줄을 다시 쓴다). */
+  renamed(listener: () => void): void;
+}
+
 /**
  * 폴더 칸과 그 제안 목록. <datalist> 는 브라우저가 제 글꼴·크기로 목록을 그려 CSS 가 닿지 않으므로, 고르기 칸의 펼친 목록과
  * 같은 모양으로 직접 그린다. 목록은 대화상자 안에 두되(모달 밖은 눌리지 않는다) popover 로 띄워 대화상자의 스크롤에 잘리지 않게 하고,
@@ -265,8 +315,9 @@ export class Builder {
   private modelPick(mode: "start" | "switch"): ModelPick {
     const model = h("select", {});
     const effort = h("select", {});
-    const note = h("small", {}, mode === "start" ? t("이 세션에만 적용됩니다 — 하네스의 기본값은 그대로입니다.") : "");
-    const el = h("div", { class: "field-pair" }, field(t("모델"), model), field(t("Effort"), effort), note);
+    const el = h("div", { class: "field-pair" }, field(t("모델"), model), field(t("Effort"), effort));
+    // 띄울 때의 안내는 올려놓기 글로 둔다 — 창을 한 화면에 담으려고 칸 아래의 안내 줄을 없앴다.
+    if (mode === "start") el.title = t("이 세션에만 적용됩니다 — 하네스의 기본값은 그대로입니다.");
     el.hidden = true;
     let catalog: ModelCatalog | null = null;
     let kind = "";
@@ -424,7 +475,7 @@ export class Builder {
   }
 
   /** 에이전트 고르기 칸들(종류·이름·인자·첫 지시)과, 그 값으로 에이전트를 띄우는 함수. */
-  private agentFields(optional: boolean): { fields: HTMLElement[]; box: HTMLElement; chosen(): boolean; check(): void; steps(): string[]; start(paneId: string, step: Step): Promise<string> } {
+  private agentFields(optional: boolean): { parts: Omit<FormParts, "dir" | "label" | "worktree" | "branch" | "base" | "trust" | "where">; box: HTMLElement; chosen(): boolean; check(): void; steps(): string[]; start(paneId: string, step: Step): Promise<string> } {
     const kind = h("select", {});
     if (optional) kind.append(h("option", { value: "" }, t("없음 — 셸만 둡니다")));
     const name = h("input", { type: "text", autocomplete: "off", spellcheck: "false", pattern: "[a-z][a-z0-9_\\-]{0,31}" });
@@ -436,10 +487,12 @@ export class Builder {
     name.addEventListener("input", () => {
       touched = true;
     });
+    const renamed: Array<() => void> = [];
     const syncName = () => {
       if (!touched) name.value = kind.value ? this.freeName(kind.value) : "";
       for (const el of [name, args, prompt]) el.disabled = kind.value === "";
       void pick.load(kind.value);
+      renamed.forEach((f) => f());
     };
     kind.addEventListener("change", syncName);
     void this.loadKinds().then((kinds) => {
@@ -447,7 +500,8 @@ export class Builder {
       // pane 안에서는 잘 뜨는데, 숨기면 목록이 비어 아무것도 못 들인다.
       const none = !kinds.some((k) => k.installed);
       for (const k of kinds.filter((x) => none || x.installed)) {
-        const label = `${brandFor(k.kind).name} (${k.kind})`;
+        // 하네스 이름만 적는다 — 종류(claude)는 주민 이름의 기본값이 말해 준다.
+        const label = brandFor(k.kind).name;
         kind.append(h("option", { value: k.kind }, k.installed ? label : t("{label} — PATH 에서 못 찾음", { label })));
       }
       const prefer = kinds.find((k) => k.installed && k.kind === "claude") ?? kinds.find((k) => k.installed);
@@ -461,13 +515,7 @@ export class Builder {
     const box = h("div", { class: "compose stack" }, prompt);
     return {
       box,
-      fields: [
-        field(t("주민 (에이전트)"), kind),
-        pick.el,
-        field(t("주민 이름"), name, t("herdr 에서 이 에이전트를 부르는 이름 — 영문 소문자로 시작, 소문자·숫자·-·_")),
-        field(t("실행 인자"), args, t("선택 사항")),
-        h("div", { class: "field" }, h("label", { for: promptId }, t("첫 지시")), box),
-      ],
+      parts: { kind, name, args, pick, prompt, promptId, box, renamed: (f) => renamed.push(f) },
       chosen: () => kind.value !== "",
       steps: () => [starting(), t("에이전트가 준비되기를 기다리는 중…"), ...(prompt.value.trim() ? [t("첫 지시를 보내는 중…")] : [])],
       // 탭이나 스페이스를 열기 전에 부른다 — 이름이 틀렸는데 탭부터 열리지 않게.
@@ -496,6 +544,70 @@ export class Builder {
     };
   }
 
+  /**
+   * 칸들을 늘어놓는다. 늘 정하는 것(폴더·주민·모델·첫 지시)만 보이고, 덜 쓰는 칸(집 이름·워크트리·주민 이름·실행 인자)은
+   * "더 보기" 한 줄에 접어 둔다 — 휴대폰 한 화면에 스크롤 없이 담으려는 것이다. 접힌 동안에는 그 안에 든 값을 요약으로 보여 준다.
+   * 안내 글은 칸 아래 줄 대신 칸 안(placeholder)과 올려놓기 글(title)에 둔다.
+   */
+  private layout(p: FormParts): Child[] {
+    const from = !p.dir && Boolean(p.branch);
+    p.name.title = t("herdr 에서 이 에이전트를 부르는 이름 — 영문 소문자로 시작, 소문자·숫자·-·_");
+    p.name.placeholder = t("영문 소문자·숫자·-·_");
+    p.args.placeholder = t("선택 — 예: --add-dir ~/notes");
+    if (p.label) p.label.placeholder = t("비우면 폴더 이름");
+    if (p.branch) p.branch.placeholder = t("비우면 자동");
+    if (p.base) p.base.placeholder = t("지금 브랜치");
+    const wtCheck = p.worktree ? h("label", { class: "check", title: t("새 브랜치를 따로 체크아웃해서 엽니다") }, p.worktree, t("워크트리로")) : null;
+    const trustCheck = p.trust ? h("label", { class: "check" }, p.trust, t("저장소 신뢰 — herdr 가 요구할 때만")) : null;
+    const wtBox = p.worktree ? h("div", { class: "sub-fields" }, row("", field(t("새 브랜치"), p.branch!), field(t("기준 (base)"), p.base!)), trustCheck) : null;
+    this.bindWorktree(p, wtBox);
+
+    const summary = (): string =>
+      [
+        p.where?.value ? p.where.selectedOptions[0]?.textContent : "",
+        p.label?.value ? t("집 {name}", { name: p.label.value }) : "",
+        p.worktree?.checked ? (p.branch?.value ? t("워크트리 {branch}", { branch: p.branch.value }) : t("워크트리")) : "",
+        from && p.base?.value ? t("기준 {base}", { base: p.base.value }) : "",
+        p.name.value,
+        p.args.value,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    const body = h(
+      "div",
+      { class: "more-body" },
+      p.where ? field(t("어디에"), p.where) : null,
+      // 집 짓기는 집 이름 옆에 워크트리 체크가, 별채는 그 자리에 기준 브랜치가 선다.
+      p.label ? (from ? row("", field(t("집 이름"), p.label), field(t("기준 (base)"), p.base!)) : row("tail", field(t("집 이름"), p.label), wtCheck)) : null,
+      wtBox,
+      from ? trustCheck : null,
+      row("", field(t("주민 이름"), p.name), field(t("실행 인자"), p.args)),
+    );
+    const more = disclosure(t("더 보기"), summary, body);
+    p.renamed(more.sync);
+    return [
+      p.dir ? field(t("폴더"), p.dir.box) : null,
+      p.dir?.list ?? null,
+      // 별채는 폴더를 고르지 않는다 — 새 브랜치가 그 자리의 첫 칸이다.
+      from ? field(t("새 브랜치"), p.branch!) : null,
+      field(t("주민 (에이전트)"), p.kind),
+      p.pick.el,
+      more.btn,
+      body,
+      h("div", { class: "field" }, h("label", { for: p.promptId }, t("첫 지시")), p.box),
+    ];
+  }
+
+  /** 워크트리 체크를 켜야 브랜치 칸들이 보인다. 체크가 없는 창(별채)은 늘 보인다. */
+  private bindWorktree(p: FormParts, wtBox: HTMLElement | null): void {
+    const check = p.worktree;
+    if (!wtBox || !check) return;
+    wtBox.hidden = !check.checked;
+    check.addEventListener("change", () => {
+      wtBox.hidden = !check.checked;
+    });
+  }
+
   // ── 집 짓기 ────────────────────────────────────────────────────────────────────────────────
 
   /** 집 짓기. from 을 주면 그 스페이스의 저장소에 워크트리 별채를 짓는다(폴더를 다시 고르지 않는다). */
@@ -507,38 +619,14 @@ export class Builder {
     const branch = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: t("비워 두면 herdr 가 이름을 짓습니다") });
     const base = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: t("비워 두면 지금 브랜치") });
     const trust = h("input", { type: "checkbox" });
-    const wtBox = h(
-      "div",
-      { class: "sub-fields" },
-      field(t("새 브랜치"), branch),
-      field(t("기준 (base)"), base),
-      h("label", { class: "check" }, trust, t("이 저장소를 신뢰합니다 (herdr 가 요구할 때만 켜세요)")),
-    );
-    wtBox.hidden = !from;
     worktree.checked = Boolean(from);
-    worktree.addEventListener("change", () => {
-      wtBox.hidden = !worktree.checked;
-    });
 
     const agent = this.agentFields(true);
     let made: Created | undefined;
-    const where = from
-      ? [field(t("집 이름"), label), wtBox]
-      : [
-          field(t("폴더"), dirs.box, t("이 폴더에서 셸이 열립니다")),
-          dirs.list,
-          field(t("집 이름"), label),
-          h("label", { class: "check" }, worktree, t("워크트리로 — 새 브랜치를 따로 체크아웃해서 엽니다")),
-          wtBox,
-        ];
     const dlg = this.dialog(
       from ? t("워크트리 별채 — {repo}", { repo: from.repo ?? from.label }) : t("집 짓기"),
       t("짓기"),
-      [
-        ...where,
-        h("hr", {}),
-        ...agent.fields,
-      ],
+      this.layout(from ? { label, branch, base, trust, ...agent.parts } : { dir: dirs, label, worktree, branch, base, trust, ...agent.parts }),
       async (step) => {
         if (agent.chosen()) agent.check();
         const opening = worktree.checked ? t("워크트리를 만들고 스페이스를 여는 중…") : t("스페이스를 여는 중…");
@@ -589,7 +677,7 @@ export class Builder {
     const agent = this.agentFields(false);
     /** 실패 뒤 다시 눌렀을 때 탭을 또 열지 않도록, 이미 연 탭의 pane 을 기억한다. */
     let opened = "";
-    this.dialog(t("새 주민 — {name}", { name: ws?.label ?? workspaceId }), t("들이기"), [field(t("어디에"), where), ...agent.fields], async (step) => {
+    this.dialog(t("새 주민 — {name}", { name: ws?.label ?? workspaceId }), t("들이기"), this.layout({ where, ...agent.parts }), async (step) => {
       agent.check();
       let target = where.value || opened;
       step.plan([...(target ? [] : [t("새 탭을 여는 중…")]), ...agent.steps()]);
