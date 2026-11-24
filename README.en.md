@@ -112,6 +112,13 @@ Worth knowing:
   After sending, Agent World checks the session log that Claude actually got the text. If the card closed but the
   text did not arrive (for example, desk-plan did not understand the answer), a notice says so and what you wrote,
   line comments included, waits for the next plan card.
+- **Antigravity artifacts.** When Antigravity leaves a document for your approval (an implementation plan, a
+  proposal), the terminal only shows `/artifact to review`. The status window gets `An artifact is waiting for
+  approval`, and `Read` opens it in the same view. Antigravity does not hold a card open; it ends its turn and waits,
+  so answers go as ordinary prompts: `Approve and proceed` sends an approval, and `Ask for changes` sends what you
+  wrote, line comments included, asking it to revise the document and ask again. Approving with notes written sends
+  them along to be applied while proceeding (Claude's approve does not carry notes). Once you answer, the card folds
+  and stays as `Read again` until the next document.
 - **Review reports from desk-review.** When [desk-review](https://github.com/KyongSik-Yoon/cc-desktop-mod/tree/main/desk-review)'s
   `/desk-review:simplify-review` finishes, the status window gets `Read review` (`R`). The report is drawn in a side
   pane next to the terminal, which is hard to see on a phone, so the button reads the same report from the session log

@@ -891,7 +891,7 @@ export class DetailPanel {
   private artifactCard(a: AgentView): HTMLElement {
     const done = a.artifactAnswered === true;
     const read = this.button(done ? t("다시 읽기") : t("읽기"), () => this.callbacks.act({ type: "artifact", agent: a }), { cls: "btn", icon: "file" });
-    const note = done ? t("답을 보냈어요. 다음 글이 오면 바뀝니다.") : this.snapshot?.control ? t("읽고 승인하거나 고칠 점을 보냅니다.") : t("에이전트가 남긴 글을 읽습니다.");
+    const note = done ? t("답을 보냈어요. 다음 글이 오면 바뀝니다.") : this.snapshot?.control && a.paneId ? t("읽고 승인하거나 고칠 점을 보냅니다.") : t("에이전트가 남긴 글을 읽습니다.");
     return h("section", { class: done ? "review-card sent" : "review-card" }, h("div", { class: "rv-card-text" }, h("b", {}, done ? t("아티팩트") : t("승인을 기다리는 아티팩트가 있어요")), h("span", {}, note)), read);
   }
 

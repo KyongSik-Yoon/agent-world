@@ -104,7 +104,7 @@ export class PlanReader {
     this.sending = false;
     const editable =
       this.canApprove() &&
-      (kind === "plan" ? this.onApprove !== undefined && this.onRevise !== undefined : this.onArtifactSend !== undefined && a.artifactAnswered !== true);
+      (kind === "plan" ? this.onApprove !== undefined && this.onRevise !== undefined : this.onArtifactSend !== undefined && a.paneId !== undefined && a.artifactAnswered !== true);
     const close = h("button", { class: "btn icon", type: "button", title: t("닫기"), "aria-label": t("닫기") }, icon("close"));
     const file = h("span", {});
     const body = h("div", { class: "prose plan-body", tabindex: "-1" }, h("p", { class: "plan-wait" }, kind === "plan" ? t("플랜을 읽는 중…") : t("글을 읽는 중…")));
