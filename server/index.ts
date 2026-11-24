@@ -27,6 +27,7 @@ import { World } from "./world.ts";
 
 const NO_PANE = L("그 pane 은 지금 herdr 에 없습니다.", "That pane no longer exists in herdr.");
 const NO_REVIEW = L("마지막 턴에 남은 리뷰 보고가 없습니다.", "There is no review report from the last turn.");
+const NO_ARTIFACT = L("승인을 바란 글이 없습니다.", "There is no document waiting for review.");
 const NO_PLAN = L("승인을 기다리는 플랜이 없습니다.", "There is no plan waiting for approval.");
 const NO_ACTIVITY = L("그 활동은 이제 로그에서 찾을 수 없습니다.", "That activity can no longer be found in the log.");
 
@@ -595,6 +596,16 @@ const listen = (at: number) =>
       }),
     },
     // 마지막 턴에 desk-review 가 남긴 리뷰 보고 — 스냅샷에는 시각만 싣고, 열 때 로그의 그 줄만 다시 읽는다.
+    "/api/artifact": {
+      GET: guarded(async (req) => {
+        try {
+          const artifact = await world.artifactText(new URL(req.url).searchParams.get("agent") ?? "");
+          return artifact ? json(artifact) : json({ error: say(NO_ARTIFACT, langOf(req)) }, 404);
+        } catch (e) {
+          return json({ error: (e as Error).message }, 500);
+        }
+      }),
+    },
     "/api/review": {
       GET: guarded(async (req) => {
         try {

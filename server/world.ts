@@ -16,6 +16,7 @@ import { AgyDialogs } from "./dialog.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Lang, type Text } from "./text.ts";
 import { planMtime, planPathIn, readPlan, reviseLanded, type PlanText } from "./plan.ts";
+import { findArtifact, readArtifact, type ArtifactMark, type ArtifactText } from "./artifact.ts";
 import { findReview, readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
 import { splitAgyModel } from "./models.ts";
@@ -88,6 +89,8 @@ interface Tracked {
   tail: TailedLog<LogSummary>;
   /** 꼬리 창 앞의 리뷰 보고를 찾아본 로드(TailedLog.loads). 로그를 새로 읽을 때마다 한 번만 찾는다. */
   reviewScan?: number;
+  /** 승인을 바란 글(server/artifact.ts)을 찾아본 때의 로그 시각과 찾은 것. 로그가 움직일 때만 대화 폴더를 다시 본다. */
+  artifact?: { scan: number; dir: string; mark: ArtifactMark | undefined };
 }
 
 /**
@@ -238,6 +241,16 @@ export class World {
       view.review = reviewAt;
       if (s.review?.sent) view.reviewSent = true;
     }
+    const dir = harness.artifactDir?.(sessionId);
+    if (dir) {
+      if (entry.artifact?.scan !== entry.tail.mtimeMs) entry.artifact = { scan: entry.tail.mtimeMs, dir, mark: await findArtifact(dir) };
+      const mark = entry.artifact.mark;
+      if (mark) {
+        view.artifact = mark.at;
+        const prompted = s.lastPromptAt ? Date.parse(s.lastPromptAt) : NaN;
+        if (prompted > mark.asked) view.artifactAnswered = true;
+      }
+    }
     view.pending = currentPending(s);
     view.logUpdatedAt = entry.tail.mtimeMs;
     if (harness.subagents) view.subagents = await harness.subagents(entry.path);
@@ -295,7 +308,7 @@ export class World {
       harnessTitle = undefined;
       view.recent = [];
       view.activity = view.lastPrompt = view.lastReply = view.pending = undefined;
-      view.contextTokens = view.review = view.reviewSent = undefined;
+      view.contextTokens = view.review = view.reviewSent = view.artifact = view.artifactAnswered = undefined;
     }
     if (typed?.queued) view.queued = typed.queued;
 
@@ -734,6 +747,13 @@ export class World {
   /** 그 카드(표식 시각)가 아직 떠 있는지. */
   async planCardUp(paneId: string, card: number): Promise<boolean> {
     return (await this.asking.check()).get(paneId)?.since === card;
+  }
+
+  /** 이 세션에서 승인을 바란 가장 최근의 글(AGY 의 아티팩트). 로그를 놓았거나 그런 글이 없으면 undefined. */
+  async artifactText(agentId: string): Promise<ArtifactText | undefined> {
+    const key = this.logOf.get(agentId);
+    const found = key ? this.tracked.get(key)?.artifact : undefined;
+    return found?.mark ? readArtifact(found.dir, found.mark.path) : undefined;
   }
 
   /** 마지막 턴의 리뷰 보고. 그 뒤로 새 지시가 갔거나 로그를 놓았으면 undefined. */

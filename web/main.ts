@@ -178,7 +178,12 @@ function openTerminal(paneId: string): void {
   const agent = snap?.agents.find((a) => a.paneId === paneId);
   const ws = snap?.workspaces.find((w) => w.id === pane?.workspaceId);
   terminal.open(paneId, agent?.title ?? pane?.label ?? pane?.title ?? paneId, `${ws ? `${ws.number} · ${ws.label} · ` : ""}${paneId}`, pane?.cols, pane?.rows);
-  terminal.setPlan(agent?.plan !== undefined);
+  terminal.setPlan(agent !== undefined && hasReading(agent));
+}
+
+/** 크게 보기의 플랜 읽기 단추를 둘 글: 승인 카드의 플랜, 또는 아직 답하지 않은 AGY 의 글. */
+function hasReading(a: AgentView): boolean {
+  return a.plan !== undefined || (a.artifact !== undefined && !a.artifactAnswered);
 }
 
 function act(action: Action): void {
@@ -196,7 +201,10 @@ function act(action: Action): void {
       openTerminal(action.paneId);
       break;
     case "plan":
-      planReader.open(action.agent);
+      planReader.open(action.agent, "plan");
+      break;
+    case "artifact":
+      planReader.open(action.agent, "artifact");
       break;
     case "review":
       reviewReader.open(action.agent);
@@ -524,7 +532,7 @@ function show(snapshot: WorldSnapshot): void {
   scene.sync(snapshot);
   hud.update(snapshot);
   if (terminal.isOpen) {
-    terminal.setPlan(snapshot.agents.some((a) => a.paneId === terminal.pane && a.plan !== undefined));
+    terminal.setPlan(snapshot.agents.some((a) => a.paneId === terminal.pane && hasReading(a)));
     // 보는 동안 pane 크기가 바뀌면(herdr 창을 나누거나 터미널 창을 키우면) 글자 크기를 다시 맞춘다.
     const pane = snapshot.panes.find((p) => p.id === terminal.pane);
     terminal.resize(pane?.cols, pane?.rows);

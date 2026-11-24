@@ -345,6 +345,7 @@ export const agy: Harness = {
     return SESSION_ID.test(sessionId) ? mainOf(sessionId) : sessionId;
   },
   typed: typedFor,
+  artifactDir: (sessionId) => (SESSION_ID.test(sessionId) ? join(root(), "brain", sessionId) : undefined),
   async discover(sinceMs) {
     let ids: string[];
     try {

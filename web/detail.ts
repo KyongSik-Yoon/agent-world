@@ -20,6 +20,7 @@ export type Action =
   | { type: "open-herdr"; agent: AgentView }
   | { type: "terminal"; paneId: string }
   | { type: "plan"; agent: AgentView }
+  | { type: "artifact"; agent: AgentView }
   | { type: "review"; agent: AgentView }
   | { type: "approve-plan"; agent: AgentView }
   | { type: "new-agent"; workspaceId: string; paneId?: string }
@@ -858,6 +859,7 @@ export class DetailPanel {
       ["status", statusLine],
       ["ask", blocked ? this.askCard(a) : null],
       ["review", a.review && !blocked ? this.reviewCard(a) : null],
+      ["artifact", a.artifact && !blocked ? this.artifactCard(a) : null],
       ["now", nowEl],
       ["facts", this.facts(a)],
       ["actions", this.actions(a)],
@@ -880,6 +882,17 @@ export class DetailPanel {
     const read = this.button(sent ? t("리뷰 다시 보기") : t("리뷰 읽기"), () => this.callbacks.act({ type: "review", agent: a }), { cls: "btn", icon: "search", title: t("리뷰 보고를 열어 고칠 항목을 고릅니다 (R)") });
     const note = sent ? t("고칠 항목을 보냈어요. 다음 리뷰가 오면 바뀝니다.") : this.snapshot?.control ? t("남은 결함을 읽고 고칠 것을 골라 보냅니다.") : t("남은 결함과 고친 것을 읽습니다.");
     return h("section", { class: sent ? "review-card sent" : "review-card" }, h("div", { class: "rv-card-text" }, h("b", {}, sent ? t("리뷰 보고") : t("리뷰 보고가 있어요")), h("span", {}, note)), read);
+  }
+
+  /**
+   * AGY 가 승인을 바라고 남긴 글(구현 계획·제안서). 터미널에는 "/artifact to review" 한 줄뿐이라 따로 띄워 읽는다. 답은
+   * 평범한 지시라 아래 입력줄로 보낸다. 답한 뒤에도 다음 글이 올 때까지 다시 읽을 수 있게 두고, 눈에 덜 띄게 접는다.
+   */
+  private artifactCard(a: AgentView): HTMLElement {
+    const done = a.artifactAnswered === true;
+    const read = this.button(done ? t("다시 읽기") : t("읽기"), () => this.callbacks.act({ type: "artifact", agent: a }), { cls: "btn", icon: "file" });
+    const note = done ? t("답을 보냈어요. 다음 글이 오면 바뀝니다.") : this.snapshot?.control ? t("읽고 입력줄로 승인하거나 고칠 점을 보내세요.") : t("에이전트가 남긴 글을 읽습니다.");
+    return h("section", { class: done ? "review-card sent" : "review-card" }, h("div", { class: "rv-card-text" }, h("b", {}, done ? t("아티팩트") : t("승인을 기다리는 아티팩트가 있어요")), h("span", {}, note)), read);
   }
 
   /** 확인 필요: 무엇을 묻는지 — 로그에 남은 요청과, 화면에 떠 있는 대화상자를 함께 보여 준다. */
