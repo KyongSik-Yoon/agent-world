@@ -187,6 +187,8 @@ export const en: Record<string, string> = {
   "함께 꺼지는 에이전트 {n}개 — 그중 {w}개는 아직 일하는 중입니다:": "Agents that will also shut down ({n}, {w} still working):",
   "함께 꺼지는 에이전트 {n}개:": "Agents that will also shut down ({n}):",
   "이 안에 돌고 있는 에이전트는 없습니다.": "No agents are running in here.",
+  "{name} 집은 워크트리 스페이스 {n}개가 묶인 본채라 비울 수 없습니다. 닫은 자리에 빈 터미널을 하나 남깁니다.": "{name} is the main house of {n} worktree workspaces, so it can't be left empty. An empty terminal will take this one's place.",
+  "{name} — 묶음의 본채라 그 자리에 빈 터미널을 남겼습니다.": "{name} — left an empty terminal in its place, since it's the main house of a worktree group.",
   "이 저장소에 묶인 워크트리 스페이스들도 함께 닫기": "Also close the worktree workspaces tied to this repository",
   "커밋하지 않은 변경이 있어도 지우기": "Delete even with uncommitted changes",
   "워크트리 체크아웃 폴더도 지우기": "Also delete the worktree checkout folder",

@@ -681,6 +681,17 @@ export class Builder {
       doomed.length > 0 ? list : null,
     ];
 
+    // 워크트리 묶음의 본채에 남은 마지막 pane·탭이면 herdr 가 본채를 닫지 않으므로, 서버가 그 자리에 빈 터미널을 남긴다.
+    if (kind !== "workspace") {
+      const home = snap.workspaces.find((w) => w.id === (kind === "tab" ? snap.tabs.find((tab) => tab.id === id)?.workspaceId : snap.panes.find((p) => p.id === id)?.workspaceId));
+      const key = home?.worktree && !home.worktree.linked ? home.worktree.repoKey : undefined;
+      const tied = key ? snap.workspaces.filter((w) => w.worktree?.linked && w.worktree.repoKey === key).length : 0;
+      const last = home && (kind === "tab" ? snap.tabs.filter((tab) => tab.workspaceId === home.id).length : snap.panes.filter((p) => p.workspaceId === home.id).length) === 1;
+      if (tied > 0 && last) {
+        fields.push(h("p", {}, t("{name} 집은 워크트리 스페이스 {n}개가 묶인 본채라 비울 수 없습니다. 닫은 자리에 빈 터미널을 하나 남깁니다.", { name: home.label, n: tied })));
+      }
+    }
+
     const removeWorktree = h("input", { type: "checkbox" });
     const force = h("input", { type: "checkbox" });
     const group = h("input", { type: "checkbox" });
@@ -702,8 +713,8 @@ export class Builder {
       t("닫기"),
       fields,
       async () => {
-        await post("/api/close", { kind, id, group: group.checked, removeWorktree: removeWorktree.checked, force: force.checked });
-        this.deps.toast(t("닫았습니다"), name, "var(--idle)");
+        const res = await post<{ replaced?: boolean }>("/api/close", { kind, id, group: group.checked, removeWorktree: removeWorktree.checked, force: force.checked });
+        this.deps.toast(t("닫았습니다"), res.replaced ? t("{name} — 묶음의 본채라 그 자리에 빈 터미널을 남겼습니다.", { name }) : name, "var(--idle)");
       },
       true,
     );

@@ -420,13 +420,38 @@ export interface CloseOptions {
   force?: boolean;
 }
 
-export async function herdrClose(kind: Kind, id: string, options: CloseOptions = {}): Promise<void> {
+/**
+ * 닫는다. 돌려주는 값은 닫은 자리에 빈 셸을 남겼는지다.
+ *
+ * 워크트리 묶음의 본채(연결된 워크트리 스페이스가 딸린 원 저장소 스페이스)에 남은 마지막 pane·탭은 herdr 가
+ * `confirmation_required` 로 닫지 않는다 — 본채가 닫히면 묶음이 통째로 닫혀야 하기 때문이다. pane·탭 닫기에는 묶음
+ * 옵션이 없고, 사용자가 닫으려던 것은 그 pane 하나다. 그래서 같은 자리에 빈 셸을 먼저 세우고 다시 닫는다. 본채는 남는다.
+ */
+export async function herdrClose(kind: Kind, id: string, options: CloseOptions = {}): Promise<{ replaced?: boolean }> {
   if (kind === "workspace" && options.removeWorktree) {
     await herdrRpc("worktree.remove", { workspace_id: id, ...(options.force ? { force: true } : {}) }, 30_000);
-  } else if (kind === "workspace") {
+    return {};
+  }
+  if (kind === "workspace") {
     await herdrRpc("workspace.close", { workspace_id: id, ...(options.group ? { close_group: true } : {}) }, 10_000);
-  } else if (kind === "tab") await herdrRpc("tab.close", { tab_id: id }, 10_000);
-  else await herdrRpc("pane.close", { pane_id: id }, 10_000);
+    return {};
+  }
+  const close = () => (kind === "tab" ? herdrRpc("tab.close", { tab_id: id }, 10_000) : herdrRpc("pane.close", { pane_id: id }, 10_000));
+  try {
+    await close();
+    return {};
+  } catch (e) {
+    if (!(e instanceof HerdrError) || e.code !== "confirmation_required") throw e;
+  }
+  if (kind === "tab") {
+    const snap = await herdrSnapshot();
+    const workspaceId = snap.tabs.find((tab) => tab.tab_id === id)?.workspace_id;
+    if (!workspaceId) throw new HerdrError(L(`탭을 찾지 못했습니다: ${id}`, `Tab not found: ${id}`));
+    const cwd = snap.panes.find((p) => p.tab_id === id)?.cwd;
+    await herdrCreateTab(workspaceId, undefined, cwd);
+  } else await herdrSplit(id, "right");
+  await close();
+  return { replaced: true };
 }
 
 /** herdr 가 알아보는 에이전트 종류들(감지 매니페스트 기준). */

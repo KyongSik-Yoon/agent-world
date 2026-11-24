@@ -678,7 +678,7 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
     "/api/close": mutate(async (body) => {
       const kind = text(body, "kind") as Kind;
       if (!KINDS.has(kind) || kind === "agent") throw new Reject(L("kind 가 올바르지 않습니다.", "kind is not valid."), 400);
-      await herdrClose(kind, await need(kind, text(body, "id")), {
+      return await herdrClose(kind, await need(kind, text(body, "id")), {
         group: body.group === true,
         removeWorktree: body.removeWorktree === true,
         force: body.force === true,
