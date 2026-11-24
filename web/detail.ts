@@ -8,7 +8,7 @@ import { ApiError, get, headers, post, sendInput, uploadImage } from "./api.ts";
 import { brandFor, brandTile } from "./brands.ts";
 import { setLogoActive } from "./logos.ts";
 import { buzzConfirm, tapOnPress } from "./haptic.ts";
-import { type Child, type IconName, STATUS_VAR, h, icon, prose, store, stored } from "./dom.ts";
+import { type Child, type IconName, STATUS_VAR, fitCompose, growCompose, h, icon, prose, store, stored } from "./dom.ts";
 import { STATUS_LABEL, activityParts, bubbleParts, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
 import { t } from "./i18n.ts";
 import { TermScreen } from "./term.ts";
@@ -233,23 +233,12 @@ export class DetailPanel {
     term.addEventListener("click", () => this.docked && this.callbacks.act({ type: "terminal", paneId: this.docked.paneId }));
     this.quick.append(keys, term);
 
-    this.input.addEventListener("input", () => {
-      this.fitInput();
-      this.updateSkills();
-    });
+    // 높이를 먼저 맞추고 스킬 목록을 놓는다 — 목록은 입력줄 위의 빈자리를 재서 편다.
+    growCompose(this.input);
+    this.input.addEventListener("input", () => this.updateSkills());
     this.input.addEventListener("blur", () => this.closeSkills());
     // 단추와 목록을 누르는 동안 입력창이 초점을 잃어 목록이 먼저 닫히지 않게 한다.
     this.skillPop.addEventListener("pointerdown", (e) => e.preventDefault());
-    // 상태 창 폭이 바뀌면 줄바꿈이 달라지므로 높이를 다시 맞춘다(높이 변화에는 반응하지 않는다).
-    // 관찰 콜백 안에서 크기를 바꾸면 관찰 고리 오류가 나므로 다음 프레임에 맞춘다.
-    let inputWidth = 0;
-    new ResizeObserver(([entry]) => {
-      const width = entry?.contentRect.width ?? 0;
-      if (width === inputWidth) return;
-      inputWidth = width;
-      // perf-ok: 입력창 폭이 바뀐 때 한 번 — 도는 것이 아니다
-      requestAnimationFrame(() => this.fitInput());
-    }).observe(this.input);
     this.input.addEventListener("keydown", (e) => {
       if (this.skillKey(e)) return;
       // 한글을 조합하는 중의 Enter 는 글자를 확정하는 키다.
@@ -383,22 +372,7 @@ export class DetailPanel {
   /** 입력창 글을 바꾸고 높이를 글에 맞춘다. */
   private setInput(text: string): void {
     this.input.value = text;
-    this.fitInput();
-  }
-
-  /** 입력창은 한 줄 높이에서 시작해 글이 늘면 따라 커진다(최대 높이는 CSS 가 정한다). */
-  private fitInput(): void {
-    // 한 줄 배치의 폭에서 재서 정한다 — 넓어진 폭에서 재면 줄 수가 줄어 두 배치 사이를 오간다.
-    const box = this.input.parentElement;
-    box?.classList.remove("tall");
-    this.input.style.height = "auto";
-    const style = getComputedStyle(this.input);
-    const oneLine = parseFloat(style.lineHeight) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-    if (box && this.input.scrollHeight > oneLine + 2) {
-      box.classList.add("tall");
-      this.input.style.height = "auto";
-    }
-    this.input.style.height = `${this.input.scrollHeight + this.input.offsetHeight - this.input.clientHeight}px`;
+    fitCompose(this.input);
   }
 
   /** 무대를 놓을 자리가 생겼거나 없어졌다. */

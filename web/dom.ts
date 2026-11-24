@@ -279,3 +279,37 @@ export function prose(text: string): DocumentFragment {
   }
   return frag;
 }
+
+/**
+ * 입력줄(.compose)의 글 칸 높이를 글에 맞춘다. 한 줄 높이에서 시작해 글이 늘면 따라 커지고(최대 높이는 CSS 가 정한다),
+ * 한 줄을 넘으면 상자에 .tall 을 달아 글이 상자 폭을 다 쓰고 단추가 아래 줄로 내려가게 한다.
+ */
+export function fitCompose(input: HTMLTextAreaElement): void {
+  if (!input.isConnected) return;
+  // 한 줄 배치의 폭에서 재서 정한다 — 넓어진 폭에서 재면 줄 수가 줄어 두 배치 사이를 오간다.
+  const box = input.parentElement;
+  box?.classList.remove("tall");
+  input.style.height = "auto";
+  const style = getComputedStyle(input);
+  const oneLine = parseFloat(style.lineHeight) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  if (box && input.scrollHeight > oneLine + 2) {
+    box.classList.add("tall");
+    input.style.height = "auto";
+  }
+  input.style.height = `${input.scrollHeight + input.offsetHeight - input.clientHeight}px`;
+}
+
+/** 글 칸이 글을 칠 때와 폭이 바뀔 때 스스로 높이를 맞추게 한다. */
+export function growCompose(input: HTMLTextAreaElement): void {
+  input.addEventListener("input", () => fitCompose(input));
+  // 폭이 바뀌면 줄바꿈이 달라지므로 높이를 다시 맞춘다(높이 변화에는 반응하지 않는다). 화면에 처음 놓일 때도 여기로 온다.
+  // 관찰 콜백 안에서 크기를 바꾸면 관찰 고리 오류가 나므로 다음 프레임에 맞춘다.
+  let seen = 0;
+  new ResizeObserver(([entry]) => {
+    const width = entry?.contentRect.width ?? 0;
+    if (width === seen) return;
+    seen = width;
+    // perf-ok: 글 칸 폭이 바뀐 때 한 번 — 도는 것이 아니다
+    requestAnimationFrame(() => fitCompose(input));
+  }).observe(input);
+}

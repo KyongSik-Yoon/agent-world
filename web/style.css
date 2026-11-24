@@ -3624,25 +3624,23 @@ body[data-beat] .dlg-track i.cur {
   padding: 8px 16px;
 }
 
-/* 첫 지시 칸: 상세 창의 입력줄과 같은 상자에 글 칸과 대화상자의 단추(취소·들이기)를 함께 둔다. 글은 위에서 상자 폭을 다 쓰고
-   단추는 그 아래 줄 오른쪽에 선다. 글 칸은 세 줄에서 시작해 글을 따라 커진다(field-sizing 을 모르는 브라우저는 세 줄에서 굴린다). */
+/* 첫 지시 칸: 상세 창의 입력줄과 같은 상자에 글 칸과 대화상자의 단추(취소·들이기)를 함께 둔다. 높이도 입력줄처럼 한 줄에서
+   시작해 [글 취소 들이기] 가 한 줄에 서고, 글이 한 줄을 넘으면(.tall) 글이 상자 폭을 다 쓰고 단추는 그 아래 줄 오른쪽에 선다. */
 .compose.stack {
+  grid-template: "text cancel send" auto / 1fr auto auto;
+  column-gap: 4px;
+}
+
+.compose.stack.tall {
   grid-template:
     "text text text" auto
     ". cancel send" auto / 1fr auto auto;
-  gap: 2px 4px;
 }
 
+/* ＋ 단추가 없으니 한 줄일 때도 글을 상자 가장자리에서 띄운다. */
 .compose.stack textarea {
-  height: auto;
-  min-height: calc(4.2em + 12px);
-  padding: 6px 7px;
-  field-sizing: content;
-}
-
-/* 세 줄짜리 칸이라 안내 문구는 한 줄에서 줄이지 않고 꺾는다. */
-.compose.stack textarea::placeholder {
-  white-space: normal;
+  padding-left: 7px;
+  padding-right: 7px;
 }
 
 .compose.stack .btn[type="button"] {

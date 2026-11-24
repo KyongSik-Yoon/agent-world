@@ -5,7 +5,7 @@ import type { AgentView, ModelCatalog, WorkspaceView, WorldSnapshot } from "../s
 import { ApiError, get, post } from "./api.ts";
 import { brandFor } from "./brands.ts";
 import { type TargetKind, workspaceKey } from "./detail.ts";
-import { type Child, h } from "./dom.ts";
+import { type Child, growCompose, h } from "./dom.ts";
 import { STATUS_LABEL } from "./format.ts";
 import { t } from "./i18n.ts";
 
@@ -482,7 +482,8 @@ export class Builder {
     const args = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: t("예: --add-dir ~/notes") });
     const pick = this.modelPick("start");
     const promptId = `first-prompt-${++promptSeq}`;
-    const prompt = h("textarea", { id: promptId, rows: "3", placeholder: t("에이전트가 준비되면 바로 보낼 말 (비워 두면 보내지 않습니다)") });
+    // 한 줄 칸에서 단추 옆에 서므로 안내는 짧게 쓰고, 긴 설명은 title 에 둔다.
+    const prompt = h("textarea", { id: promptId, rows: "1", placeholder: t("준비되면 보낼 말 (선택)"), title: t("에이전트가 준비되면 바로 보낼 말 (비워 두면 보내지 않습니다)") });
     let touched = false;
     name.addEventListener("input", () => {
       touched = true;
@@ -512,7 +513,11 @@ export class Builder {
     const starting = () => t("{name} 띄우는 중…", { name: brandFor(kind.value).name });
 
     // 상세 창의 입력줄과 같은 짜임(.compose 안에 글 칸과 단추)이다. <label> 로 감싸지 않는다 — 단추의 글이 글 칸의 이름에 섞인다.
+    // 높이도 같게 — 한 줄에서 시작해 글을 따라 커지고, 한 줄을 넘으면 단추가 글 아래로 내려간다.
     const box = h("div", { class: "compose stack" }, prompt);
+    growCompose(prompt);
+    // 자판이 올라와 창이 화면보다 길어진 채로 칸이 자라면, 글 아래의 단추가 화면 밖으로 밀리지 않게 상자를 따라간다.
+    prompt.addEventListener("input", () => box.scrollIntoView({ block: "nearest" }));
     return {
       box,
       parts: { kind, name, args, pick, prompt, promptId, box, renamed: (f) => renamed.push(f) },

@@ -131,6 +131,7 @@ export const en: Record<string, string> = {
   "{name} 의 모델을 바꾸는 중…": "Switching {name}'s model…",
   "모델을 바꿨습니다": "Model switched",
   "에이전트가 준비되면 바로 보낼 말 (비워 두면 보내지 않습니다)": "Prompt to send once the agent is ready (leave empty to skip)",
+  "준비되면 보낼 말 (선택)": "Optional · sent when ready",
   "{label} — PATH 에서 못 찾음": "{label} — not found in PATH",
   "주민 (에이전트)": "Resident (agent)",
   "주민 이름": "Resident name",
