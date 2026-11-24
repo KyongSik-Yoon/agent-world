@@ -13,6 +13,7 @@ import { join } from "node:path";
 
 import { type LogReader, TailedLog } from "../tail.ts";
 import { beginRow, clip, emptySummary, isRecord, num, pendingRequest, pushActivity, setPrompt, setReply, str, summarizeToolInput, type LogSummary } from "../summary.ts";
+import { agyStatusPayload } from "../usage.ts";
 import type { Harness, LogFile, Typed } from "./types.ts";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -76,6 +77,35 @@ function userRequest(content: string): string {
   const a = content.indexOf(open);
   const b = a < 0 ? -1 : content.indexOf("</USER_REQUEST>", a + open.length);
   return (b >= 0 ? content.slice(a + open.length, b) : withoutBlocks(content, "<ADDITIONAL_METADATA>", "</ADDITIONAL_METADATA>")).trim();
+}
+
+// ── 문맥 창 크기 ─────────────────────────────────────────────────────────────────────────────
+//
+// 로그에는 쓴 토큰만 있고 창 크기는 없다. AGY 는 statusLine 스크립트에 `context_window.context_window_size` 를 넘겨 주는데,
+// 사용량 칩이 읽는 그 스크립트의 마지막 입력(`/tmp/agy-statusline-<uid>/last-payload.json`)은 마지막으로 그린 대화 하나 것뿐이다.
+// 창 크기는 대화가 아니라 모델에 딸려서, 읽을 때마다 모델별로 기억해 두고 로그의 모델이 같은 대화에 쓴다(1.5.14 에서
+// Gemini 4 Neon 이 1048576). 대화가 시작되기 전의 입력은 크기가 0 이라 버린다.
+
+/** 같은 모델을 로그는 `gemini-4-neon-high`, statusLine 은 `Gemini 4 Neon (High)` 로 적는다. 사고 수준은 창 크기와 상관없어 뗀다. */
+const modelKey = (model: string): string =>
+  model
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-(low|medium|high|xhigh|max)$/, "");
+
+const seenWindows = new Map<string, number>();
+
+async function contextWindow(_sessionId: string, model: string | undefined): Promise<number | undefined> {
+  const got = await agyStatusPayload();
+  if (got) {
+    const m = got.body.model;
+    const id = isRecord(m) ? (str(m.id) ?? str(m.display_name)) : str(m);
+    const ctx = got.body.context_window;
+    const size = isRecord(ctx) ? num(ctx.context_window_size) : undefined;
+    if (id && size && Number.isSafeInteger(size) && size > 0) seenWindows.set(modelKey(id), size);
+  }
+  return model ? seenWindows.get(modelKey(model)) : undefined;
 }
 
 export const agyReader: LogReader<LogSummary> = {
@@ -307,6 +337,7 @@ export const agy: Harness = {
     if (!SESSION_ID.test(sessionId)) return null;
     return (await findLog(sessionId))?.path ?? null;
   },
+  contextWindow,
   async title(sessionId) {
     return SESSION_ID.test(sessionId) ? (readRow(sessionId)?.title ?? undefined) : undefined;
   },

@@ -404,7 +404,8 @@ function agyWindowName(key: string): { group?: string; minutes?: number } {
   return { group: m[1] || undefined, minutes };
 }
 
-async function readAgy(): Promise<Reading | undefined> {
+/** statusLine 스크립트가 받은 마지막 입력. 사용량과 함께 문맥 창 크기(`context_window`)도 여기서 읽는다(adapters/agy.ts). */
+export async function agyStatusPayload(): Promise<SmallJson | undefined> {
   const path = agyPayloadPath();
   if (!path) return undefined;
   if (!process.env.AGENT_WORLD_AGY_PAYLOAD) {
@@ -412,7 +413,11 @@ async function readAgy(): Promise<Reading | undefined> {
     const dir = await lstat(join(path, "..")).catch(() => undefined);
     if (!dir?.isDirectory() || dir.uid !== process.getuid?.()) return undefined;
   }
-  const got = await smallJson(path);
+  return smallJson(path);
+}
+
+async function readAgy(): Promise<Reading | undefined> {
+  const got = await agyStatusPayload();
   if (!got || !isRecord(got.body.quota)) return undefined;
   const windows: UsageWindow[] = [];
   for (const [key, value] of Object.entries(got.body.quota)) {

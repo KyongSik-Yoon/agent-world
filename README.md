@@ -241,7 +241,7 @@ AGENT_WORLD_ALL=https://desk.<tailnet>.ts.net:4780/all bun start
 - Antigravity: `~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript_full.jsonl`
 - Codex: `~/.codex/sessions/YYYY/MM/DD/rollout-*-<session>.jsonl`
 
-Claude Code 의 로그에는 쓴 토큰만 있고 컨텍스트 창 크기는 없습니다. herdr 웹 UI 의 statusLine 기록을 켜 두었으면 그것이 세션마다 남기는 창 크기(`~/.herdr/statusline-context/`)를 읽어 상태 창에 비율과 막대를 함께 보여 주고, 없으면 토큰 수만 보여 줍니다.
+Claude Code 의 로그에는 쓴 토큰만 있고 컨텍스트 창 크기는 없습니다. herdr 웹 UI 의 statusLine 기록을 켜 두었으면 그것이 세션마다 남기는 창 크기(`~/.herdr/statusline-context/`)를 읽어 상태 창에 비율과 막대를 함께 보여 주고, 없으면 토큰 수만 보여 줍니다. Antigravity 도 로그에 창 크기가 없어서, 사용량을 읽는 statusLine 입력(`/tmp/agy-statusline-<uid>/last-payload.json`)에서 모델별 창 크기를 기억해 두었다가 같은 모델의 세션에 씁니다. 서버를 띄운 뒤 그 모델의 상태줄이 한 번 그려지기 전까지는 토큰 수만 보입니다.
 
 사용량은 남아 있는 것을 읽고, Claude Code 만 사용량 API 에 직접 묻습니다. 30초에 한 번 파일 시각을 보고 바뀐 것만 다시 읽으며, 계정 메일·id·토큰은 화면으로 보내지 않습니다.
 

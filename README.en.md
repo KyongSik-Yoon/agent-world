@@ -275,7 +275,10 @@ It does not hook into the harnesses or touch settings such as the status line. I
 
 Claude Code's log has the tokens used but not the size of the context window. If the herdr web UI's status-line
 capture is installed, the window size it leaves per session (`~/.herdr/statusline-context/`) is read so the status
-window shows a percentage and a bar; without it, only the token count is shown.
+window shows a percentage and a bar; without it, only the token count is shown. Antigravity's log has no window size
+either, so the window size per model is remembered from the status-line input that usage is read from
+(`/tmp/agy-statusline-<uid>/last-payload.json`) and used for sessions on the same model. Until that model's status
+line has been drawn once after the server starts, only the token count is shown.
 
 Usage is read from what is already there, except Claude Code, whose usage API is asked directly. File times are checked
 every 30 seconds and only a changed file is read again; account emails, ids and tokens are never sent to the page.
