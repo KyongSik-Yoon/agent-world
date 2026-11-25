@@ -269,6 +269,16 @@ export const claudeReader: LogReader<LogSummary> = {
         if (row.isSidechain !== true) feedUser(s, row, at);
         break;
       case "system": {
+        // 컴팩션의 경계. 요약 행(isCompactSummary)보다 먼저, 끝났을 때 적힌다. 사람이 친 `/compact` 면 trigger 가 manual 이고
+        // 그 자리를 남겨 화면이 "대화를 요약했습니다"를 알리게 한다(자동 컴팩션은 일하는 도중이라 알리지 않는다).
+        // 요약 뒤의 크기(postTokens)도 여기 있다 — 다음 응답까지 컨텍스트 막대가 요약 전 크기로 남지 않게 한다.
+        if (row.subtype === "compact_boundary" && row.isSidechain !== true) {
+          const meta = isRecord(row.compactMetadata) ? row.compactMetadata : {};
+          pushActivity(s, "compact", "", "", at);
+          s.contextTokens = num(meta.postTokens) ?? s.contextTokens;
+          if (meta.trigger === "manual") s.compaction = String(pos);
+          break;
+        }
         // `/context` 처럼 모델에게 가지 않는 내장 명령은 사용자 행이 아니라 이 행으로 남는다. 받은 것을 확인하는 데 쓴다.
         const content = row.subtype === "local_command" && row.isSidechain !== true ? str(row.content) : undefined;
         const command = content && builtinCommand(content);

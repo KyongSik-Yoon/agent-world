@@ -58,7 +58,7 @@ export interface LogSummary {
   compacted?: boolean;
   /** 사람이 친 `/compact` 를 받았고 그 요약이 아직 적히지 않았다(agy). */
   compactAsked?: boolean;
-  /** 사람이 친 `/compact` 가 마지막으로 끝난 로그 행의 자리. AgentView.compaction 으로 간다. */
+  /** 사람이 친 `/compact` 가 마지막으로 끝난 로그 행의 자리(agy 의 CHECKPOINT, Claude 의 manual compact_boundary). AgentView.compaction 으로 간다. */
   compaction?: string;
   /** 지금 읽고 있는 행의 자리와, 그 행에서 지금까지 나온 활동 수. 활동의 ref 를 짓는다. */
   row?: { pos: number; nth: number };
