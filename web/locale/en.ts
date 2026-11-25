@@ -78,6 +78,7 @@ export const en: Record<string, string> = {
   "승인을 기다리는 아티팩트가 있어요": "An artifact is waiting for approval",
   "읽을 아티팩트가 있어요": "There is an artifact to read",
   "다음 글이 오면 바뀝니다.": "It changes when the next one arrives.",
+  "다른 곳에서 이미 답한 글입니다. 적은 것은 복사해 두고, 닫은 뒤 입력줄로 보내세요.": "This document was already answered elsewhere. Copy what you wrote, then close and use the input line.",
   "읽기만 하는 글입니다. 할 말은 닫고 입력줄로 보내세요.": "This document is read-only. To respond, close it and use the input line.",
   "플랜을 읽는 중…": "Loading the plan…",
   "플랜을 읽지 못했습니다.": "Couldn't load the plan.",

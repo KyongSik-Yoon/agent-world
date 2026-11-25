@@ -71,6 +71,11 @@ export class PlanReader {
   /** 원문 줄 보기에서 댓글을 적으려고 고른 범위. */
   private pick: { from: number; to: number } | undefined;
   private sending = false;
+  /**
+   * 답을 적던 AGY 의 글이 열어 둔 사이 다른 곳에서(다른 기기, 터미널) 답해졌다 — 단추를 잠그고 읽던 글과 적던 것은 그대로
+   * 둔다. 창을 닫으면 적던 것이 사라지고, 단추가 살아 있으면 같은 승인이 또 가거나 뒤에 쓰인 보고서에 승인이 간다.
+   */
+  private locked = false;
   /** 에이전트마다 적던 것 — 창을 닫았다 열어도 남는다. 다른 카드가 뜨면 줄 댓글은 버린다(줄 번호가 옛 플랜의 것이다). */
   private readonly drafts = new Map<string, Draft>();
   private ui: { lineBtn: HTMLButtonElement; note: HTMLTextAreaElement; send: HTMLButtonElement; approve: HTMLButtonElement; count: HTMLElement; error: HTMLElement } | undefined;
@@ -102,6 +107,7 @@ export class PlanReader {
     this.lines = false;
     this.pick = undefined;
     this.sending = false;
+    this.locked = false;
     const editable =
       this.canApprove() &&
       (kind === "plan" ? this.onApprove !== undefined && this.onRevise !== undefined : this.onArtifactSend !== undefined && a.paneId !== undefined && a.artifactReport !== true && a.artifactAnswered !== true);
@@ -143,6 +149,9 @@ export class PlanReader {
     dlg.addEventListener("close", () => {
       dlg.remove();
       if (this.dlg !== dlg) return;
+      // 잠긴 창에 남겨 둔 것은 창과 함께 버린다 — 이미 답한 글의 것이다.
+      if (this.locked) this.drafts.delete(this.agentId);
+      this.locked = false;
       this.dlg = this.body = this.file = this.ui = this.plan = undefined;
       this.onClose?.();
     });
@@ -202,10 +211,10 @@ export class PlanReader {
     const n = d.notes.length;
     ui.count.hidden = n === 0;
     ui.count.textContent = t("줄 댓글 {n}개", { n });
-    ui.send.disabled = this.sending || this.plan?.card === undefined || (!d.text.trim() && n === 0);
+    ui.send.disabled = this.locked || this.sending || this.plan?.card === undefined || (!d.text.trim() && n === 0);
     ui.send.lastElementChild!.textContent = this.sending ? t("보내는 중…") : t("고쳐 달라고 하기");
     // 승인 카드의 승인은 키 하나라 글을 기다리지 않는다. AGY 의 승인은 지시라 받은 글이 있어야 무엇을 승인하는지 안다.
-    if (this.kind === "artifact") ui.approve.disabled = this.sending || this.plan === undefined;
+    if (this.kind === "artifact") ui.approve.disabled = this.locked || this.sending || this.plan === undefined;
   }
 
   private toggleLines(): void {
@@ -246,7 +255,7 @@ export class PlanReader {
     });
     box.addEventListener("click", (e) => {
       const n = Number((e.target as Element).closest<HTMLElement>(".ln")?.dataset.n);
-      if (!n) return;
+      if (!n || this.locked) return;
       // 고른 범위가 있으면 다른 줄을 눌러 넓힌다. 하나만 고른 줄을 다시 누르면 접는다.
       if (!pick) this.setPick({ from: n, to: n });
       else if (pick.from === n && pick.to === n) this.setPick(undefined);
@@ -410,12 +419,38 @@ export class PlanReader {
 
   /** 새 스냅샷에 맞춘다: 카드가 내려갔으면(승인·거절·세션 종료) 닫고, 에이전트가 플랜을 고쳤으면 다시 읽는다. */
   sync(agents: readonly AgentView[]): void {
-    for (const [id, d] of this.drafts) if (!d.unsent && !agents.some((a) => a.id === id && (a.plan || (a.artifact && !a.artifactReport && !a.artifactAnswered)))) this.drafts.delete(id);
+    // 열어 둔 창에 적던 것은 보내는 중이거나 잠긴 동안 둔다 — 보내는 중에는 닿기 전에 답한 것으로 보일 수 있고, 잠긴 창은
+    // 적던 것을 보여 주고 있다.
+    const held = this.dlg && (this.sending || this.locked) ? this.agentId : undefined;
+    for (const [id, d] of this.drafts) if (!d.unsent && id !== held && !agents.some((a) => a.id === id && (a.plan || (a.artifact && !a.artifactReport && !a.artifactAnswered)))) this.drafts.delete(id);
     if (!this.dlg) return;
     const agent = agents.find((a) => a.id === this.agentId);
     const stamp = agent && stampOf(agent, this.kind);
-    if (!stamp) this.dlg.close();
-    else if (stamp !== this.at) this.load(stamp);
+    if (!stamp) {
+      this.dlg.close();
+      return;
+    }
+    if (this.kind === "artifact") {
+      // 보내는 중에는 건드리지 않는다 — 닿으면 창이 닫히고, 닿지 않으면 다음 스냅샷에서 잠근다.
+      if (this.sending) return;
+      if (this.ui && !this.locked && (agent.artifactReport || agent.artifactAnswered)) this.lock();
+      // 잠긴 창은 읽던 글을 그대로 둔다 — 뒤에 쓰인 보고서로 바꾸면 적어 둔 줄 댓글이 엉뚱한 글에 붙는다.
+      if (this.locked) return;
+    }
+    if (stamp !== this.at) this.load(stamp);
+  }
+
+  /** 답을 적던 글이 다른 곳에서 답해졌다: 단추와 글 칸을 잠그고 그렇다고 적는다. 읽던 글과 적던 것은 남긴다. */
+  private lock(): void {
+    const ui = this.ui;
+    if (!ui) return;
+    this.locked = true;
+    ui.note.readOnly = true;
+    ui.lineBtn.disabled = true;
+    ui.note.closest("footer")?.before(h("p", { class: "plan-note", role: "status" }, t("다른 곳에서 이미 답한 글입니다. 적은 것은 복사해 두고, 닫은 뒤 입력줄로 보내세요.")));
+    this.showError("");
+    if (this.pick) this.setPick(undefined);
+    this.updateFoot();
   }
 
   private load(at: number): void {
