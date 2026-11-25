@@ -79,6 +79,13 @@ function userRequest(content: string): string {
   return (b >= 0 ? content.slice(a + open.length, b) : withoutBlocks(content, "<ADDITIONAL_METADATA>", "</ADDITIONAL_METADATA>")).trim();
 }
 
+/**
+ * 플랜 모드(shift+tab)의 AGY 는 지시마다 앞에 `/plan ` 을 붙여 로그와 입력 기록에 남긴다(1.5.16 에서 확인). 명령이 아니라 모드 표시라
+ * 떼고 읽는다 — 그대로 두면 보낸 글과 견줄 수 없어 받았는데도 "받은 흔적이 없다"가 뜨고, 입력 기록에서는 명령으로 잡혀 줄 선 지시로도
+ * 보이지 않는다. `/plan` 만 친 것은 모드를 바꾸는 명령이라 둔다.
+ */
+const withoutPlanMark = (text: string): string => text.replace(/^\/plan\s+(?=\S)/, "");
+
 // ── 문맥 창 크기 ─────────────────────────────────────────────────────────────────────────────
 //
 // 로그에는 쓴 토큰만 있고 창 크기는 없다. AGY 는 statusLine 스크립트에 `context_window.context_window_size` 를 넘겨 주는데,
@@ -117,7 +124,7 @@ export const agyReader: LogReader<LogSummary> = {
     const content = str(row.content) ?? "";
     switch (row.type) {
       case "USER_INPUT": {
-        const text = userRequest(content);
+        const text = withoutPlanMark(userRequest(content));
         if (text) {
           setPrompt(s, text);
           s.lastPromptAt = at;
@@ -197,7 +204,8 @@ const typedReader: LogReader<{ rows: TypedRow[] }> = {
   init: () => ({ rows: [] }),
   feed(s, row) {
     if (!isRecord(row)) return;
-    const display = str(row.display);
+    const raw = str(row.display);
+    const display = raw && withoutPlanMark(raw);
     const at = num(row.timestamp);
     if (!display || at === undefined) return;
     const shell = row.type === "shell";

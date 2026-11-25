@@ -740,7 +740,9 @@ export class DetailPanel {
     // 이미지를 붙여 보내면 로그의 사용자 턴 앞에 [Image #N] 표시가 붙는다. 글 없이 이미지만 보냈으면 턴이 바뀐 것으로 안다.
     const bare = (v: string): string => norm(v.replace(/^(\[Image #\d+\]\s*)+/, ""));
     const logged = a.lastPrompt ? bare(a.lastPrompt) : undefined;
-    const want = norm(sent.text).slice(0, 32);
+    // AGY 는 플랜 모드 표시(`/plan `)를 떼고 읽는다(server/adapters/agy.ts) — 슬래시 목록에서 `/plan 할 일` 을 보냈어도 할 일로 견준다.
+    const said = a.vendor === "agy" ? sent.text.replace(/^\s*\/plan\s+(?=\S)/, "") : sent.text;
+    const want = norm(said).slice(0, 32);
     // 일하는 중에 보낸 지시는 줄에 섰다가 나중에 들어간다 — 줄에 선 것도 받은 것이다. 줄의 글에도 [Image #N] 이 붙는다.
     const queued = want !== "" && a.queued?.some((q) => bare(q).startsWith(want)) === true;
     // `/clear` 같은 내장 명령과 `!git pull` 같은 셸 명령은 지시로 남지 않는다 — 명령 행이 새로 찍혔는지로 본다. 같은 명령을
