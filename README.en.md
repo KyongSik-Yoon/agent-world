@@ -118,7 +118,8 @@ Worth knowing:
   so answers go as ordinary prompts: `Approve and proceed` sends an approval, and `Ask for changes` sends what you
   wrote, line comments included, asking it to revise the document and ask again. Approving with notes written sends
   them along to be applied while proceeding (Claude's approve does not carry notes). Once you answer, the card folds
-  and stays as `Read again` until the next document.
+  and stays as `Read again` until the next document. A document left without asking for approval (a research or
+  audit report) gets `There is an artifact to read` and is read-only.
 - **Review reports from desk-review.** When [desk-review](https://github.com/KyongSik-Yoon/cc-desktop-mod/tree/main/desk-review)'s
   `/desk-review:simplify-review` finishes, the status window gets `Read review` (`R`). The report is drawn in a side
   pane next to the terminal, which is hard to see on a phone, so the button reads the same report from the session log

@@ -188,7 +188,7 @@ function openTerminal(paneId: string): void {
   terminal.setPlan(agent !== undefined && hasReading(agent));
 }
 
-/** 크게 보기의 플랜 읽기 단추를 둘 글: 승인 카드의 플랜, 또는 아직 답하지 않은 AGY 의 글. */
+/** 크게 보기의 플랜 읽기 단추를 둘 글: 승인 카드의 플랜, 또는 아직 답하지 않은(보고서면 다음 지시가 가지 않은) AGY 의 글. */
 function hasReading(a: AgentView): boolean {
   return a.plan !== undefined || (a.artifact !== undefined && !a.artifactAnswered);
 }

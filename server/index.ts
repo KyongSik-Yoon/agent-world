@@ -27,7 +27,7 @@ import { World } from "./world.ts";
 
 const NO_PANE = L("그 pane 은 지금 herdr 에 없습니다.", "That pane no longer exists in herdr.");
 const NO_REVIEW = L("마지막 턴에 남은 리뷰 보고가 없습니다.", "There is no review report from the last turn.");
-const NO_ARTIFACT = L("승인을 바란 글이 없습니다.", "There is no document waiting for review.");
+const NO_ARTIFACT = L("읽을 아티팩트가 없습니다.", "There is no artifact to read.");
 const NO_PLAN = L("승인을 기다리는 플랜이 없습니다.", "There is no plan waiting for approval.");
 const NO_ACTIVITY = L("그 활동은 이제 로그에서 찾을 수 없습니다.", "That activity can no longer be found in the log.");
 

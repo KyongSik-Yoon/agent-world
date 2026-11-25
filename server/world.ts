@@ -16,7 +16,7 @@ import { AgyDialogs } from "./dialog.ts";
 import { herdrSnapshot, type HerdrPane, type HerdrSnapshot, type Kind, herdrSessionName, HerdrError } from "./herdr.ts";
 import { asText, type Lang, type Text } from "./text.ts";
 import { planMtime, planPathIn, readPlan, reviseLanded, type PlanText } from "./plan.ts";
-import { findArtifact, readArtifact, type ArtifactMark, type ArtifactText } from "./artifact.ts";
+import { findArtifacts, readArtifact, type ArtifactMark, type ArtifactMarks, type ArtifactText } from "./artifact.ts";
 import { findReview, readReview } from "./review.ts";
 import { NameStore, SeenStore } from "./seen.ts";
 import { splitAgyModel } from "./models.ts";
@@ -89,8 +89,8 @@ interface Tracked {
   tail: TailedLog<LogSummary>;
   /** 꼬리 창 앞의 리뷰 보고를 찾아본 로드(TailedLog.loads). 로그를 새로 읽을 때마다 한 번만 찾는다. */
   reviewScan?: number;
-  /** 승인을 바란 글(server/artifact.ts)을 찾아본 때의 로그 시각과 찾은 것. 로그가 움직일 때만 대화 폴더를 다시 본다. */
-  artifact?: { scan: number; dir: string; mark: ArtifactMark | undefined };
+  /** 내놓은 글(server/artifact.ts)을 찾아본 때의 로그 시각과 찾은 것, 그 가운데 보여 주는 글. 로그가 움직일 때만 대화 폴더를 다시 본다. */
+  artifact?: { scan: number; dir: string; found: ArtifactMarks; mark?: ArtifactMark };
 }
 
 /**
@@ -243,11 +243,15 @@ export class World {
     }
     const dir = harness.artifactDir?.(sessionId);
     if (dir) {
-      if (entry.artifact?.scan !== entry.tail.mtimeMs) entry.artifact = { scan: entry.tail.mtimeMs, dir, mark: await findArtifact(dir) };
-      const mark = entry.artifact.mark;
+      if (entry.artifact?.scan !== entry.tail.mtimeMs) entry.artifact = { scan: entry.tail.mtimeMs, dir, found: await findArtifacts(dir) };
+      const { latest, ask } = entry.artifact.found;
+      const prompted = s.lastPromptAt ? Date.parse(s.lastPromptAt) : NaN;
+      // 승인을 바란 글에 아직 답하지 않았으면, 그 뒤에 보고서가 쓰였어도 그 글이 앞선다 — 답을 기다리는 것이 묻히면 안 된다.
+      const mark = ask && !(prompted > ask.asked) ? ask : latest;
+      entry.artifact.mark = mark;
       if (mark) {
         view.artifact = mark.at;
-        const prompted = s.lastPromptAt ? Date.parse(s.lastPromptAt) : NaN;
+        if (!mark.ask) view.artifactReport = true;
         if (prompted > mark.asked) view.artifactAnswered = true;
       }
     }
@@ -308,10 +312,10 @@ export class World {
       harnessTitle = undefined;
       view.recent = [];
       view.activity = view.lastPrompt = view.lastReply = view.pending = undefined;
-      view.contextTokens = view.review = view.reviewSent = view.artifact = view.artifactAnswered = undefined;
+      view.contextTokens = view.review = view.reviewSent = view.artifact = view.artifactReport = view.artifactAnswered = undefined;
     }
     if (typed?.queued) view.queued = typed.queued;
-    // 승인을 바란 글에 답한 지시는 AGY 가 턴을 시작해야 로그에 적힌다(일하는 중이면 그 턴이 끝난 뒤). 입력 기록에 줄 선 것이
+    // 내놓은 글에 답한 지시는 AGY 가 턴을 시작해야 로그에 적힌다(일하는 중이면 그 턴이 끝난 뒤). 입력 기록에 줄 선 것이
     // 있으면 이미 답한 것이다 — 그 사이 카드가 여전히 답을 기다린다고 하면 같은 답을 또 보내게 된다.
     if (view.artifact !== undefined && typed?.queued?.length) view.artifactAnswered = true;
 

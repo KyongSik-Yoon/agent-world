@@ -67,9 +67,11 @@ export interface AgentView {
   pending?: PendingRequest;
   /** 승인을 기다리는 플랜 파일이 마지막으로 고쳐진 시각(ms). 있으면 `/api/plan` 으로 그 글을 읽을 수 있다. */
   plan?: number;
-  /** AGY 가 승인을 바라고 남긴 가장 최근의 글(아티팩트)이 고쳐진 시각(ms). 있으면 `/api/artifact` 로 그 글을 읽을 수 있다. */
+  /** AGY 가 사람에게 읽으라고 남긴 글(아티팩트)이 고쳐진 시각(ms). 있으면 `/api/artifact` 로 그 글을 읽을 수 있다. */
   artifact?: number;
-  /** 그 글을 남긴 뒤로 지시가 갔다 — 이미 답했다. */
+  /** 그 글은 승인을 바라지 않는 보고서다 — 읽기만 한다. 없으면 승인을 바란 글(구현 계획·제안서)이다. */
+  artifactReport?: boolean;
+  /** 그 글을 남긴 뒤로 지시가 갔다 — 승인을 바란 글이면 이미 답했고, 보고서면 지나간 글이다. */
   artifactAnswered?: boolean;
   /** 이 세션에서 desk-review 가 마지막으로 남긴 리뷰 보고의 시각(ms). 있으면 `/api/review` 로 그 보고를 읽을 수 있다. */
   review?: number;

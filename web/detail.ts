@@ -921,14 +921,23 @@ export class DetailPanel {
   }
 
   /**
-   * AGY 가 승인을 바라고 남긴 글(구현 계획·제안서). 터미널에는 "/artifact to review" 한 줄뿐이라 따로 띄워 읽고, 그 창에서
-   * 승인하거나 고칠 점을 지시로 보낸다. 답한 뒤에도 다음 글이 올 때까지 다시 읽을 수 있게 두고, 눈에 덜 띄게 접는다.
+   * AGY 가 남긴 글. 터미널에는 "/artifact to review" 한 줄뿐이라 따로 띄워 읽는다. 승인을 바란 글(구현 계획·제안서)이면 그
+   * 창에서 승인하거나 고칠 점을 지시로 보내고, 보고서면 읽기만 한다. 답한 뒤(보고서는 다음 지시가 간 뒤)에도 다음 글이 올
+   * 때까지 다시 읽을 수 있게 두고, 눈에 덜 띄게 접는다.
    */
   private artifactCard(a: AgentView): HTMLElement {
     const done = a.artifactAnswered === true;
     const read = this.button(done ? t("다시 읽기") : t("읽기"), () => this.callbacks.act({ type: "artifact", agent: a }), { cls: "btn", icon: "file" });
-    const note = done ? t("답을 보냈어요. 다음 글이 오면 바뀝니다.") : this.snapshot?.control && a.paneId ? t("읽고 승인하거나 고칠 점을 보냅니다.") : t("에이전트가 남긴 글을 읽습니다.");
-    return h("section", { class: done ? "review-card sent" : "review-card" }, h("div", { class: "rv-card-text" }, h("b", {}, done ? t("아티팩트") : t("승인을 기다리는 아티팩트가 있어요")), h("span", {}, note)), read);
+    const report = a.artifactReport === true;
+    const note = done
+      ? report
+        ? t("다음 글이 오면 바뀝니다.")
+        : t("답을 보냈어요. 다음 글이 오면 바뀝니다.")
+      : !report && this.snapshot?.control && a.paneId
+        ? t("읽고 승인하거나 고칠 점을 보냅니다.")
+        : t("에이전트가 남긴 글을 읽습니다.");
+    const title = done ? t("아티팩트") : report ? t("읽을 아티팩트가 있어요") : t("승인을 기다리는 아티팩트가 있어요");
+    return h("section", { class: done ? "review-card sent" : "review-card" }, h("div", { class: "rv-card-text" }, h("b", {}, title), h("span", {}, note)), read);
   }
 
   /** 확인 필요: 무엇을 묻는지 — 로그에 남은 요청과, 화면에 떠 있는 대화상자를 함께 보여 준다. */

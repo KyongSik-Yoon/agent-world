@@ -8,8 +8,8 @@
 // 보낼 때 댓글마다 파일:줄과 그 줄 원문을 붙여 고칠 점 글 앞에 싣는다(desk-plan 의 reviseReason 과 같은 모양).
 // 적던 것은 창을 닫아도 그 카드가 떠 있는 동안 남는다.
 //
-// AGY 가 승인을 바라고 남긴 글(아티팩트, server/artifact.ts)도 이 창으로 읽는다. 그 글은 아무것도 막고 있지 않고 턴이
-// 끝나 있어 답은 평범한 지시다 — 같은 글 칸과 줄 댓글로 적되, 카드 대신 지시로 보낸다(/api/prompt, 받음 확인까지).
+// AGY 가 남긴 글(아티팩트, server/artifact.ts)도 이 창으로 읽는다. 승인을 바라지 않는 보고서는 읽기만 한다. 승인을 바란
+// 글은 아무것도 막고 있지 않고 턴이 끝나 있어 답은 평범한 지시다 — 같은 글 칸과 줄 댓글로 적되, 카드 대신 지시로 보낸다(/api/prompt, 받음 확인까지).
 // 승인도 누를 키가 없어 승인한다는 지시를 보낸다. 적은 것이 있으면 그것을 반영해 진행하라고 함께 싣는다.
 import type { AgentView } from "../shared/types.ts";
 import { ApiError, get } from "./api.ts";
@@ -104,7 +104,7 @@ export class PlanReader {
     this.sending = false;
     const editable =
       this.canApprove() &&
-      (kind === "plan" ? this.onApprove !== undefined && this.onRevise !== undefined : this.onArtifactSend !== undefined && a.paneId !== undefined && a.artifactAnswered !== true);
+      (kind === "plan" ? this.onApprove !== undefined && this.onRevise !== undefined : this.onArtifactSend !== undefined && a.paneId !== undefined && a.artifactReport !== true && a.artifactAnswered !== true);
     const close = h("button", { class: "btn icon", type: "button", title: t("닫기"), "aria-label": t("닫기") }, icon("close"));
     const file = h("span", {});
     const body = h("div", { class: "prose plan-body", tabindex: "-1" }, h("p", { class: "plan-wait" }, kind === "plan" ? t("플랜을 읽는 중…") : t("글을 읽는 중…")));
@@ -117,7 +117,7 @@ export class PlanReader {
       head.append(lineBtn);
       dlg.append(this.footer(a, lineBtn));
     } else if (kind === "artifact") {
-      dlg.append(h("p", { class: "plan-note" }, a.artifactAnswered ? t("이미 답한 글입니다. 더 할 말은 닫고 입력줄로 보내세요.") : t("읽기만 하는 창입니다.")));
+      dlg.append(h("p", { class: "plan-note" }, a.artifactReport ? t("읽기만 하는 글입니다. 할 말은 닫고 입력줄로 보내세요.") : a.artifactAnswered ? t("이미 답한 글입니다. 더 할 말은 닫고 입력줄로 보내세요.") : t("읽기만 하는 창입니다.")));
     } else {
       dlg.append(h("p", { class: "plan-note" }, t("읽기만 하는 창입니다. 승인하거나 고치려면 닫고 터미널에서 답하세요.")));
     }
@@ -410,7 +410,7 @@ export class PlanReader {
 
   /** 새 스냅샷에 맞춘다: 카드가 내려갔으면(승인·거절·세션 종료) 닫고, 에이전트가 플랜을 고쳤으면 다시 읽는다. */
   sync(agents: readonly AgentView[]): void {
-    for (const [id, d] of this.drafts) if (!d.unsent && !agents.some((a) => a.id === id && (a.plan || (a.artifact && !a.artifactAnswered)))) this.drafts.delete(id);
+    for (const [id, d] of this.drafts) if (!d.unsent && !agents.some((a) => a.id === id && (a.plan || (a.artifact && !a.artifactReport && !a.artifactAnswered)))) this.drafts.delete(id);
     if (!this.dlg) return;
     const agent = agents.find((a) => a.id === this.agentId);
     const stamp = agent && stampOf(agent, this.kind);

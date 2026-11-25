@@ -39,7 +39,7 @@ export interface Harness {
    * last 는 로그가 아는 마지막 지시 — 그 뒤에 친 것만 "줄에 선 것"으로 본다.
    */
   typed?(sessionId: string | undefined, cwd: string, last: { prompt?: string; at?: string }): Promise<Typed | undefined>;
-  /** 승인을 바라고 남긴 글(server/artifact.ts)이 놓이는 대화 폴더(AGY 의 brain/<id>). */
+  /** 사람에게 읽으라고 남긴 글(server/artifact.ts)이 놓이는 대화 폴더(AGY 의 brain/<id>). */
   artifactDir?(sessionId: string): string | undefined;
   /** herdr 밖에서 도는 세션을 찾는다 — sinceMs 이후로 바뀐 로그 파일들. */
   discover?(sinceMs: number): Promise<LogFile[]>;
