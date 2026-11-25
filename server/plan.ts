@@ -1,7 +1,7 @@
 // 승인을 기다리는 플랜 파일을 찾아 읽는다.
 //
-// Claude Code 는 플랜 모드에 들어갈 때 플랜을 적을 파일(`<설정 폴더>/plans/<이름>.md`)을 정해 세션 로그에 한 번 적는다
-// (attachment.type "plan_mode" 의 planFilePath). 승인 카드가 뜬 동안 터미널에는 그 글이 옆 창에 잘려 보일 뿐이라, 화면은
+// Claude Code 는 플랜 모드에 들어갈 때 플랜을 적을 파일(`<설정 폴더>/plans/<이름>.md`, 프로젝트 설정에 plansDirectory 가
+// 있으면 그 프로젝트 안의 폴더)을 정해 세션 로그에 한 번 적는다(attachment.type "plan_mode" 의 planFilePath). 승인 카드가 뜬 동안 터미널에는 그 글이 옆 창에 잘려 보일 뿐이라, 화면은
 // 이 파일을 받아 따로 읽기 좋게 그린다. 그 줄은 로그 한참 앞에 있을 수 있어(꼬리만 읽는 요약에는 안 잡힌다) 카드가 뜰 때
 // 한 번 로그를 뒤에서부터 찾는다.
 import { lstat, open, readFile } from "node:fs/promises";
@@ -19,19 +19,29 @@ function plansDir(): string {
   return resolve(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "plans");
 }
 
-/** 플랜 폴더 바로 아래의 .md 파일만 받는다. 로그에 적힌 경로라도 그 밖은 읽지 않는다. */
-function allowed(path: string): string | undefined {
+/**
+ * .md 파일이고 설정 폴더의 plans 아래거나 그 세션이 도는 프로젝트(그 행의 cwd) 안일 때만 받는다 — plansDirectory 는
+ * 프로젝트 기준 경로다(clara-apm 의 ".claude/plans"). 로그에 적힌 경로라도 그 밖은 읽지 않는다.
+ */
+function allowed(path: string, cwd: string | undefined): string | undefined {
   const full = resolve(path);
-  return full.startsWith(plansDir() + sep) && full.endsWith(".md") ? full : undefined;
+  if (!full.endsWith(".md")) return undefined;
+  const roots = [plansDir(), ...(cwd ? [resolve(cwd)] : [])];
+  return roots.some((root) => root !== sep && full.startsWith(root + sep)) ? full : undefined;
 }
 
-/** 플랜 모드 행이면 거기 적힌 경로. 맨 위 세션의 것만 본다(서브에이전트의 플랜은 사용자가 승인하는 것이 아니다). */
-function planPathOf(line: string): string | undefined {
+/**
+ * 플랜 모드 행이면 거기 적힌 경로, 받을 수 없는 곳이면 null(더 앞의 옛 플랜으로 넘어가지 않는다). 맨 위 세션의 것만 본다
+ * (서브에이전트의 플랜은 사용자가 승인하는 것이 아니다).
+ */
+function planPathOf(line: string): string | null | undefined {
   try {
     // 이 글자열은 대화에 인용돼서도 나온다 — 줄을 풀어 플랜 모드 행인지 확인한다.
     const row: unknown = JSON.parse(line);
     const a = isRecord(row) && row.isSidechain !== true && isRecord(row.attachment) ? row.attachment : undefined;
-    if (a && typeof a.type === "string" && a.type.startsWith("plan_mode") && a.isSubAgent !== true && typeof a.planFilePath === "string") return a.planFilePath;
+    if (a && typeof a.type === "string" && a.type.startsWith("plan_mode") && a.isSubAgent !== true && typeof a.planFilePath === "string") {
+      return allowed(a.planFilePath, isRecord(row) && typeof row.cwd === "string" ? row.cwd : undefined) ?? null;
+    }
   } catch {
     // 쓰는 중인 줄.
   }
@@ -71,7 +81,7 @@ export async function planPathIn(logPath: string): Promise<string | undefined> {
         const from = buf.lastIndexOf(10, at) + 1;
         const to = buf.indexOf(10, at);
         const found = planPathOf(buf.toString("utf8", from, to < 0 ? buf.length : to));
-        if (found) return allowed(found);
+        if (found !== undefined) return found ?? undefined;
         end = from - 1;
       }
       carry = buf.subarray(0, head);
@@ -102,8 +112,9 @@ export interface PlanText {
   at: number;
 }
 
+/** path 는 planPathIn 이 받아 준 것이어야 한다 — 어디까지 읽어도 되는지는 그 로그 행의 cwd 로 거기서 가렸다. */
 export async function readPlan(path: string): Promise<PlanText | undefined> {
-  const at = allowed(path) ? await planMtime(path) : undefined;
+  const at = path.endsWith(".md") ? await planMtime(path) : undefined;
   if (at === undefined) return undefined;
   try {
     return { name: basename(path), text: await readFile(path, "utf8"), at };
