@@ -371,20 +371,9 @@ export class WorldScene {
       seen.add(view.id);
       const actor = this.actors.get(view.id);
       if (actor && actor.view.vendor === view.vendor) {
-        const was = actor.view.status;
-        const stage = view.id === this.selectedId && view.status !== was ? this.stageOf(actor) : null;
+        // 고른 캐릭터가 다른 자리로 가도(지시를 받아 광장에서 집으로, 일을 마치고 광장으로) 카메라는 따라가지 않는다 —
+        // 지시할 때마다 화면이 섬을 가로질러 어지러웠다. 카메라는 고를 때만 움직이고, 다시 보려면 한 번 더 고른다.
         actor.apply(view);
-        // 고른 캐릭터가 다른 자리로 간다(광장의 완료가 일하러 집으로, 일을 마치고 광장으로). 떠나는 자리를 보고 있었으면
-        // 가는 자리를 비춘다 — 따라가지 않아도 그리로 걸어 들어온다. 다른 데를 보고 있었으면 그대로 둔다.
-        if (stage) {
-          const next = this.stageOf(actor);
-          const aim = this.flight?.target ?? this.controls.target;
-          if (next.target.distanceTo(stage.target) > 0.5 && aim.distanceTo(stage.target) < stage.reach) {
-            this.flight = { target: next.target, distance: next.distance, at: performance.now() };
-            this.lastInputAt = performance.now();
-            this.wake();
-          }
-        }
         continue;
       }
       if (actor) this.removeActor(view.id);
