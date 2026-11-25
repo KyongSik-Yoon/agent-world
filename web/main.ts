@@ -663,7 +663,13 @@ const phoneLayout = matchMedia("(max-width: 760px)");
 // 여닫는 단추는 아래 막대의 상태 숫자 묶음이다 — 숫자를 보고 누르면 그 순서(확인 필요·완료·작업 중·대기)로 묶인 목록이 올라온다.
 // 넓은 화면에서 그 숫자들은 상태별로 거르는 단추인데, 휴대폰에서는 칸 하나가 손가락으로 집기에 작아 묶음째 단추 하나로 쓴다.
 const chipsEl = document.getElementById("chips")!;
-function setRoster(open: boolean): void {
+const rosterEl = document.getElementById("roster")!;
+/**
+ * 목록 서랍을 여닫는다. still 이면 아래에서 올라오지 않고 그 자리에 바로 선다 — 상태 창에서 뒤로 가기로 돌아올 때는
+ * 방금 보던 목록으로 되돌아가는 것이라, 처음 펼 때처럼 올라오면 멀미만 나고 장면 프레임만 더 쓴다.
+ */
+function setRoster(open: boolean, still = false): void {
+  rosterEl.toggleAttribute("data-still", open && still);
   document.body.dataset.roster = open ? "open" : "closed";
   if (chipsEl.hasAttribute("aria-expanded")) chipsEl.setAttribute("aria-expanded", String(open));
   syncBack();
@@ -686,7 +692,7 @@ chipsEl.addEventListener("keydown", (e) => {
 });
 // 휴대폰의 서랍은 아래로 끌어내려도 닫힌다.
 swipeToClose(
-  document.getElementById("roster")!,
+  rosterEl,
   document.getElementById("roster-list")!,
   () => document.body.dataset.roster === "open" && phoneLayout.matches,
   () => setRoster(false),
@@ -751,7 +757,7 @@ function topLayer(): (() => void) | null {
     return () => {
       const toRoster = cameFromRoster && phoneLayout.matches;
       select(null);
-      if (toRoster) setRoster(true);
+      if (toRoster) setRoster(true, true);
     };
   return null;
 }
@@ -784,7 +790,6 @@ if (onGuard()) history.replaceState(null, "");
 // 목록과 상태 창이 장면을 얼마나 덮는지 알려 준다 — 장면이 그 사이 빈 자리의 한가운데에 오게.
 // 좁은 화면(휴대폰)에서는 패널이 화면 전체를 쓰는 서랍이라 밀지 않는다.
 {
-  const rosterEl = document.getElementById("roster")!;
   const detailEl = document.getElementById("detail")!;
   const phone = matchMedia("(max-width: 760px)");
   const stageEl = document.getElementById("stage")!;

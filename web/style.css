@@ -4053,6 +4053,11 @@ dialog.dlg .warn {
     animation: sheet-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
+  /* 상태 창에서 뒤로 가기로 돌아온 목록은 올라오지 않고 그 자리에 선다(main.ts setRoster). */
+  body[data-roster="open"] #roster[data-still] {
+    animation: none;
+  }
+
   /* 끌어내리다 놓으면 제자리로 돌아가거나 화면 밖으로 내려간다. 끄는 동안은 손가락을 그대로 따른다. */
   #roster {
     transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
