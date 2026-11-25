@@ -2903,7 +2903,7 @@ dialog.dlg p.plan-note {
   position: relative;
 }
 
-.field .combo-input {
+.field input.combo-input {
   padding-right: 34px;
 }
 
