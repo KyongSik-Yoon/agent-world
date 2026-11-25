@@ -2847,7 +2847,7 @@ dialog.dlg p.plan-note {
   resize: none;
 }
 
-/* 한 줄일 때는 글이 ＋ 바로 옆에서 시작한다 — ＋ 그림과 글 사이가 ＋ 와 상자 가장자리 사이보다 좁다(휴대폰 7px).
+/* 한 줄일 때는 글이 ＋ 단추 바로 옆에서 시작한다. ＋ 단추는 정사각형으로 둔다 — 좁히면 눌렀을 때 바탕이 세로로 길쭉해 보인다.
    두 줄을 넘어 글이 상자 폭을 다 쓰면(.tall) 가장자리에서 조금 띄운다. */
 .compose:not(.tall) textarea {
   padding-left: 0;
@@ -3070,8 +3070,7 @@ dialog.dlg input[type="checkbox"] {
 
 .compose .attach {
   flex: none;
-  /* 높이보다 조금 좁게 — 그림 오른쪽 빈자리만큼 글이 ＋ 에 붙는다. */
-  width: calc(var(--compose-in) - 4px);
+  width: var(--compose-in);
   height: var(--compose-in);
   border: 0;
   border-radius: 9px;
