@@ -2223,6 +2223,9 @@ kbd {
   border: 0;
   border-radius: 0;
   font-size: 12px;
+}
+
+#stage.typable .term.preview {
   cursor: text;
 }
 

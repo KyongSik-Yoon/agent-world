@@ -578,7 +578,11 @@ async function reloadIfUpdated(): Promise<void> {
   const now = await serverBuild();
   if (!now || !loadedBuild || now === loadedBuild) return;
   const busy = (): boolean =>
-    terminal.isOpen || document.querySelector("dialog[open]") !== null || [...document.querySelectorAll("textarea")].some((el) => el.value.trim() !== "");
+    terminal.isOpen ||
+    // 가운데 화면에서 치는 중이다 — 그 입력란은 늘 비어 있어 아래의 글 검사에 걸리지 않는다.
+    document.querySelector("#stage.typing") !== null ||
+    document.querySelector("dialog[open]") !== null ||
+    [...document.querySelectorAll("textarea")].some((el) => el.value.trim() !== "");
   const tryReload = (): void => {
     if (busy()) setTimeout(tryReload, 5000);
     else location.reload();

@@ -327,6 +327,7 @@ export const en: Record<string, string> = {
   "크게 보기": "Expand",
   "답을 기다리고 있어요": "Waiting for your answer",
   "대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 크게 보기에서 직접 입력하세요.": "Press the number or key shown in the dialog with the buttons below, or type it in the expanded view.",
+  "대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 가운데 화면을 눌러 직접 입력하세요.": "Press the number or key shown in the dialog with the buttons below, or type it by clicking the center screen.",
   "보기 전용이라 여기서는 답할 수 없습니다. herdr 에서 열어 답해 주세요.": "This is read-only, so you can't answer here. Open it in herdr to answer.",
   "모델": "Model",
   "바꾸기…": "Switch…",

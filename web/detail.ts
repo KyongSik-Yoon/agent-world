@@ -310,7 +310,7 @@ export class DetailPanel {
     this.preview.el.addEventListener("click", () => {
       if (!this.preview.pane || window.getSelection()?.toString()) return;
       // 무대에서는 눌러서 바로 친다(크게 보기는 머리줄 단추). 상태 창 안에서는 크게 보기를 연다.
-      if (this.onStage) this.stageKeys.ime.focus();
+      if (this.onStage && this.snapshot?.control) this.stageKeys.ime.focus();
       else this.callbacks.act({ type: "terminal", paneId: this.preview.pane });
     });
 
@@ -451,9 +451,11 @@ export class DetailPanel {
     if (on && !was) this.stageBody.append(this.preview.el);
     else if (!on && was) this.preview.el.remove();
     if (this.stage.hidden === on) this.stage.hidden = !on;
+    // 보기 전용이면 무대에서도 눌러서 크게 보기다 — 커서 모양도 그대로 둔다.
+    this.stage.classList.toggle("typable", Boolean(this.snapshot?.control));
     if (on !== this.onStage) {
       this.onStage = on;
-      this.preview.el.title = on ? t("눌러서 입력") : t("눌러서 크게 보기");
+      this.preview.el.title = on && this.snapshot?.control ? t("눌러서 입력") : t("눌러서 크게 보기");
       if (!on) this.stageKeys.ime.blur();
       this.preview.refit();
     }
@@ -523,7 +525,8 @@ export class DetailPanel {
       this.syncStage(false);
       return;
     }
-    // 확인 필요일 때는 질문 카드가 미리보기를 제 안에 품는다 — 답하는 단추 곁에 있어야 한다.
+    // 확인 필요일 때 무대가 없으면 질문 카드가 미리보기를 제 안에 품는다 — 답하는 단추 곁에 있어야 한다. 무대가 있으면
+    // 화면은 무대에 남는다: 거기서 바로 답을 칠 수 있고, 치던 중에 질문이 떠도 화면과 초점이 옮겨 가지 않는다.
     this.syncStage(this.staged && wantPreview !== null && !this.body.contains(this.preview.el));
     this.root.hidden = false;
     this.body.scrollTop = top;
@@ -965,8 +968,9 @@ export class DetailPanel {
     // 스냅샷은 다른 주민의 일로도 초마다 온다. 그때마다 카드를 새로 지으면 품고 있던 미리보기가 떼였다 붙어 스크롤이 처음으로
     // 갔다 돌아오고, 요청 글(플랜) 칸은 굴려 둔 자리를 잃는다 — 휴대폰에서는 두 칸의 스크롤 막대가 그때마다 번쩍인다.
     // 내용이 같으면 지어 둔 카드를 그대로 둔다. 단추는 누르는 순간의 주민을 다시 찾아 쓴다.
-    const sig = JSON.stringify([a.id, a.paneId, a.plan ?? null, a.pending ?? null, Boolean(this.snapshot?.control)]);
-    if (this.asked?.sig === sig && this.asked.el.contains(this.preview.el)) return this.asked.el;
+    const staged = this.staged;
+    const sig = JSON.stringify([a.id, a.paneId, a.plan ?? null, a.pending ?? null, Boolean(this.snapshot?.control), staged]);
+    if (this.asked?.sig === sig && (staged || this.asked.el.contains(this.preview.el))) return this.asked.el;
     const now = (): AgentView => this.snapshot?.agents.find((x) => x.id === a.id) ?? a;
     const big = this.button(t("크게 보기"), () => this.callbacks.act({ type: "terminal", paneId: a.paneId! }), { cls: "", icon: "expand" });
     // 플랜 승인 카드면 플랜 글을 따로 읽는 창을 연다 — 터미널에는 옆 창에 잘려 보인다.
@@ -978,7 +982,13 @@ export class DetailPanel {
       card.append(h("div", { class: "plan-approve" }, approve, h("span", { class: "hint" }, t("고칠 점은 플랜 읽기에서 적습니다."))));
     }
     if (a.pending) card.append(this.pendingBlock(a.pending));
-    card.append(this.preview.el, h("p", { class: "hint" }, this.snapshot?.control ? t("대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 크게 보기에서 직접 입력하세요.") : t("보기 전용이라 여기서는 답할 수 없습니다. herdr 에서 열어 답해 주세요.")));
+    const how = !this.snapshot?.control
+      ? t("보기 전용이라 여기서는 답할 수 없습니다. herdr 에서 열어 답해 주세요.")
+      : staged
+        ? t("대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 가운데 화면을 눌러 직접 입력하세요.")
+        : t("대화상자에 적힌 번호·키를 아래 버튼으로 누르거나, 크게 보기에서 직접 입력하세요.");
+    if (!staged) card.append(this.preview.el);
+    card.append(h("p", { class: "hint" }, how));
     this.asked = { sig, el: card };
     return card;
   }
