@@ -194,6 +194,14 @@ function message(a: AgentView, lang: Lang): { id: string; title: string; body: s
   return { id: a.id, title: `${say(STATUS_TEXT[a.status] ?? "", lang)} · ${a.title}`, body: [where, what].filter(Boolean).join("\n") };
 }
 
+const COMPACTED = L("대화를 요약했습니다", "Conversation compacted");
+
+/** 사람이 친 `/compact` 가 끝났다는 알림. */
+function compactMessage(a: AgentView, lang: Lang): { id: string; title: string; body: string } {
+  const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : a.workspaceLabel;
+  return { id: a.id, title: `${say(COMPACTED, lang)} · ${a.title}`, body: where };
+}
+
 export class Pusher {
   private targets = new Map<string, PushTarget>();
   private loaded: Promise<void> | undefined;
@@ -204,6 +212,8 @@ export class Pusher {
   private held = new Map<string, { status: AgentStatus; agent: AgentView; sentTo: Set<string>; at: number }>();
   /** 직전 스냅샷의 상태. 구독이 없는 동안에는 비워 둔다. */
   private last = new Map<string, AgentStatus>();
+  /** 직전 스냅샷의 컴팩션 자리(AgentView.compaction). */
+  private compactions = new Map<string, string | undefined>();
   private primed = false;
 
   constructor(private readonly readonly: boolean) {}
@@ -304,18 +314,27 @@ export class Pusher {
       // 구독이 없으면 아무것도 하지 않는다. 다시 생기면 그때의 스냅샷이 기준이 된다.
       if (this.primed) {
         this.last.clear();
+        this.compactions.clear();
         this.held.clear();
         this.primed = false;
       }
       return;
     }
     const now = new Map<string, AgentStatus>();
+    const compactions = new Map<string, string | undefined>();
     const at = Date.now();
     let to: PushTarget[] | undefined;
     for (const a of snapshot.agents) {
       now.set(a.id, a.status);
+      compactions.set(a.id, a.compaction);
       const before = this.last.get(a.id);
-      if (!this.primed || before === undefined || before === a.status || (a.status !== "blocked" && a.status !== "done") || a.compacted) continue;
+      if (!this.primed || before === undefined) continue;
+      // 사람이 친 `/compact` 가 끝났다 — 완료로는 알리지 않으니(compacted) 따로 알린다. 몇십 초에서 몇 분 걸려 자리를 뜨기도 한다.
+      if (a.compaction !== undefined && a.compaction !== this.compactions.get(a.id)) {
+        to ??= this.recipients(at);
+        for (const target of to) void this.send(target, compactMessage(a, target.lang));
+      }
+      if (before === a.status || (a.status !== "blocked" && a.status !== "done") || a.compacted) continue;
       to ??= this.recipients(at);
       for (const target of to) void this.send(target, message(a, target.lang));
       if (to.length < this.targets.size) this.held.set(a.id, { status: a.status, agent: a, sentTo: new Set(to.map((t) => t.endpoint)), at });
@@ -323,6 +342,7 @@ export class Pusher {
     }
     this.release(now, at);
     this.last = now;
+    this.compactions = compactions;
     this.primed = true;
   }
 

@@ -2,7 +2,8 @@
 
 export type AgentStatus = "working" | "blocked" | "done" | "idle" | "unknown";
 
-export type ActivityKind = "tool" | "text" | "thinking" | "user" | "result";
+/** compact: 대화를 요약했다(컴팩션) — 글은 비어 있고 화면이 문장을 붙인다. */
+export type ActivityKind = "tool" | "text" | "thinking" | "user" | "result" | "compact";
 
 export interface Activity {
   kind: ActivityKind;
@@ -63,6 +64,11 @@ export interface AgentView {
   seen?: boolean;
   /** 이 완료는 새 결과가 아니다 — 컴팩션(대화 요약)이 끝나 다시 나온, 아직 확인하지 않은 예전 완료다. 알리지 않는다. */
   compacted?: boolean;
+  /**
+   * 사람이 친 `/compact` 가 마지막으로 끝난 자리(로그 행의 위치). 바뀌면 "대화를 요약했습니다"를 알린다 — 컴팩션의 끝은
+   * 완료로 알리지 않으므로(compacted), 기다리던 사람이 끝난 것을 알 길이 이것뿐이다. 일하는 도중의 자동 컴팩션은 싣지 않는다.
+   */
+  compaction?: string;
   /** 아직 결과가 오지 않은 마지막 도구 호출. */
   pending?: PendingRequest;
   /** 승인을 기다리는 플랜 파일이 마지막으로 고쳐진 시각(ms). 있으면 `/api/plan` 으로 그 글을 읽을 수 있다. */

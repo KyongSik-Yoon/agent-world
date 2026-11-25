@@ -494,34 +494,47 @@ function restoreView(snapshot: WorldSnapshot): void {
 }
 
 const lastStatus = new Map<string, AgentStatus>();
+/** 에이전트마다 마지막으로 본 컴팩션 자리(AgentView.compaction). */
+const lastCompaction = new Map<string, string | undefined>();
 let primed = false;
+
+/** 토스트를 띄우고, 화면이 앞에 있지 않으면 시스템 알림도 낸다. detail: 어느 집인지와 덧붙일 말. */
+function notice(a: AgentView, title: string, detail: string, color: string): void {
+  hud.toast(title, `${a.title} — ${detail}`, color, () => select(a.id));
+  // 서비스 워커와 같은 규칙: 보이고 창이 앞에 있을 때만 토스트로 그친다. 보이기만 하고 앞에 있지 않으면(옆에 띄운 창,
+  // 두 번째 모니터) 사람은 다른 앱을 쓰는 중이라 토스트를 못 본다.
+  if (notify && !pushed && !(document.visibilityState === "visible" && document.hasFocus())) {
+    try {
+      const n = new Notification(`${title} · ${a.title}`, { body: detail, tag: a.id });
+      n.onclick = () => {
+        window.focus();
+        select(a.id);
+      };
+    } catch {
+      // 이 방식의 알림을 막아 둔 브라우저(Android Chrome)다.
+    }
+  }
+}
 
 /** 지켜보는 동안 완료나 확인 필요로 바뀐 에이전트를 알린다. 처음 받은 스냅샷은 알리지 않는다. */
 function announce(snapshot: WorldSnapshot): void {
   for (const a of snapshot.agents) {
     const before = lastStatus.get(a.id);
     lastStatus.set(a.id, a.status);
-    if (!primed || before === undefined || before === a.status || !needsAttention(a.status) || a.compacted) continue;
+    const compactedAt = lastCompaction.get(a.id);
+    lastCompaction.set(a.id, a.compaction);
+    if (!primed || before === undefined) continue;
     const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : a.workspaceLabel;
+    // 사람이 친 `/compact` 가 끝났다. 그 끝은 완료로 알리지 않으므로(compacted) 따로 알린다 — 기다리던 사람이 이어서 지시하게.
+    if (a.compaction !== undefined && a.compaction !== compactedAt) notice(a, t("대화를 요약했습니다"), where, "var(--accent)");
+    if (before === a.status || !needsAttention(a.status) || a.compacted) continue;
     // 확인 필요면 무엇을 기다리는지까지 알린다.
     const what = a.status === "blocked" && a.pending ? ` — ${bubbleText(a) ?? ""}` : "";
-    hud.toast(STATUS_LABEL[a.status], `${a.title} — ${where}${what}`, STATUS_VAR[a.status], () => select(a.id));
-    // 서비스 워커와 같은 규칙: 보이고 창이 앞에 있을 때만 토스트로 그친다. 보이기만 하고 앞에 있지 않으면(옆에 띄운 창,
-    // 두 번째 모니터) 사람은 다른 앱을 쓰는 중이라 토스트를 못 본다.
-    if (notify && !pushed && !(document.visibilityState === "visible" && document.hasFocus())) {
-      try {
-        const n = new Notification(`${STATUS_LABEL[a.status]} · ${a.title}`, { body: `${where}${what}`, tag: a.id });
-        n.onclick = () => {
-          window.focus();
-          select(a.id);
-        };
-      } catch {
-        // 이 방식의 알림을 막아 둔 브라우저(Android Chrome)다.
-      }
-    }
+    notice(a, STATUS_LABEL[a.status], `${where}${what}`, STATUS_VAR[a.status]);
   }
   const alive = new Set(snapshot.agents.map((a) => a.id));
   for (const id of lastStatus.keys()) if (!alive.has(id)) lastStatus.delete(id);
+  for (const id of lastCompaction.keys()) if (!alive.has(id)) lastCompaction.delete(id);
   primed = true;
 }
 

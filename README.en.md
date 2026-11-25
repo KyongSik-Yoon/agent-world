@@ -70,6 +70,8 @@ with a new version, open pages reload themselves (they wait while you are typing
 
 Turn on the bell button at the top to be **notified** when an agent finishes or needs input — also while the page is closed or
 the app is in the background (Web Push). It is off by default, switched on per device, and one more tap turns it off.
+A `/compact` sent to Antigravity tells you "Conversation compacted" instead of "Done" when the summary is written, and the
+activity log gets that line too.
 Notifications for the same agent replace each other, and in Chromium browsers you only get the page's toast while you are looking at it.
 While you are using one of the devices with notifications on (its window is in front and was touched in the last 5 minutes, or on
 desktop Chrome the keyboard or mouse was used in any app in the last 2 minutes), notifications go to that device only — your

@@ -236,6 +236,7 @@ export class World {
     const queued = s.queued?.filter((q) => q.trim() && !q.trimStart().startsWith("<"));
     view.queued = queued?.length ? queued : undefined;
     view.lastReply = s.lastReply;
+    view.compaction = s.compaction;
     const reviewAt = s.review ? Date.parse(s.review.at) : NaN;
     if (Number.isFinite(reviewAt)) {
       view.review = reviewAt;

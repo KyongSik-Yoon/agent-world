@@ -48,6 +48,8 @@ export function activityParts(a: Activity): { icon?: IconName; text: string } {
       return { icon: "person", text: plain(a.text) };
     case "result":
       return { text: a.text };
+    case "compact":
+      return { icon: "fold", text: t("대화를 요약했습니다") };
     case "tool": {
       if (a.name.startsWith("mcp__")) return { icon: "plug", text: `${toolName(a.name)}${a.text ? ` · ${a.text}` : ""}` };
       for (const [re, icon, verb] of VERBS) {

@@ -115,6 +115,9 @@ async function contextWindow(_sessionId: string, model: string | undefined): Pro
   return model ? seenWindows.get(modelKey(model)) : undefined;
 }
 
+/** 대화를 요약하는 명령. AGY 는 이것을 지시처럼 USER_INPUT 으로 적는다. */
+const COMPACT = /^\/compact(\s|$)/;
+
 export const agyReader: LogReader<LogSummary> = {
   init: emptySummary,
   feed(s, row, pos) {
@@ -125,17 +128,35 @@ export const agyReader: LogReader<LogSummary> = {
     switch (row.type) {
       case "USER_INPUT": {
         const text = withoutPlanMark(userRequest(content));
-        if (text) {
+        if (!text) break;
+        s.compacted = false;
+        // `/compact` 는 지시가 아니라 명령이다 — 마지막 지시를 덮지 않는다(Claude 의 내장 명령처럼). 친 것은 활동에 남긴다.
+        // 이 행은 컴팩션을 시작할 때 적히고, 끝나면 요약 행(CHECKPOINT)이 적힌다.
+        s.compactAsked = COMPACT.test(text);
+        if (!s.compactAsked) {
           setPrompt(s, text);
           s.lastPromptAt = at;
-          pushActivity(s, "user", "", text, at);
-          s.turnOpen = true;
+        }
+        pushActivity(s, "user", "", text, at);
+        s.turnOpen = true;
+        s.open.clear();
+        break;
+      }
+      case "CHECKPOINT":
+        // 컴팩션이 끝나 요약이 적혔다. 일하는 도중의 자동 컴팩션도 같은 행이지만 뒤에 응답이 이어진다.
+        // 사람이 친 `/compact` 의 끝이면 그 턴도 끝났다 — 그 자리를 남겨 화면이 알리게 한다.
+        s.compacted = true;
+        pushActivity(s, "compact", "", "", at);
+        if (s.compactAsked) {
+          s.compactAsked = false;
+          s.compaction = String(pos);
+          s.turnOpen = false;
           s.open.clear();
         }
         break;
-      }
       case "PLANNER_RESPONSE": {
         s.sawAssistant = true;
+        s.compacted = false;
         s.model = str(row.model) ?? s.model;
         const total = (num(row.input_tokens) ?? 0) + (num(row.cache_read_tokens) ?? 0);
         if (total > 0) s.contextTokens = total;

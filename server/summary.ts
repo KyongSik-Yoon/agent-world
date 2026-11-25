@@ -56,6 +56,10 @@ export interface LogSummary {
   reviewCall?: ReviewMark;
   /** 로그의 마지막 사건이 컴팩션(대화 요약)이다 — 그 뒤로 지시도 응답도 없었다. */
   compacted?: boolean;
+  /** 사람이 친 `/compact` 를 받았고 그 요약이 아직 적히지 않았다(agy). */
+  compactAsked?: boolean;
+  /** 사람이 친 `/compact` 가 마지막으로 끝난 로그 행의 자리. AgentView.compaction 으로 간다. */
+  compaction?: string;
   /** 지금 읽고 있는 행의 자리와, 그 행에서 지금까지 나온 활동 수. 활동의 ref 를 짓는다. */
   row?: { pos: number; nth: number };
   /** 원문을 다시 읽을 때만: 이 행의 nth 번째 활동의 원문을 여기에 받는다. */

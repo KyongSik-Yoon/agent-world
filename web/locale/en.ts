@@ -3,6 +3,7 @@ export const en: Record<string, string> = {
   // ── 상태 ──
   "확인 필요": "Needs input",
   "완료": "Done",
+  "대화를 요약했습니다": "Conversation compacted",
   "작업 중": "Working",
   "대기": "Idle",
   "알 수 없음": "Unknown",
