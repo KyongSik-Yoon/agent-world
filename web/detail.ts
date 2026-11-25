@@ -11,7 +11,7 @@ import { buzzConfirm, tapOnPress } from "./haptic.ts";
 import { type Child, type IconName, STATUS_VAR, fitCompose, growCompose, h, icon, prose, store, stored } from "./dom.ts";
 import { STATUS_LABEL, activityParts, bubbleParts, clock, effortLevel, shortPath, statusAge, tokens } from "./format.ts";
 import { t } from "./i18n.ts";
-import { TermScreen } from "./term.ts";
+import { TermKeys, TermScreen } from "./term.ts";
 
 export type TargetKind = "workspace" | "tab" | "pane" | "agent";
 
@@ -194,6 +194,8 @@ export class DetailPanel {
   private readonly stageTitle = h("b", {});
   private readonly stageSub = h("span", {});
   private readonly stageBody = h("div", { class: "body" });
+  /** 무대의 화면을 누르면 자판이 그 pane 으로 간다 — 크게 보기와 같은 입력 길(TermKeys). */
+  private readonly stageKeys = new TermKeys(() => this.preview.pane);
   /** 무대를 놓을 자리가 화면에 있다(main 이 창 크기를 보고 알려 준다). */
   private stageRoom = false;
   /** 사용자가 무대를 접어 두었다 — 이 브라우저에 기억한다. */
@@ -214,7 +216,18 @@ export class DetailPanel {
         this.setStageOff(true);
       });
       const big = this.button(t("크게 보기"), () => this.preview.pane && this.callbacks.act({ type: "terminal", paneId: this.preview.pane }), { cls: "btn", icon: "expand" });
-      stage.replaceChildren(h("header", {}, icon("terminal"), h("div", { class: "names" }, this.stageTitle, this.stageSub), big, fold), this.stageBody);
+      const hint = h("span", { class: "hint" }, t("입력은 그대로 터미널로 갑니다 · Shift+Esc 놓기"));
+      stage.replaceChildren(h("header", {}, icon("terminal"), h("div", { class: "names" }, this.stageTitle, this.stageSub), hint, big, fold), this.stageBody);
+      // 입력란은 무대에 붙박아 둔다 — 미리보기는 상태 창과 무대를 오가며 옮겨 붙는다.
+      const ime = this.stageKeys.ime;
+      this.stageBody.append(ime);
+      this.stageKeys.onError = (message) => this.callbacks.toast(t("입력을 보내지 못했습니다"), message, "var(--blocked)");
+      this.stageKeys.onLeave = () => ime.blur();
+      ime.addEventListener("focus", () => stage.classList.add("typing"));
+      ime.addEventListener("blur", () => {
+        stage.classList.remove("typing");
+        this.stageKeys.release();
+      });
     }
     document.addEventListener("visibilitychange", () => {
       this.asleep = document.hidden;
@@ -295,7 +308,10 @@ export class DetailPanel {
     this.preview.el.classList.add("preview");
     this.preview.el.title = t("눌러서 크게 보기");
     this.preview.el.addEventListener("click", () => {
-      if (this.preview.pane && !window.getSelection()?.toString()) this.callbacks.act({ type: "terminal", paneId: this.preview.pane });
+      if (!this.preview.pane || window.getSelection()?.toString()) return;
+      // 무대에서는 눌러서 바로 친다(크게 보기는 머리줄 단추). 상태 창 안에서는 크게 보기를 연다.
+      if (this.onStage) this.stageKeys.ime.focus();
+      else this.callbacks.act({ type: "terminal", paneId: this.preview.pane });
     });
 
     // 창 안에서 누르고 있거나 글을 골라 둔 동안에는 다시 그리지 않는다(render 가 미뤄 둔다). 손을 떼거나 고르기를
@@ -437,6 +453,8 @@ export class DetailPanel {
     if (this.stage.hidden === on) this.stage.hidden = !on;
     if (on !== this.onStage) {
       this.onStage = on;
+      this.preview.el.title = on ? t("눌러서 입력") : t("눌러서 크게 보기");
+      if (!on) this.stageKeys.ime.blur();
       this.preview.refit();
     }
   }
@@ -524,6 +542,8 @@ export class DetailPanel {
       this.preview.fitFooter = fitFooter;
       this.preview.redraw();
     }
+    // 보는 pane 이 바뀌면 치던 것을 놓는다 — 다음 키가 방금 고른 다른 주민에게 가지 않게.
+    if (wantPreview !== this.preview.pane) this.stageKeys.ime.blur();
     if (wantPreview && !this.covered && !this.asleep) this.preview.start(wantPreview);
     else this.preview.stop();
     this.preview.restoreScroll();

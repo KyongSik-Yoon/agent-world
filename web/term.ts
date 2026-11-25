@@ -1785,6 +1785,211 @@ const SOFT_KEYS: Array<{ label: string; icon?: IconName; caption?: string; keys?
 ];
 
 /**
+ * pane 으로 가는 자판 입력. 숨은 입력란 하나로 키와 한글 조합을 받아 완성된 글자만 보낸다 — 크게 보기와, 넓은 화면
+ * 가운데의 무대(detail.ts)가 함께 쓴다. 화면을 어떻게 그리는지와는 상관없다: 키는 바이트 그대로 pane 으로 가고,
+ * 커서는 pane 의 앱이 제 화면에 그린 것이다.
+ */
+export class TermKeys {
+  readonly ime = document.createElement("textarea");
+  /** 화면 단추로 걸어 둔 조합 키. 다음 키 하나에 붙고 풀린다. */
+  readonly held = { ctrl: false, alt: false };
+  private pending = "";
+  /** 모아 둔 글자가 갈 pane — 친 때의 pane 이다. 보내기 전에 보는 pane 이 바뀌어도 엉뚱한 곳으로 가지 않는다. */
+  private pendingPane = "";
+  private flushTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 보내고 아직 답을 받지 못한 입력의 수. */
+  private sending = 0;
+  /** 화면 자판이 조합 중인지(한글, 또는 단어 추천을 켠 영문). */
+  private composing = false;
+  /** 조합이 끝나기 전에 이미 보낸 앞부분. 뒤늦게 오는 compositionend 에서 떼어 낸다. */
+  private sentEarly = "";
+  onError: ((message: string) => void) | undefined;
+  /** Shift+Esc — 터미널에서 나간다. */
+  onLeave: (() => void) | undefined;
+  /** 걸어 둔 조합 키가 바뀌었다. */
+  onHeld: ((which: "ctrl" | "alt", on: boolean) => void) | undefined;
+
+  constructor(private readonly paneOf: () => string) {
+    this.ime.className = "ime";
+    this.ime.setAttribute("aria-label", t("터미널 입력"));
+    this.ime.rows = 1;
+    this.ime.autocapitalize = "off";
+    this.ime.spellcheck = false;
+    this.ime.addEventListener("keydown", (e) => this.onKey(e));
+    this.ime.addEventListener("compositionstart", () => {
+      // 새 조합이다 — 앞서 끊은 조합의 확정이 뒤늦게 올 일은 없다.
+      this.composing = true;
+      this.sentEarly = "";
+    });
+    this.ime.addEventListener("input", (e) => {
+      const data = (e as InputEvent).data;
+      if ((e as InputEvent).isComposing) {
+        this.composing = true;
+        // 조합 키를 걸어 두었으면 조합이 끝나기를 기다리지 않는다 — 한글 자판은 ㅡ 하나를 다음 글자가 올 때까지 쥐고 있다.
+        // 첫 글자에 조합 키를 붙여 보내고, 입력란을 비워 조합을 끊는다.
+        if (this.isHeld() && data) {
+          this.sentEarly = data;
+          this.ime.value = "";
+          this.composing = false;
+          this.typeHeld([...data].at(-1)!);
+        }
+        return;
+      }
+      const typed = this.takeEarly(this.ime.value);
+      this.ime.value = "";
+      if (this.isHeld()) this.typeHeld(typed);
+      else this.type(typed);
+    });
+    // 화면 자판은 지우기·줄바꿈을 keydown 이 아니라 이 이벤트로만 알려 주는 경우가 많다.
+    this.ime.addEventListener("beforeinput", (e) => {
+      if (e.isComposing) return;
+      if (e.inputType === "deleteContentBackward" && this.ime.value === "") {
+        e.preventDefault();
+        this.flush();
+        this.sendHeld(chord("Backspace", this.mods()));
+      } else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+        e.preventDefault();
+        this.flush();
+        this.sendHeld(chord("Enter", this.mods()));
+      }
+    });
+    this.ime.addEventListener("compositionend", (e) => {
+      this.composing = false;
+      this.type(this.takeEarly(e.data ?? ""));
+      this.ime.value = "";
+    });
+    this.ime.addEventListener("paste", (e) => {
+      e.preventDefault();
+      // 붙여넣기는 herdr 가 pane 의 붙여넣기 모드에 맞춰 감싸 넣도록 text 로 보낸다.
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      this.flush();
+      if (text) this.send({ text });
+    });
+  }
+
+  /** 입력에서 손을 뗀다 — 조합 중이던 글자와 모아 둔 글자를 보내고, 걸어 둔 조합 키를 푼다. */
+  release(): void {
+    this.commitComposition();
+    this.flush();
+    this.setHeld("ctrl", false);
+    this.setHeld("alt", false);
+  }
+
+  private isHeld(): boolean {
+    return this.held.ctrl || this.held.alt;
+  }
+
+  private mods(): Mods {
+    return { ctrl: this.held.ctrl, alt: this.held.alt, shift: false };
+  }
+
+  setHeld(which: "ctrl" | "alt", on: boolean): void {
+    this.held[which] = on;
+    this.onHeld?.(which, on);
+  }
+
+  /** 조합 키를 붙인 입력을 보내고 걸어 둔 조합 키를 푼다. */
+  sendHeld(input: Input | null): void {
+    if (!input) return;
+    this.send(input);
+    this.setHeld("ctrl", false);
+    this.setHeld("alt", false);
+  }
+
+  /** 조합 키를 걸어 둔 채 들어온 글자. 첫 글자에만 붙이고 나머지는 그대로 친다. */
+  private typeHeld(text: string): void {
+    const [first, ...rest] = [...text];
+    if (!first) return;
+    this.flush();
+    const input = chord(first, this.mods());
+    // 조합 키를 붙일 수 없는 글자(Ctrl+완성된 한글 등)는 그냥 치고, 걸어 둔 것은 다음 키를 위해 남긴다.
+    if (input) this.sendHeld(input);
+    else this.type(first);
+    this.type(rest.join(""));
+  }
+
+  /** 조합 중인 글자를 확정해 먼저 보낸다 — 키 줄 단추가 그보다 앞질러 가지 않게. */
+  commitComposition(): void {
+    if (!this.composing || !this.ime.value) return;
+    const text = this.ime.value;
+    this.sentEarly = text;
+    this.ime.value = "";
+    this.composing = false;
+    this.type(text);
+    this.flush();
+  }
+
+  /**
+   * 조합을 끊고 먼저 보낸 글자가 뒤늦게 다시 들어오면 떼어 낸다. 입력란을 비우면 브라우저는 조합을 접지만 화면 자판은
+   * 저마다 달라서, 쥐고 있던 글자를 compositionend 로도, 그냥 글자 넣기로도 다시 보낼 수 있다.
+   */
+  private takeEarly(text: string): string {
+    const early = this.sentEarly;
+    this.sentEarly = "";
+    return early && text.startsWith(early) ? text.slice(early.length) : text;
+  }
+
+  send(input: { text?: string; keys?: string[]; raw?: boolean }, pane = this.paneOf()): void {
+    if (!pane) return;
+    this.sending += 1;
+    void sendInput(pane, input)
+      .catch((e: Error) => this.onError?.(e.message))
+      .finally(() => {
+        this.sending -= 1;
+        if (this.sending === 0) this.flush();
+      });
+  }
+
+  /**
+   * 친 글자는 키보드가 보내는 바이트 그대로(raw) 넣는다 — text 로 보내면 붙여넣기로 취급돼, 키 입력을
+   * 기다리는 대화상자가 받지 않는다.
+   *
+   * 앞서 보낸 입력의 답을 기다리는 동안 친 글자는 모아 두었다가 한 번에 보낸다. 글자마다 요청을 줄 세우면
+   * herdr 가 느리게 답할 때(한 번에 0.1초까지) 빨리 칠수록 뒤로 밀린다.
+   */
+  private type(text: string): void {
+    if (!text) return;
+    const pane = this.paneOf();
+    if (this.pending && pane !== this.pendingPane) this.flush();
+    this.pendingPane = pane;
+    this.pending += text;
+    if (this.sending > 0) return;
+    // 조합이 끝나며 한꺼번에 들어오는 글자들을 한 번에 싣도록 이번 차례가 끝난 뒤에 보낸다.
+    clearTimeout(this.flushTimer);
+    this.flushTimer = setTimeout(() => this.flush(), 0);
+  }
+
+  flush(): void {
+    clearTimeout(this.flushTimer);
+    if (!this.pending) return;
+    const text = this.pending;
+    this.pending = "";
+    this.send({ text, raw: true }, this.pendingPane);
+  }
+
+  private onKey(e: KeyboardEvent): void {
+    // 이 안에서 누른 키는 월드의 단축키가 아니다.
+    e.stopPropagation();
+    if (e.key === "Escape" && e.shiftKey) {
+      e.preventDefault();
+      this.onLeave?.();
+      return;
+    }
+    if (e.isComposing || e.key === "Process") return;
+    // 복사·붙여넣기·새로고침 같은 브라우저 조합은 그대로 둔다.
+    if (e.ctrlKey && e.shiftKey && /^[cv]$/i.test(e.key)) return;
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "v") return;
+    const input = keyToInput(e, this.held);
+    if (!input) return;
+    // 그냥 글자는 input 이벤트로 받는다(한글 조합과 같은 길).
+    if (input.text !== undefined && !input.raw) return;
+    e.preventDefault();
+    this.flush();
+    this.sendHeld(input);
+  }
+}
+
+/**
  * 크게 보는 터미널. 화면 전체를 덮고, 열려 있는 동안 키 입력은 모두 pane 으로 간다.
  * 한글은 숨은 입력란으로 조합을 받아 완성된 글자만 보낸다. Shift+Esc 로 닫는다.
  */
@@ -1795,21 +2000,14 @@ export class TermOverlay {
   private readonly backBtn = document.createElement("button");
   private readonly planBtn = document.createElement("button");
   private readonly screen = new TermScreen({ live: true });
-  private readonly ime = document.createElement("textarea");
+  private readonly keys = new TermKeys(() => this.screen.pane);
+  private readonly ime = this.keys.ime;
   private readonly body = document.createElement("div");
   private readonly flowMedia = matchMedia(FLOW_MEDIA);
   private cols = 120;
   /** pane 의 화면 줄 수. 모르면 0 — 그때는 폭에만 맞춘다. */
   private rows = 0;
-  private pending = "";
-  private flushTimer: ReturnType<typeof setTimeout> | undefined;
-  /** 보내고 아직 답을 받지 못한 입력의 수. */
-  private sending = 0;
-  /** 화면 단추로 걸어 둔 조합 키. 다음 키 하나에 붙고 풀린다. */
-  private readonly held = { ctrl: false, alt: false };
   private readonly latchBtns: Partial<Record<"ctrl" | "alt", HTMLButtonElement>> = {};
-  /** 화면 자판이 조합 중인지(한글, 또는 단어 추천을 켠 영문). */
-  private composing = false;
   /**
    * 스크롤백이 없는 에이전트 pane(전체 화면으로 도는 Claude Code 등)이면 true — 지난 출력은 앱에 PageUp 을 보내 앱의
    * 화면을 넘겨 본다. 열 때 서버에 묻고, 답이 오기 전에는 undefined.
@@ -1832,8 +2030,6 @@ export class TermOverlay {
   private rollPending = 0;
   private rollRest = 0;
   private rolling = false;
-  /** 조합이 끝나기 전에 이미 보낸 앞부분. 뒤늦게 오는 compositionend 에서 떼어 낸다. */
-  private sentEarly = "";
   onError: ((message: string) => void) | undefined;
   /** 보고 있던 pane 이 herdr 에서 사라져 창을 닫을 때 알린다. */
   onGone: ((title: string) => void) | undefined;
@@ -1891,14 +2087,14 @@ export class TermOverlay {
         btn.title = t("다음 키에 {key} 붙이기", { key: key.label });
         this.latchBtns[latch] = btn;
         btn.addEventListener("click", () => {
-          this.commitComposition();
-          this.setHeld(latch, !this.held[latch]);
+          this.keys.commitComposition();
+          this.keys.setHeld(latch, !this.keys.held[latch]);
         });
       } else {
         btn.addEventListener("click", () => {
-          this.commitComposition();
-          this.flush();
-          this.sendHeld(this.softInput(key));
+          this.keys.commitComposition();
+          this.keys.flush();
+          this.keys.sendHeld(this.softInput(key));
         });
       }
       soft.append(btn);
@@ -1911,13 +2107,11 @@ export class TermOverlay {
     keyboard.addEventListener("click", () => this.ime.focus());
     soft.append(keyboard);
 
-    this.ime.className = "ime";
-    this.ime.setAttribute("aria-label", t("터미널 입력"));
     // 터치 기기에서는 이 입력란이 화면 아래에 보인다(조합 중인 글자를 볼 수 있게).
     this.ime.placeholder = t("여기에 치면 터미널로 들어갑니다");
-    this.ime.rows = 1;
-    this.ime.autocapitalize = "off";
-    this.ime.spellcheck = false;
+    this.keys.onError = (message) => this.onError?.(message);
+    this.keys.onLeave = () => this.close();
+    this.keys.onHeld = (which, on) => this.latchBtns[which]?.setAttribute("aria-pressed", String(on));
     this.body.className = "body";
     this.body.append(this.screen.el, this.ime);
     this.root.append(head, soft, this.body);
@@ -1966,56 +2160,6 @@ export class TermOverlay {
     this.body.addEventListener("mouseup", () => {
       // 글을 긁어 복사하는 중이면 초점을 빼앗지 않는다.
       if (!window.getSelection()?.toString()) this.ime.focus();
-    });
-    this.ime.addEventListener("keydown", (e) => this.onKey(e));
-    this.ime.addEventListener("compositionstart", () => {
-      // 새 조합이다 — 앞서 끊은 조합의 확정이 뒤늦게 올 일은 없다.
-      this.composing = true;
-      this.sentEarly = "";
-    });
-    this.ime.addEventListener("input", (e) => {
-      const data = (e as InputEvent).data;
-      if ((e as InputEvent).isComposing) {
-        this.composing = true;
-        // 조합 키를 걸어 두었으면 조합이 끝나기를 기다리지 않는다 — 한글 자판은 ㅡ 하나를 다음 글자가 올 때까지 쥐고 있다.
-        // 첫 글자에 조합 키를 붙여 보내고, 입력란을 비워 조합을 끊는다.
-        if (this.isHeld() && data) {
-          this.sentEarly = data;
-          this.ime.value = "";
-          this.composing = false;
-          this.typeHeld([...data].at(-1)!);
-        }
-        return;
-      }
-      const typed = this.takeEarly(this.ime.value);
-      this.ime.value = "";
-      if (this.isHeld()) this.typeHeld(typed);
-      else this.type(typed);
-    });
-    // 화면 자판은 지우기·줄바꿈을 keydown 이 아니라 이 이벤트로만 알려 주는 경우가 많다.
-    this.ime.addEventListener("beforeinput", (e) => {
-      if (e.isComposing) return;
-      if (e.inputType === "deleteContentBackward" && this.ime.value === "") {
-        e.preventDefault();
-        this.flush();
-        this.sendHeld(chord("Backspace", this.mods()));
-      } else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
-        e.preventDefault();
-        this.flush();
-        this.sendHeld(chord("Enter", this.mods()));
-      }
-    });
-    this.ime.addEventListener("compositionend", (e) => {
-      this.composing = false;
-      this.type(this.takeEarly(e.data ?? ""));
-      this.ime.value = "";
-    });
-    this.ime.addEventListener("paste", (e) => {
-      e.preventDefault();
-      // 붙여넣기는 herdr 가 pane 의 붙여넣기 모드에 맞춰 감싸 넣도록 text 로 보낸다.
-      const text = e.clipboardData?.getData("text/plain") ?? "";
-      this.flush();
-      if (text) this.send({ text });
     });
     this.screen.onGone = () => {
       // 치고 있던 창이 말없이 사라지면 고장으로 보인다 — 왜 닫혔는지 알린다.
@@ -2093,9 +2237,9 @@ export class TermOverlay {
 
   close(): void {
     if (this.root.hidden) return;
-    this.flush();
-    this.setHeld("ctrl", false);
-    this.setHeld("alt", false);
+    this.keys.flush();
+    this.keys.setHeld("ctrl", false);
+    this.keys.setHeld("alt", false);
     this.leave();
     this.root.hidden = true;
     this.screen.stop();
@@ -2139,7 +2283,7 @@ export class TermOverlay {
     if (now - this.pagedAt < PAGE_GAP_MS || (dir < 0 && this.paged === 0)) return;
     this.pagedAt = now;
     this.paged += dir;
-    this.send({ text: dir > 0 ? PAGE_UP : PAGE_DOWN, raw: true });
+    this.keys.send({ text: dir > 0 ? PAGE_UP : PAGE_DOWN, raw: true });
     this.syncBack();
   }
 
@@ -2187,7 +2331,7 @@ export class TermOverlay {
     this.rollPending = 0;
     this.rollRest = 0;
     if (this.paged <= 0 && !this.stuck) return;
-    if (this.wheels) this.send({ text: CTRL_END, raw: true });
+    if (this.wheels) this.keys.send({ text: CTRL_END, raw: true });
     else void sendToBottom(this.screen.pane, Math.max(0, this.paged)).catch((e: Error) => this.onError?.(e.message));
     this.paged = 0;
     this.stuck = false;
@@ -2240,119 +2384,13 @@ export class TermOverlay {
     this.screen.restoreScroll();
   }
 
-  private isHeld(): boolean {
-    return this.held.ctrl || this.held.alt;
-  }
-
-  private mods(): Mods {
-    return { ctrl: this.held.ctrl, alt: this.held.alt, shift: false };
-  }
-
-  private setHeld(which: "ctrl" | "alt", on: boolean): void {
-    this.held[which] = on;
-    this.latchBtns[which]?.setAttribute("aria-pressed", String(on));
-  }
-
   /** 키 줄 단추 하나를 보낼 입력으로. 걸어 둔 조합 키가 있으면 붙인다. */
   private softInput(key: (typeof SOFT_KEYS)[number]): Input | null {
-    const { ctrl, alt } = this.held;
+    const { ctrl, alt } = this.keys.held;
     if (key.keys) return { keys: key.keys.map((k) => `${ctrl ? "ctrl+" : ""}${alt ? "alt+" : ""}${k}`) };
     // ^C 같은 제어 문자 단추는 이미 Ctrl 이 붙어 있다 — Alt 만 더한다.
     return { text: `${alt ? "\x1b" : ""}${key.text ?? ""}`, raw: true };
   }
 
-  /** 조합 키를 붙인 입력을 보내고 걸어 둔 조합 키를 푼다. */
-  private sendHeld(input: Input | null): void {
-    if (!input) return;
-    this.send(input);
-    this.setHeld("ctrl", false);
-    this.setHeld("alt", false);
-  }
 
-  /** 조합 키를 걸어 둔 채 들어온 글자. 첫 글자에만 붙이고 나머지는 그대로 친다. */
-  private typeHeld(text: string): void {
-    const [first, ...rest] = [...text];
-    if (!first) return;
-    this.flush();
-    const input = chord(first, this.mods());
-    // 조합 키를 붙일 수 없는 글자(Ctrl+완성된 한글 등)는 그냥 치고, 걸어 둔 것은 다음 키를 위해 남긴다.
-    if (input) this.sendHeld(input);
-    else this.type(first);
-    this.type(rest.join(""));
-  }
-
-  /** 조합 중인 글자를 확정해 먼저 보낸다 — 키 줄 단추가 그보다 앞질러 가지 않게. */
-  private commitComposition(): void {
-    if (!this.composing || !this.ime.value) return;
-    const text = this.ime.value;
-    this.sentEarly = text;
-    this.ime.value = "";
-    this.composing = false;
-    this.type(text);
-    this.flush();
-  }
-
-  /**
-   * 조합을 끊고 먼저 보낸 글자가 뒤늦게 다시 들어오면 떼어 낸다. 입력란을 비우면 브라우저는 조합을 접지만 화면 자판은
-   * 저마다 달라서, 쥐고 있던 글자를 compositionend 로도, 그냥 글자 넣기로도 다시 보낼 수 있다.
-   */
-  private takeEarly(text: string): string {
-    const early = this.sentEarly;
-    this.sentEarly = "";
-    return early && text.startsWith(early) ? text.slice(early.length) : text;
-  }
-
-  private send(input: { text?: string; keys?: string[]; raw?: boolean }): void {
-    this.sending += 1;
-    void sendInput(this.screen.pane, input)
-      .catch((e: Error) => this.onError?.(e.message))
-      .finally(() => {
-        this.sending -= 1;
-        if (this.sending === 0) this.flush();
-      });
-  }
-
-  /**
-   * 친 글자는 키보드가 보내는 바이트 그대로(raw) 넣는다 — text 로 보내면 붙여넣기로 취급돼, 키 입력을
-   * 기다리는 대화상자가 받지 않는다.
-   *
-   * 앞서 보낸 입력의 답을 기다리는 동안 친 글자는 모아 두었다가 한 번에 보낸다. 글자마다 요청을 줄 세우면
-   * herdr 가 느리게 답할 때(한 번에 0.1초까지) 빨리 칠수록 뒤로 밀린다.
-   */
-  private type(text: string): void {
-    if (!text) return;
-    this.pending += text;
-    if (this.sending > 0) return;
-    // 조합이 끝나며 한꺼번에 들어오는 글자들을 한 번에 싣도록 이번 차례가 끝난 뒤에 보낸다.
-    clearTimeout(this.flushTimer);
-    this.flushTimer = setTimeout(() => this.flush(), 0);
-  }
-
-  private flush(): void {
-    clearTimeout(this.flushTimer);
-    if (!this.pending) return;
-    this.send({ text: this.pending, raw: true });
-    this.pending = "";
-  }
-
-  private onKey(e: KeyboardEvent): void {
-    // 이 안에서 누른 키는 월드의 단축키가 아니다.
-    e.stopPropagation();
-    if (e.key === "Escape" && e.shiftKey) {
-      e.preventDefault();
-      this.close();
-      return;
-    }
-    if (e.isComposing || e.key === "Process") return;
-    // 복사·붙여넣기·새로고침 같은 브라우저 조합은 그대로 둔다.
-    if (e.ctrlKey && e.shiftKey && /^[cv]$/i.test(e.key)) return;
-    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "v") return;
-    const input = keyToInput(e, this.held);
-    if (!input) return;
-    // 그냥 글자는 input 이벤트로 받는다(한글 조합과 같은 길).
-    if (input.text !== undefined && !input.raw) return;
-    e.preventDefault();
-    this.flush();
-    this.sendHeld(input);
-  }
 }

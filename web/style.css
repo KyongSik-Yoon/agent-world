@@ -2223,6 +2223,39 @@ kbd {
   border: 0;
   border-radius: 0;
   font-size: 12px;
+  cursor: text;
+}
+
+/* 화면을 누르면 자판이 pane 으로 간다(detail.ts 의 stageKeys). 치는 중이라는 표시는 테두리와 머리줄 글뿐 — 움직이지 않는다. */
+#stage .ime {
+  position: absolute;
+  left: 14px;
+  bottom: 10px;
+  width: 2px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  opacity: 0;
+  resize: none;
+}
+
+#stage.typing {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+#stage header .hint {
+  display: none;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#stage.typing header .hint {
+  display: block;
 }
 
 #term-overlay {

@@ -48,6 +48,8 @@ export const en: Record<string, string> = {
   "herdr 가 답하지 않습니다 — 다시 읽는 중…": "herdr is not responding — retrying…",
   "이 pane 은 닫혔습니다.": "This pane was closed.",
   "입력은 그대로 터미널로 갑니다 · Shift+Esc 닫기": "Typing goes straight to the terminal · Shift+Esc to close",
+  "입력은 그대로 터미널로 갑니다 · Shift+Esc 놓기": "Typing goes straight to the terminal · Shift+Esc to let go",
+  "눌러서 입력": "Click to type",
   "닫기 (Shift+Esc)": "Close (Shift+Esc)",
   "자판 열기": "Show keyboard",
   "다음 키에 {key} 붙이기": "Hold {key} for the next key",
