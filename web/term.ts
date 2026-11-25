@@ -976,6 +976,57 @@ export function stackPanes(lines: readonly string[]): string[] | null {
   return [...lines.slice(0, start), ...right, `\x1b[0m\x1b[2m${"─".repeat(24)}\x1b[0m`, ...cuts.map((cut) => cut.left), ...lines.slice(end)];
 }
 
+/** 글 옆에 선 상자의 윗줄: 줄 중간에서 시작해 줄 끝에서 닫히는 테두리. */
+const SIDE_TOP = /[\u256D\u250C]\u2500{8,}[\u256E\u2510]$/;
+const SIDE_BODY = /^[\u2502\u2503].*[\u2502\u2503]$/;
+const SIDE_BOTTOM = /^[\u2570\u2514]\u2500+[\u256F\u2518]$/;
+const BOX_LEAD = /^\s*[\u2500-\u257F]/;
+
+/**
+ * 글 오른쪽에 나란히 선 상자(Claude Code 의 지난 지시 검색: 왼쪽에 목록, 오른쪽에 고른 지시의 미리보기 상자)를 줄 접는
+ * 화면에서 볼 수 있게 떼어, 상자를 위에 세우고 왼쪽 글을 그 아래에 둔다. 그대로 접으면 목록 줄 뒤에 상자의 줄이 이어 붙어
+ * 접히고, 줄 끝의 오른쪽 테두리가 다음 줄 맨 앞으로 넘어가 목록 사이사이에 세로선만 남는다. stackPanes 는 이것을 맡지 않는다 —
+ * 줄 수가 적고, 세로선의 위아래가 모서리라 표로 본다. 떼어 낸 상자는 줄 맨 앞에서 시작하므로 여느 글 상자처럼 접힌다.
+ * 그런 상자가 없으면 받은 줄들을 그대로 돌려준다(상자 윗모서리가 든 줄만 잰다).
+ */
+export function liftSideBoxes(lines: readonly string[]): readonly string[] {
+  let out: string[] | undefined;
+  let done = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!;
+    if (!line.includes("\u256D") && !line.includes("\u250C")) continue;
+    const text = plain(line).trimEnd();
+    const top = SIDE_TOP.exec(text);
+    if (!top) continue;
+    // displayCols 는 끝의 공백을 세지 않는다 — 모서리까지 넣어 세고 그 한 칸을 뺀다.
+    const col = displayCols(text.slice(0, top.index + 1)) - 1;
+    if (col < SPLIT_MIN_SIDE) continue;
+    const end = displayCols(text);
+    const box: string[] = [];
+    const left: string[] = [];
+    let j = i;
+    let closed = false;
+    for (; j < lines.length && !closed; j += 1) {
+      const row = lines[j]!;
+      const [head, rest] = splitColumns(row, col);
+      const side = plain(rest).trimEnd();
+      // 상자의 줄은 모두 같은 칸에서 시작해 같은 칸에서 끝난다. 왼쪽이 상자 글자로 시작하면 나란히 선 상자들이나 표다.
+      if (displayCols(plain(row).trimEnd()) !== end || BOX_LEAD.test(plain(head))) break;
+      if (j > i && SIDE_BOTTOM.test(side)) closed = true;
+      else if (j > i && !SIDE_BODY.test(side)) break;
+      // 상자의 글은 줄 앞에서 이어지던 스타일로 시작해야 한다(stackPanes 의 cutPane 과 같다).
+      box.push(`\x1b[0m${head.match(SGR_ONLY)?.join("") ?? ""}${rest}`);
+      if (plain(head).trim() !== "") left.push(head);
+    }
+    if (!closed || box.length < 3 || left.length === 0) continue;
+    out ??= [];
+    out.push(...lines.slice(done, i), ...box, ...left);
+    done = j;
+    i = j - 1;
+  }
+  return out ? [...out, ...lines.slice(done)] : lines;
+}
+
 /** 글 상자의 위·아래 테두리와 가름줄(╭───╮ ╰───╯ ├───┤): 양 끝 모서리 사이의 가로줄만 화면 폭에 맞춰 자른다. */
 const FRAME_ROW = /^ *[\u256D\u2570\u250C\u2514\u2554\u255A\u251C\u255F\u2560\u2523].*[\u256E\u256F\u2510\u2518\u2557\u255D\u2524\u2562\u2563\u252B]$/;
 const FRAME_HEAD = /^ *./u;
@@ -1577,7 +1628,7 @@ export class TermScreen {
       else pool.set(row.key, [row]);
     }
     let style: Style = {};
-    let rows = (reflow ? (stackPanes(raw) ?? raw) : raw).map((full) => {
+    let rows = (reflow ? liftSideBoxes(stackPanes(raw) ?? raw) : raw).map((full) => {
       const line = reflow ? trimTrailing(full) : full;
       const row = pool.get(styleKey(style) + line)?.pop() ?? renderLine(line, style, reflow);
       // 다음 줄은 다듬기 전 줄의 끝 스타일을 이어받는다. 뗀 꼬리의 \e[0m 을 빼면 선택지 커서 줄의 색·굵기가 아래 줄로 번졌다.
