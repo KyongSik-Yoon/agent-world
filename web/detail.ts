@@ -88,6 +88,10 @@ function logKey(a: Activity, n: number): string {
 const OMITTED = /<truncated omitted_approx_tokens="(\d+)"\s*\/>/g;
 /** 한 번에 붙일 수 있는 이미지 수(서버의 MAX_IMAGES 와 같다). */
 const MAX_SHOTS = 8;
+/** 글 칸이 자라는 끝(style.css 의 .compose textarea max-height 와 같다). */
+const MAX_INPUT_PX = 220;
+/** 창이 아주 낮아도 글 칸은 두 줄쯤은 남긴다. */
+const MIN_INPUT_PX = 48;
 /** 끌어서 맞춘 상태 창의 폭을 적어 두는 자리. */
 const WIDTH_KEY = "agent-world.detail-width";
 
@@ -236,6 +240,19 @@ export class DetailPanel {
 
     // 높이를 먼저 맞추고 스킬 목록을 놓는다 — 목록은 입력줄 위의 빈자리를 재서 편다.
     growCompose(this.input);
+    this.input.addEventListener("input", () => this.capInput());
+    // 창 높이(자판이 오르내릴 때), 머리, 입력 묶음(빠른 키·붙인 그림·알림 줄)이 바뀔 때만 다시 잰다.
+    let capping = false;
+    const watch = new ResizeObserver(() => {
+      if (capping) return;
+      capping = true;
+      // perf-ok: 크기가 바뀐 때 한 번 — 도는 것이 아니다
+      requestAnimationFrame(() => {
+        capping = false;
+        this.capInput();
+      });
+    });
+    for (const el of [this.root, this.head, this.dock]) watch.observe(el);
     this.input.addEventListener("input", () => this.updateSkills());
     this.input.addEventListener("blur", () => this.closeSkills());
     // 단추와 목록을 누르는 동안 입력창이 초점을 잃어 목록이 먼저 닫히지 않게 한다.
@@ -374,6 +391,23 @@ export class DetailPanel {
   private setInput(text: string): void {
     this.input.value = text;
     fitCompose(this.input);
+    this.capInput();
+  }
+
+  /**
+   * 글 칸이 자랄 수 있는 높이를 창에 남은 자리로 묶는다. 휴대폰에서 자판이 올라오면 창이 낮아지는데, 빠른 키·붙인 그림·긴 글을
+   * 합친 입력 묶음이 그보다 커지면 창 밖으로 넘친 보내기 줄이 잘려 보이지도, 음성 도구로 누를 수도 없었다. 넘치는 글은 칸 안에서
+   * 스크롤된다. 본문은 그동안 접혀도 된다.
+   */
+  private capInput(): void {
+    if (this.dock.hidden || !this.input.isConnected) return;
+    const rest = this.dock.offsetHeight - this.input.offsetHeight;
+    // 본문은 다 접혀도 위아래 여백만큼은 남는다.
+    const body = getComputedStyle(this.body);
+    const folded = parseFloat(body.paddingTop) + parseFloat(body.paddingBottom);
+    const room = this.root.clientHeight - this.head.offsetHeight - folded - rest;
+    const cap = `${Math.max(MIN_INPUT_PX, Math.min(MAX_INPUT_PX, room))}px`;
+    if (this.input.style.maxHeight !== cap) this.input.style.maxHeight = cap;
   }
 
   /** 무대를 놓을 자리가 생겼거나 없어졌다. */
