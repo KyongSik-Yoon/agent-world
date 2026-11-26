@@ -32,7 +32,7 @@ import { agyLinesBelow, agyToBottom } from "./agyscroll.ts";
 import { AnswerError } from "./asking.ts";
 import { claudeComposer, squash } from "./composer.ts";
 import { MAX_IMAGE_BYTES, MAX_IMAGES, imagePath, saveImage } from "./images.ts";
-import { ModelError, modelCatalog, startFlags, switchModel } from "./models.ts";
+import { ModelError, codeModeFlags, modelCatalog, startFlags, switchModel } from "./models.ts";
 import { termTheme } from "./termtheme.ts";
 import { L, asText, langOf, say, type Text } from "./text.ts";
 import type { World } from "./world.ts";
@@ -647,6 +647,8 @@ export function controlRoutes({ world, readonly, guarded, json, refresh }: Contr
       const model = text(body, "model", 120);
       const effort = text(body, "effort", 20);
       const flags = await startFlags(kind, model, effort);
+      // Code Mode 는 체크한 주민에게만 실행 인자로 넘긴다 — 켜 두면 못 쓰는 도구가 있어 전역으로는 켜지 않는다.
+      if (body.codeMode === true) flags.push(...codeModeFlags(kind, args as string[]));
       await herdrStartAgent(paneId, kind, name, [...flags, ...(args as string[])]);
       // 첫 응답 전에는 로그에 모델이 없다. 고른 값을 상세에 바로 보이게 적어 둔다(world.started).
       world.agentStarted(paneId, { model, effort });

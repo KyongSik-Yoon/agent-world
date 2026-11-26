@@ -99,6 +99,8 @@ interface FormParts {
   kind: HTMLSelectElement;
   name: HTMLInputElement;
   args: HTMLInputElement;
+  /** Claude 를 Code Mode(실험 기능)로 띄울지. 다른 하네스에서는 꺼진 채 숨는다. */
+  codeMode: HTMLInputElement;
   pick: ModelPick;
   prompt: HTMLTextAreaElement;
   promptId: string;
@@ -480,6 +482,7 @@ export class Builder {
     if (optional) kind.append(h("option", { value: "" }, t("없음 — 셸만 둡니다")));
     const name = h("input", { type: "text", autocomplete: "off", spellcheck: "false", pattern: "[a-z][a-z0-9_\\-]{0,31}" });
     const args = h("input", { type: "text", autocomplete: "off", spellcheck: "false", placeholder: t("예: --add-dir ~/notes") });
+    const codeMode = h("input", { type: "checkbox" });
     const pick = this.modelPick("start");
     const promptId = `first-prompt-${++promptSeq}`;
     // 한 줄 칸에서 단추 옆에 서므로 안내는 짧게 쓰고, 긴 설명은 title 에 둔다.
@@ -492,6 +495,8 @@ export class Builder {
     const syncName = () => {
       if (!touched) name.value = kind.value ? this.freeName(kind.value) : "";
       for (const el of [name, args, prompt]) el.disabled = kind.value === "";
+      // Code Mode 는 Claude 만 안다 — 다른 주민으로 바꾸면 켜 둔 것을 푼다.
+      if (kind.value !== "claude") codeMode.checked = false;
       void pick.load(kind.value);
       renamed.forEach((f) => f());
     };
@@ -520,7 +525,7 @@ export class Builder {
     prompt.addEventListener("input", () => box.scrollIntoView({ block: "nearest" }));
     return {
       box,
-      parts: { kind, name, args, pick, prompt, promptId, box, renamed: (f) => renamed.push(f) },
+      parts: { kind, name, args, codeMode, pick, prompt, promptId, box, renamed: (f) => renamed.push(f) },
       chosen: () => kind.value !== "",
       steps: () => [starting(), t("에이전트가 준비되기를 기다리는 중…"), ...(prompt.value.trim() ? [t("첫 지시를 보내는 중…")] : [])],
       // 탭이나 스페이스를 열기 전에 부른다 — 이름이 틀렸는데 탭부터 열리지 않게.
@@ -529,7 +534,7 @@ export class Builder {
       },
       start: async (paneId, step) => {
         step(starting());
-        await post("/api/agent/start", { paneId, kind: kind.value, name: name.value, model: pick.model(), effort: pick.effort(), args: splitArgs(args.value) });
+        await post("/api/agent/start", { paneId, kind: kind.value, name: name.value, model: pick.model(), effort: pick.effort(), args: splitArgs(args.value), codeMode: codeMode.checked });
         step(t("에이전트가 준비되기를 기다리는 중…"));
         const agent = await this.waitFor((s) => s.agents.find((a) => a.id === paneId && a.status !== "unknown"), READY_TIMEOUT_MS);
         if (!agent) throw new Error(t("에이전트가 제때 준비되지 않았습니다. 터미널 화면에서 무슨 일이 있는지 확인해 보세요."));
@@ -564,6 +569,13 @@ export class Builder {
     if (p.base) p.base.placeholder = t("지금 브랜치");
     const wtCheck = p.worktree ? h("label", { class: "check", title: t("새 브랜치를 따로 체크아웃해서 엽니다") }, p.worktree, t("워크트리로")) : null;
     const trustCheck = p.trust ? h("label", { class: "check" }, p.trust, t("저장소 신뢰 — herdr 가 요구할 때만")) : null;
+    // 그 세션에만 켠다 — 실행 인자로 넘기므로 하네스의 설정은 그대로다(server/models.ts codeModeFlags).
+    const codeCheck = h("label", { class: "check", title: t("이 세션만 Code Mode 로 띄웁니다 — 하네스의 설정은 그대로입니다. Code Mode 에서는 Remote Control 이 연결되지 않습니다.") }, p.codeMode, t("Code Mode (실험 기능)"));
+    const syncCode = () => {
+      codeCheck.hidden = p.kind.value !== "claude";
+    };
+    p.renamed(syncCode);
+    syncCode();
     const wtBox = p.worktree ? h("div", { class: "sub-fields" }, row("", field(t("새 브랜치"), p.branch!), field(t("기준 (base)"), p.base!)), trustCheck) : null;
     this.bindWorktree(p, wtBox);
 
@@ -575,6 +587,7 @@ export class Builder {
         from && p.base?.value ? t("기준 {base}", { base: p.base.value }) : "",
         p.name.value,
         p.args.value,
+        p.codeMode.checked ? "Code Mode" : "",
       ]
         .filter(Boolean)
         .join(" · ");
@@ -587,6 +600,7 @@ export class Builder {
       wtBox,
       from ? trustCheck : null,
       row("", field(t("주민 이름"), p.name), field(t("실행 인자"), p.args)),
+      codeCheck,
     );
     const more = disclosure(t("더 보기"), summary, body);
     p.renamed(more.sync);

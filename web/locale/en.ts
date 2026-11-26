@@ -199,6 +199,8 @@ export const en: Record<string, string> = {
   "비우면 자동": "Blank = auto",
   "지금 브랜치": "Current branch",
   "저장소 신뢰 — herdr 가 요구할 때만": "Trust repo — only if herdr asks",
+  "Code Mode (실험 기능)": "Code Mode (experimental)",
+  "이 세션만 Code Mode 로 띄웁니다 — 하네스의 설정은 그대로입니다. Code Mode 에서는 Remote Control 이 연결되지 않습니다.": "Starts this session alone in Code Mode — the harness settings stay as they are. Remote Control does not connect in Code Mode.",
   "새 브랜치를 따로 체크아웃해서 엽니다": "Checks out a new branch separately",
   "워크트리로": "As a worktree",
   "집 {name}": "House {name}",

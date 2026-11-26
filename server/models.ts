@@ -185,6 +185,27 @@ export async function startFlags(kind: string, model: string, effort: string): P
   }
 }
 
+const CODE_MODE_ENV = "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE";
+
+/**
+ * Claude 를 Code Mode(실험 기능)로 띄우는 실행 인자. herdr 의 agent.start 는 환경 변수를 받지 않으므로 --settings 의 env 로
+ * 싣는다 — 그 세션에만 적용되고 ~/.claude 의 설정은 그대로다. Claude 는 --settings 가 둘이면 뒤엣것만 읽으므로(합치지 않는다),
+ * 실행 인자에 이미 --settings 가 있으면 어느 한쪽이 말없이 사라진다. 그때는 띄우지 않고 알린다.
+ */
+export function codeModeFlags(kind: string, args: string[]): string[] {
+  if (kind !== "claude") throw new ModelError(L("Code Mode 는 Claude Code 만 켤 수 있습니다.", "Only Claude Code has Code Mode."), 400);
+  if (args.some((a) => a === "--settings" || a.startsWith("--settings="))) {
+    throw new ModelError(
+      L(
+        `Code Mode 는 --settings 로 켜는데, 실행 인자에 이미 --settings 가 있습니다. 그 설정의 env 에 ${CODE_MODE_ENV}=1 을 직접 넣거나 실행 인자에서 --settings 를 빼 주세요.`,
+        `Code Mode is turned on through --settings, and the arguments already have one. Put ${CODE_MODE_ENV}=1 in that settings' env yourself, or drop --settings from the arguments.`,
+      ),
+      400,
+    );
+  }
+  return ["--settings", JSON.stringify({ env: { [CODE_MODE_ENV]: "1" } })];
+}
+
 // ── 떠 있는 세션 바꾸기 ──────────────────────────────────────────────────────────────────────
 
 const POLL_MS = 100;
