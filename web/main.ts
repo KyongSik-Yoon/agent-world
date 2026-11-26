@@ -54,7 +54,7 @@ const scene = new WorldScene(document.getElementById("world")!, {
 });
 
 const hud = new Hud({
-  onSelect: (id) => select(id),
+  onSelect: (id, gone) => select(id, !gone),
   onHover: (id) => {
     scene.setExternalHover(id);
     hud.setHover(id);
@@ -137,7 +137,8 @@ const builder = new Builder({
 /** 휴대폰에서 목록 서랍을 펴 둔 채 골라 들어왔다 — 뒤로 가기로 상태 창을 닫으면 그 목록으로 돌아간다. */
 let cameFromRoster = false;
 
-function select(id: string | null): void {
+/** fly 가 false 면 고르기만 바꾸고 카메라는 보던 자리에 둔다. */
+function select(id: string | null, fly = true): void {
   // 상태 창이 열려 있는 동안에는 지우지 않는다 — 목록에서 들어온 뒤 알림을 눌러 다른 세션으로 옮겨 가도 돌아갈 곳은 목록이다.
   if (id === null) cameFromRoster = false;
   else if (document.body.dataset.roster === "open" && phoneLayout.matches) cameFromRoster = true;
@@ -149,7 +150,7 @@ function select(id: string | null): void {
     return;
   }
   selectedId = id;
-  scene.select(id);
+  scene.select(id, fly);
   hud.select(id);
   syncBack();
 }

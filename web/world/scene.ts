@@ -498,7 +498,8 @@ export class WorldScene {
     }
     this.selectedId = id;
     if (!id) {
-      // 고르기를 풀면 다가가기 전에 보던 자리와 배율로 돌아간다.
+      // 고르기를 풀면 다가가기 전에 보던 자리와 배율로 돌아간다. 고른 주민이 사라져 풀린 것(fly 가 false)이면 보던 자리에
+      // 그대로 둔다 — 내보내기를 눌렀을 뿐인데 화면이 섬 전체로 물러나면 어지럽다.
       if (before && this.home && fly) {
         this.flight = { target: this.home.target, position: this.home.position, distance: this.home.position.distanceTo(this.home.target), at: performance.now() };
       }

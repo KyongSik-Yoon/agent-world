@@ -109,7 +109,8 @@ function swipeAway(el: HTMLElement, ms: number): void {
 }
 
 export interface HudCallbacks {
-  onSelect(id: string | null): void;
+  /** gone: 고른 것이 사라져 고르기가 풀렸다 — 사용자가 푼 것이 아니다. */
+  onSelect(id: string | null, gone?: boolean): void;
   onHover(id: string | null): void;
   onFilter(pass: ((a: AgentView) => boolean) | null): void;
   onAction(action: Action): void;
@@ -199,7 +200,7 @@ export class Hud {
     const id = this.selectedId;
     const alive = id === null || snapshot.agents.some((a) => a.id === id) || snapshot.panes.some((p) => p.id === id) || snapshot.workspaces.some((w) => workspaceKey(w.id) === id);
     // 고른 것이 사라졌으면 고르기를 푼다 — 장면과 메인도 함께 알도록 바깥을 거친다.
-    if (!alive) this.callbacks.onSelect(null);
+    if (!alive) this.callbacks.onSelect(null, true);
     else this.render();
   }
 
