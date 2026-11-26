@@ -32,6 +32,8 @@ export interface LogSummary {
    */
   lastCommand?: { text: string; at: string };
   lastReply?: string;
+  /** 아직 끝나지 않은 응답의 앞부분(AGY). 다음 응답 글이 여기에 이어 붙는다. */
+  replyHead?: string;
   /** 모델이 아직 일하는 중으로 보이는지(사용자 입력 직후이거나 도구 호출이 열려 있음). */
   turnOpen: boolean;
   /** 모델 응답 행을 하나라도 봤는지 — 꼬리 창을 더 키울지 판단한다. */

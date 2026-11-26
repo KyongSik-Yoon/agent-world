@@ -118,6 +118,9 @@ async function contextWindow(_sessionId: string, model: string | undefined): Pro
 /** 대화를 요약하는 명령. AGY 는 이것을 지시처럼 USER_INPUT 으로 적는다. */
 const COMPACT = /^\/compact(\s|$)/;
 
+/** 일의 진척만 적는 도구. 이것만 부른 응답은 답을 쓰는 도중이다. */
+const BOOKKEEPING = "update_steps";
+
 export const agyReader: LogReader<LogSummary> = {
   init: emptySummary,
   feed(s, row, pos) {
@@ -140,6 +143,7 @@ export const agyReader: LogReader<LogSummary> = {
         pushActivity(s, "user", "", text, at);
         s.turnOpen = true;
         s.open.clear();
+        s.replyHead = undefined;
         break;
       }
       case "CHECKPOINT":
@@ -161,11 +165,16 @@ export const agyReader: LogReader<LogSummary> = {
         const total = (num(row.input_tokens) ?? 0) + (num(row.cache_read_tokens) ?? 0);
         if (total > 0) s.contextTokens = total;
         if (str(row.thinking)) pushActivity(s, "thinking", "", "", at);
+        const reply = content.trim() ? (s.replyHead ? `${s.replyHead}\n\n${content.trim()}` : content) : s.replyHead;
         if (content.trim()) {
-          setReply(s, content);
+          setReply(s, reply!);
+          // 활동에는 이 행의 글만 적는다 — 원문은 행의 자리로 다시 읽는다.
           pushActivity(s, "text", "", content, at);
         }
         const calls = Array.isArray(row.tool_calls) ? row.tool_calls : [];
+        // 답을 쓰면서 체크리스트만 고친 응답은 일을 한 것이 아니라, 답이 거기서 끝나지 않는다. AGY 는 흔히 본문을 그 호출과 함께
+        // 쓰고 맺는 한 줄을 다음 응답으로 따로 적는다 — 화면에는 한 답으로 이어져 보이므로 마지막 응답도 이어 붙인다.
+        s.replyHead = calls.length > 0 && calls.every((call) => isRecord(call) && call.name === BOOKKEEPING) ? reply : undefined;
         // 결과 행을 호출과 짝지을 id 가 없어서, 가장 최근 응답이 부른 도구들을 "지금 기다리는 것"으로 둔다.
         s.open.clear();
         calls.forEach((call, i) => {
