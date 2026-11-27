@@ -88,7 +88,7 @@ export class Environment {
   private readonly staticGroup = new THREE.Group();
   private plotGroup = new THREE.Group();
   private readonly clouds: THREE.Group[] = [];
-  private readonly signs = new Map<string, HTMLElement>();
+  private readonly signs = new Map<string, { el: HTMLElement; key: string }>();
   private theme: Theme = "day";
   private islandRadius = 0;
 
@@ -431,14 +431,18 @@ export class Environment {
       into[0] = w;
       into[1] = h;
     });
-    this.signs.set(ws.id, el);
+    this.signs.set(ws.id, { el, key: "" });
     this.labelSign(ws);
   }
 
-  /** 문패 글자를 갱신한다(워크스페이스 이름이 바뀌거나 herdr 의 초점이 옮겨 갔을 때). */
-  labelSign(ws: WorkspaceView): void {
-    const el = this.signs.get(ws.id);
-    if (!el) return;
+  /** 문패 글자를 갱신한다(워크스페이스 이름이 바뀌거나 herdr 의 초점이 옮겨 갔을 때). 달라진 것이 있으면 true. */
+  labelSign(ws: WorkspaceView): boolean {
+    const entry = this.signs.get(ws.id);
+    if (!entry) return false;
+    const key = `${ws.number}\0${ws.label}\0${ws.focused ? 1 : 0}\0${ws.topic ?? ""}`;
+    if (entry.key === key) return false;
+    entry.key = key;
+    const el = entry.el;
     // 번호와 이름을 따로 둔다 — 자리가 없으면 이름을 접고 번호만 남긴다.
     const name = document.createElement("span");
     name.className = "sign-name";
@@ -448,6 +452,7 @@ export class Environment {
     el.setAttribute("aria-label", ws.number ? `${ws.number} · ${ws.label}` : ws.label);
     el.classList.toggle("focused", ws.focused);
     el.title = ws.topic ? `${ws.label} — ${ws.topic}` : ws.label;
+    return true;
   }
 
   private buildNature(layout: Layout): void {

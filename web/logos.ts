@@ -258,6 +258,21 @@ export function setRosterVisible(visible: boolean): void {
   }
 }
 
+/** 상태 창(#detail) 안에 움직이는 로고 띠가 붙어 있는지. solo 박자가 전체 DOM 을 훑지 않게 한다. */
+export function hasDetailStrip(): boolean {
+  if (activeStrips.size === 0) return false;
+  detailEl ??= document.getElementById("detail");
+  if (!detailEl || detailEl.hidden) return false;
+  for (const strip of activeStrips) {
+    if (!strip.isConnected) {
+      activeStrips.delete(strip);
+      continue;
+    }
+    if (detailEl.contains(strip)) return true;
+  }
+  return false;
+}
+
 /** 모든 로고를 한 칸 넘긴다. 장면이 그리는 프레임 안에서 불린다(beat.ts). */
 export function stepLogos(): void {
   step += 1;

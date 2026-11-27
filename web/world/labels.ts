@@ -110,13 +110,36 @@ function easeOut(p: number): number {
   return 3 * (1 - t) * t * t + t * t * t;
 }
 
-type Rect = [number, number, number, number];
+const DEFAULT_CENTER: readonly [number, number] = [0.5, 1];
 
-/** 두 네모가 겹치는 넓이. */
-function overlap(a: Rect, b: Rect): number {
-  const w = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
-  const h = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
-  return w > 0 && h > 0 ? w * h : 0;
+/** 평탄한 네모 배열([l, t, r, b, ...]) 중 하나라도 겹치는지 본다. */
+function overlapsAny(arr: readonly number[], l: number, t: number, r: number, b: number): boolean {
+  for (let i = 0; i < arr.length; i += 4) {
+    if (l < arr[i + 2]! && r > arr[i]! && t < arr[i + 3]! && b > arr[i + 1]!) return true;
+  }
+  return false;
+}
+
+/** 평탄한 네모 배열([l, t, r, b, ...])과 겹치는 넓이의 합. */
+function overlapSum(arr: readonly number[], l: number, t: number, r: number, b: number): number {
+  let sum = 0;
+  for (let i = 0; i < arr.length; i += 4) {
+    const w = Math.min(r, arr[i + 2]!) - Math.max(l, arr[i]!);
+    if (w <= 0) continue;
+    const h = Math.min(b, arr[i + 3]!) - Math.max(t, arr[i + 1]!);
+    if (h > 0) sum += w * h;
+  }
+  return sum;
+}
+
+function comparePlacing(a: Label, b: Label): number {
+  return a.rank() - b.rank() || (a.order < b.order ? -1 : a.order > b.order ? 1 : 0);
+}
+
+function compareStacked(a: Label, b: Label): number {
+  const ta = a.shifts ? 99 : a.rank();
+  const tb = b.shifts ? 99 : b.rank();
+  return tb - ta || b.depth - a.depth;
 }
 
 const point = new THREE.Vector3();
@@ -124,6 +147,12 @@ const point = new THREE.Vector3();
 export class LabelLayer {
   readonly domElement = document.createElement("div");
   private readonly labels = new Map<HTMLElement, Label>();
+  /** attach·detach 때만 갱신하는 목록 — 매 프레임 [...this.labels.values()] 를 만들지 않는다. */
+  private readonly list: Label[] = [];
+  private readonly placing: Label[] = [];
+  private readonly stacked: Label[] = [];
+  private readonly taken: number[] = [];
+  private readonly wished: number[] = [];
   private readonly measured = new Map<Element, (w: number, h: number) => void>();
   private readonly observer: ResizeObserver;
   private width = 1;
@@ -156,7 +185,9 @@ export class LabelLayer {
     // 자리를 받기 전에는 보이지 않게 둔다(왼쪽 위 구석에 한 프레임 비치지 않도록).
     slot.style.visibility = "hidden";
     slot.append(spec.el);
-    this.labels.set(spec.el, { ...spec, slot, level: 0, lift: 0, shift: 0, shownLift: 0, shownShift: 0, slide: null, roomSince: 0, shown: false, x: 0, y: 0, z: 0, wroteX: NaN, wroteY: NaN, wroteZ: NaN, wroteLift: 0, wroteShift: 0, wroteShown: false, depth: 0 });
+    const label: Label = { ...spec, slot, level: 0, lift: 0, shift: 0, shownLift: 0, shownShift: 0, slide: null, roomSince: 0, shown: false, x: 0, y: 0, z: 0, wroteX: NaN, wroteY: NaN, wroteZ: NaN, wroteLift: 0, wroteShift: 0, wroteShown: false, depth: 0 };
+    this.labels.set(spec.el, label);
+    this.list.push(label);
     this.domElement.append(slot);
     this.dirty = true;
   }
@@ -165,6 +196,8 @@ export class LabelLayer {
     const label = this.labels.get(el);
     if (!label) return;
     this.labels.delete(el);
+    const at = this.list.indexOf(label);
+    if (at >= 0) this.list.splice(at, 1);
     this.unmeasure(el);
     label.slot.remove();
     el.remove();
@@ -186,35 +219,69 @@ export class LabelLayer {
    * 모든 요소를 지금 카메라에 맞춰 놓는다. 장면의 행렬은 방금 그린 프레임의 것을 쓴다.
    * 조금 뒤에 다시 불러야 하면 true 를 돌려준다(자세한 모습으로 돌아가려고 기다리는 이름표가 있다).
    */
-  update(camera: THREE.Camera, now: number): boolean {
+  update(camera: THREE.Camera, now: number, ambient?: boolean): boolean {
     this.dirty = false;
-    const all = [...this.labels.values()];
-    for (const label of all) {
+    const all = this.list;
+    const placing = this.placing;
+    const stacked = this.stacked;
+    const taken = this.taken;
+    const wished = this.wished;
+    placing.length = 0;
+    stacked.length = 0;
+    taken.length = 0;
+    wished.length = 0;
+    let hasShifts = false;
+    for (let i = 0; i < all.length; i += 1) {
+      const label = all[i]!;
       point.setFromMatrixPosition(label.anchor.matrixWorld);
       label.depth = point.distanceToSquared(camera.position);
       point.project(camera);
       label.x = (point.x * 0.5 + 0.5) * this.width;
       label.y = (-point.y * 0.5 + 0.5) * this.height;
-      label.shown =
+      const shown =
         point.z >= -1 && point.z <= 1 && label.x > -OFFSCREEN && label.x < this.width + OFFSCREEN && label.y > -OFFSCREEN && label.y < this.height + OFFSCREEN * 3;
+      label.shown = shown;
+      if (shown) {
+        placing.push(label);
+        stacked.push(label);
+        if (label.shifts) hasShifts = true;
+      }
     }
 
     // 급한 것부터 자리를 잡는다.
-    const placing = all.filter((l) => l.shown).sort((a, b) => a.rank() - b.rank() || (a.order < b.order ? -1 : a.order > b.order ? 1 : 0));
-    const taken: Rect[] = [];
+    placing.sort(comparePlacing);
     // 옆으로 비켜 걸 수 있는 것(문패)은, 다른 이름표들이 다 펴졌을 때 차지할 자리를 미리 보고 덜 가리는 쪽에 건다.
-    const wished = placing.some((l) => l.shifts) ? placing.filter((l) => !l.shifts).map((l) => this.rect(l, l.sizes()[0]!, 0)) : [];
+    if (hasShifts) {
+      for (let i = 0; i < placing.length; i += 1) {
+        const l = placing[i]!;
+        if (l.shifts) continue;
+        const size = l.sizes()[0]!;
+        const [cx, cy] = l.center ?? DEFAULT_CENTER;
+        const pad = GAP / 2;
+        const left = l.x - size[0] * cx;
+        const top = l.y - size[1] * cy;
+        wished.push(left - pad, top - pad, left + size[0] + pad, top + size[1] + pad);
+      }
+    }
     let waiting = false;
-    for (const label of placing) {
+    for (let i = 0; i < placing.length; i += 1) {
+      const label = placing[i]!;
       const sizes = label.sizes();
       const last = sizes.length - 1;
       const pinned = label.pinned?.() ?? false;
-      const overlaps = (r: Rect): boolean => taken.some((t) => r[0] < t[2] && r[2] > t[0] && r[1] < t[3] && r[3] > t[1]);
+      const [cx, cy] = label.center ?? DEFAULT_CENTER;
       if (label.shifts) {
         // 이미 자리 잡은 것과 겹치는 쪽은 피하고, 그다음으로 펴진 이름표를 덜 가리는 쪽. 비슷하면 지금 자리를 지킨다.
+        const s0 = sizes[0]!;
+        const pad = GAP / 2;
         const cost = (shift: number): number => {
-          const r = this.rect(label, sizes[0]!, 0, 0, shift);
-          return (overlaps(r) ? 1e6 : 0) + wished.reduce((sum, w) => sum + overlap(r, w), 0);
+          const left = label.x - s0[0] * (cx - shift);
+          const top = label.y - s0[1] * cy;
+          const rl = left - pad;
+          const rt = top - pad;
+          const rr = left + s0[0] + pad;
+          const rb = top + s0[1] + pad;
+          return (overlapsAny(taken, rl, rt, rr, rb) ? 1e6 : 0) + overlapSum(wished, rl, rt, rr, rb);
         };
         let best = label.shift;
         let least = cost(label.shift) - KEEP_SHIFT;
@@ -236,10 +303,15 @@ export class LabelLayer {
       if (pinned) target = 0;
       // 모습마다, 제자리 → 한 칸 위 순서로 자리를 찾는다. 처음 맞는 자리에 선다.
       for (let level = 0; target < 0 && level <= last; level += 1) {
-        for (const up of lifts) {
+        const size = sizes[level]!;
+        const left = label.x - size[0] * (cx - label.shift);
+        for (let u = 0; u < lifts.length; u += 1) {
+          const up = lifts[u]!;
           // 지금 그렇게 서 있으면 조금 겹쳐도 봐주고, 더 자세한 모습으로 돌아가는 데는 여유를 더 요구한다.
           const slack = level === label.level && up === label.lift ? -STICKY : level < label.level ? STICKY : 0;
-          if (overlaps(this.rect(label, sizes[level]!, slack, up, label.shift))) continue;
+          const pad = GAP / 2 + slack;
+          const top = label.y - size[1] * cy - up;
+          if (overlapsAny(taken, left - pad, top - pad, left + size[0] + pad, top + size[1] + pad)) continue;
           target = level;
           lift = up;
           break;
@@ -249,11 +321,15 @@ export class LabelLayer {
       if (target < 0) {
         target = label.hideable?.() ? last + 1 : last;
         if (target === last) {
+          const size = sizes[last]!;
+          const left = label.x - size[0] * (cx - label.shift);
+          const pad = GAP / 2;
           let least = Number.POSITIVE_INFINITY;
-          for (const up of lifts) {
-            const r = this.rect(label, sizes[last]!, 0, up, label.shift);
+          for (let u = 0; u < lifts.length; u += 1) {
+            const up = lifts[u]!;
+            const top = label.y - size[1] * cy - up;
             // 지금 높이는 조금 봐준다 — 비슷하게 겹치는 두 자리를 오가지 않게.
-            const covered = taken.reduce((sum, t) => sum + overlap(r, t), 0) - (up === label.lift ? KEEP_SHIFT : 0);
+            const covered = overlapSum(taken, left - pad, top - pad, left + size[0] + pad, top + size[1] + pad) - (up === label.lift ? KEEP_SHIFT : 0);
             if (covered < least) {
               least = covered;
               lift = up;
@@ -261,7 +337,13 @@ export class LabelLayer {
           }
         }
       }
-      if (target <= last) taken.push(this.rect(label, sizes[target]!, 0, lift, label.shift));
+      if (target <= last) {
+        const size = sizes[target]!;
+        const pad = GAP / 2;
+        const left = label.x - size[0] * (cx - label.shift);
+        const top = label.y - size[1] * cy - lift;
+        taken.push(left - pad, top - pad, left + size[0] + pad, top + size[1] + pad);
+      }
       if (target > label.level) {
         // 줄어드는 것은 바로.
         label.level = target;
@@ -285,15 +367,13 @@ export class LabelLayer {
 
     // 겹쳤을 때 위에 오는 순서: 급한 것이 위, 같은 급이면 가까운 것이 위. 옆으로 비켜 거는 것(문패)은 맨 아래다 —
     // 문패와 겹치는 것은 자리가 끝내 없어 번호만 남은 이름표뿐인데, 그 작은 번호가 문패 밑에 깔리면 반쯤 잘려 보인다.
-    const tier = (l: Label): number => (l.shifts ? 99 : l.rank());
-    const stacked = all.filter((l) => l.shown).sort((a, b) => tier(b) - tier(a) || b.depth - a.depth);
-    stacked.forEach((label, i) => {
-      label.z = i + 1;
-    });
+    stacked.sort(compareStacked);
+    for (let i = 0; i < stacked.length; i += 1) stacked[i]!.z = i + 1;
 
     // 곁눈질 화면(초당 3장, scene.ts 가 body 에 표시한다)에서는 미끄러뜨리지 않고 바로 선다 — 세 장에 걸쳐 끊겨 보일 뿐이다.
-    const instant = document.body.hasAttribute("data-ambient");
-    for (const label of all) {
+    const instant = ambient ?? document.body.hasAttribute("data-ambient");
+    for (let i = 0; i < all.length; i += 1) {
+      const label = all[i]!;
       if (label.slide) {
         const from = label.slide;
         const k = instant ? 1 : easeOut((now - from.at) / (label.shifts ? SHIFT_MS : LIFT_MS));
@@ -313,7 +393,7 @@ export class LabelLayer {
         label.shownLift !== label.wroteLift ||
         label.shownShift !== label.wroteShift
       ) {
-        const [cx, cy] = label.center ?? [0.5, 1];
+        const [cx, cy] = label.center ?? DEFAULT_CENTER;
         // 옆으로 비켜 거는 것은 제 너비의 배수라 %, 올라서는 것은 px 로 화면 자리와 함께 쓴다.
         label.slot.style.transform = `translate(${(100 * (label.shownShift - cx)).toFixed(2)}%,${-100 * cy}%) translate(${label.x.toFixed(1)}px,${(label.y - label.shownLift).toFixed(1)}px)`;
         label.wroteX = label.x;
@@ -327,15 +407,6 @@ export class LabelLayer {
       }
     }
     return waiting;
-  }
-
-  /** 그 크기로, lift 만큼 올라서고 shift 만큼 옆으로 비켜 놓였을 때 화면에서 차지하는 네모(틈 포함). slack 이 양수면 그만큼 더 넓게 본다. */
-  private rect(label: Label, size: Size, slack: number, lift = 0, shift = 0): Rect {
-    const [cx, cy] = label.center ?? [0.5, 1];
-    const pad = GAP / 2 + slack;
-    const left = label.x - size[0] * (cx - shift);
-    const top = label.y - size[1] * cy - lift;
-    return [left - pad, top - pad, left + size[0] + pad, top + size[1] + pad];
   }
 }
 

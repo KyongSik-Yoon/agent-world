@@ -6,7 +6,7 @@
 // 고정비가 든다 — 그래서 바꿀 것을 장면의 프레임 안에서 바꿔 그 프레임에 묻어 나가게 한다.
 //
 // 장면이 그리지 않는 동안(터미널 크게 보기에 덮였을 때, 탭이 가려졌을 때)에는 박자도 선다.
-import { stepLogos } from "./logos.ts";
+import { hasDetailStrip, stepLogos } from "./logos.ts";
 
 interface Tick {
   /** 박자 사이의 간격(ms). */
@@ -80,7 +80,7 @@ export function setSolo(on: boolean): void {
   const step = (): void => {
     soloTimer = setTimeout(() => {
       // 그 창에 움직일 로고가 없으면 프레임을 걸지 않는다 — 걸기만 해도 브라우저가 화면 합성까지 깨어난다.
-      if (stillness.matches || !document.querySelector("#detail .logo-strip")) return step();
+      if (stillness.matches || !hasDetailStrip()) return step();
       requestAnimationFrame(() => {
         if (!solo) return;
         stepLogos();

@@ -135,6 +135,7 @@ export class Actor {
   private placed = false;
   private dim = 0;
   private arrivedAt = 0;
+  private applied = false;
   private bubbleFor: AgentView | undefined;
   private bubbleFull = false;
   private inTransit = false;
@@ -233,45 +234,65 @@ export class Actor {
     this.apply(view);
   }
 
-  /** 새 스냅샷의 값을 반영한다. */
-  apply(view: AgentView): void {
-    const statusChanged = view.status !== this.view.status;
+  /** 새 스냅샷의 값을 반영한다. 이름표의 모습·크기·차례가 달라졌으면 true. */
+  apply(view: AgentView): boolean {
+    const statusChanged = !this.applied || view.status !== this.view.status;
     this.view = view;
-    const color = STATUS_COLOR[view.status];
-    this.ringMat.color.set(color);
-    this.pillarMat.color.set(color);
-    this.pillar.visible = view.status === "done" || view.status === "blocked";
+    let labelChanged = statusChanged;
+    if (statusChanged) {
+      const color = STATUS_COLOR[view.status];
+      this.ringMat.color.set(color);
+      this.pillarMat.color.set(color);
+      this.pillar.visible = view.status === "done" || view.status === "blocked";
+      this.tag.dataset.status = view.status;
+      if (this.applied) this.nextWanderAt = 0;
+    }
 
-    this.tag.dataset.status = view.status;
-    this.bubble.hidden = bubbleParts(view) === null;
-    this.syncBubble();
-    this.plateNum.textContent = view.workspaceNumber ? String(view.workspaceNumber) : "·";
-    if (this.plateName.textContent !== view.title) this.plateName.textContent = view.title;
+    const hasBubble = bubbleParts(view) !== null;
+    if (!this.applied || this.bubble.hidden === hasBubble) {
+      this.bubble.hidden = !hasBubble;
+      labelChanged = true;
+    }
+    if (this.syncBubble()) labelChanged = true;
+    const numText = view.workspaceNumber ? String(view.workspaceNumber) : "·";
+    if (this.plateNum.textContent !== numText) {
+      this.plateNum.textContent = numText;
+      labelChanged = true;
+    }
+    if (this.plateName.textContent !== view.title) {
+      this.plateName.textContent = view.title;
+      labelChanged = true;
+    }
 
-    if (statusChanged) this.nextWanderAt = 0;
     this.syncFollowers();
     // 차림(Code Mode, 모델)은 로그에서 알게 되고 도중에 바뀌기도 한다. 키가 달라진 만큼 이름표도 옮긴다.
     this.rig.setLook?.(view);
-    this.anchor.position.y = this.rig.height;
+    if (this.anchor.position.y !== this.rig.height) {
+      this.anchor.position.y = this.rig.height;
+      labelChanged = true;
+    }
     // 따라다니는 서브에이전트는 Code Mode 얼굴만 따라 한다 — 모델은 부모와 다를 수 있다.
     for (const f of this.followers) f.rig.setLook?.({ vendor: view.vendor, codeMode: view.codeMode });
+    this.applied = true;
+    return labelChanged;
   }
 
   /** 올리거나 골랐을 때, 그리고 막 끝난 직후에는 긴 말풍선을, 그 밖에는 짧은 것을 보인다. */
-  private syncBubble(): void {
+  private syncBubble(): boolean {
     const full = this.hovered || this.selected || Date.now() - this.view.statusSince < FRESH_DONE_MS;
     // 매 프레임 불리지만 말풍선 글은 스냅샷이 오거나 고르기·올리기가 바뀔 때만 달라진다.
-    if (this.bubbleFor === this.view && this.bubbleFull === full) return;
+    if (this.bubbleFor === this.view && this.bubbleFull === full) return false;
     this.bubbleFor = this.view;
     this.bubbleFull = full;
     const parts = bubbleParts(this.view, full);
-    if (parts === null) return;
+    if (parts === null) return false;
     const key = `${parts.icon ?? ""}\n${parts.text}`;
-    if (this.bubbleKey === key) return;
+    if (this.bubbleKey === key) return false;
     this.bubbleKey = key;
     const text = document.createElement("span");
     text.textContent = parts.text;
     this.bubble.replaceChildren(...(parts.icon ? [icon(parts.icon)] : []), text);
+    return true;
   }
 
   /** 멀리서는 쉬거나 끝난 에이전트의 이름을 접는다(스타일시트의 .far 규칙과 같은 조건). */

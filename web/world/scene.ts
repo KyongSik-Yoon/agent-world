@@ -95,6 +95,19 @@ const FREE_TOP = 120;
 /** 걷는 캐릭터가 없을 때 그림자 지도를 다시 그리는 간격(제자리 몸짓·수정 회전은 초당 ~15회면 충분하다). */
 const SHADOW_MS = 65;
 
+let sharedShellAssets:
+  | { standGeo: THREE.BoxGeometry; standMat: THREE.MeshStandardMaterial; screenGeo: THREE.BoxGeometry; screenMat: THREE.MeshStandardMaterial }
+  | undefined;
+
+function shellAssets() {
+  return (sharedShellAssets ??= {
+    standGeo: new THREE.BoxGeometry(0.62, 0.5, 0.42),
+    standMat: new THREE.MeshStandardMaterial({ color: "#3a4256", roughness: 0.7 }),
+    screenGeo: new THREE.BoxGeometry(0.7, 0.46, 0.06),
+    screenMat: new THREE.MeshStandardMaterial({ color: "#10141f", emissive: "#3ddc97", emissiveIntensity: 0.55, roughness: 0.4 }),
+  });
+}
+
 export class WorldScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly labels = labels;
@@ -105,6 +118,8 @@ export class WorldScene {
   private readonly actors = new Map<string, Actor>();
   /** 매 프레임 [...this.actors.values()] 배열을 새로 만들지 않기 위한 사본(추가·제거 때만 갱신). */
   private actorList: Actor[] = [];
+  /** 포인터 이동마다 새로 만들지 않기 위한 클릭 상자 사본(추가·제거 때만 갱신). */
+  private hitList: THREE.Mesh[] = [];
   private readonly raycaster = new THREE.Raycaster();
   /** 고른 캐릭터까지 시야가 트였는지 보는 광선. */
   private readonly sight = new THREE.Raycaster();
@@ -358,24 +373,27 @@ export class WorldScene {
     // 집터의 구성(어느 스페이스가 어느 저장소의 본채·별채인지)이 바뀔 때만 무대를 다시 짓는다.
     const lots = groupLots(snapshot.workspaces);
     const key = lotsKey(lots);
+    let labelsChanged = false;
     if (key !== this.layoutKey) {
       const first = this.layoutKey === null;
       this.layoutKey = key;
       this.layout = buildLayout(lots);
       this.env.rebuild(this.layout, snapshot.workspaces);
       if (first) this.overview(false);
+      labelsChanged = true;
     } else {
-      for (const ws of snapshot.workspaces) this.env.labelSign(ws);
+      for (const ws of snapshot.workspaces) if (this.env.labelSign(ws)) labelsChanged = true;
     }
 
     const seen = new Set<string>();
+    let actorsChanged = false;
     for (const view of snapshot.agents) {
       seen.add(view.id);
       const actor = this.actors.get(view.id);
       if (actor && actor.view.vendor === view.vendor) {
         // 고른 캐릭터가 다른 자리로 가도(지시를 받아 광장에서 집으로, 일을 마치고 광장으로) 카메라는 따라가지 않는다 —
         // 지시할 때마다 화면이 섬을 가로질러 어지러웠다. 카메라는 고를 때만 움직이고, 다시 보려면 한 번 더 고른다.
-        actor.apply(view);
+        if (actor.apply(view)) labelsChanged = true;
         continue;
       }
       if (actor) this.removeActor(view.id);
@@ -387,35 +405,43 @@ export class WorldScene {
       created.selected = view.id === this.selectedId;
       this.actors.set(view.id, created);
       this.scene.add(created.group);
+      actorsChanged = true;
+      labelsChanged = true;
     }
-    for (const id of [...this.actors.keys()]) if (!seen.has(id)) this.removeActor(id);
-    this.actorList = [...this.actors.values()];
+    for (const id of [...this.actors.keys()]) {
+      if (!seen.has(id)) {
+        this.removeActor(id);
+        actorsChanged = true;
+        labelsChanged = true;
+      }
+    }
+    if (actorsChanged) {
+      this.actorList = [...this.actors.values()];
+      this.hitList = this.actorList.map((a) => a.hit);
+    }
 
-    this.syncShells(snapshot);
+    if (this.syncShells(snapshot)) labelsChanged = true;
     this.place(snapshot.agents);
-    this.labelsDirty = 3;
+    if (labelsChanged) this.labelsDirty = 3;
     const blocked = snapshot.agents.filter((a) => a.status === "blocked").length;
     const done = snapshot.agents.filter((a) => a.status === "done").length;
     this.env.setSignal(blocked, done);
   }
 
   /** 셸 pane 마다 집 앞에 단말기를 하나 세운다. 누르면 그 셸의 터미널을 본다. */
-  private syncShells(snapshot: WorldSnapshot): void {
+  private syncShells(snapshot: WorldSnapshot): boolean {
     const shells = snapshot.panes.filter((p) => !p.agentId && this.layout.plots.has(p.workspaceId));
     const key = `${this.layoutKey}#${shells.map((p) => p.id).join("|")}`;
-    if (key === this.shellKey) return;
+    if (key === this.shellKey) return false;
     this.shellKey = key;
     for (const group of this.shells.values()) {
       this.scene.remove(group);
       group.traverse((o) => {
         if (o.userData.label instanceof HTMLElement) this.labels.detach(o.userData.label);
-        if (o instanceof THREE.Mesh) {
-          o.geometry.dispose();
-          (o.material as THREE.Material).dispose();
-        }
       });
     }
     this.shells.clear();
+    const assets = shells.length > 0 ? shellAssets() : undefined;
     const perPlot = new Map<string, number>();
     for (const pane of shells) {
       const plot = this.layout.plots.get(pane.workspaceId)!;
@@ -424,13 +450,10 @@ export class WorldScene {
       const group = new THREE.Group();
       group.position.copy(shellSpot(plot, k));
       group.rotation.y = plot.facing;
-      const stand = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.5, 0.42), new THREE.MeshStandardMaterial({ color: "#3a4256", roughness: 0.7 }));
+      const stand = new THREE.Mesh(assets!.standGeo, assets!.standMat);
       stand.position.y = 0.25;
       stand.castShadow = true;
-      const screen = new THREE.Mesh(
-        new THREE.BoxGeometry(0.7, 0.46, 0.06),
-        new THREE.MeshStandardMaterial({ color: "#10141f", emissive: "#3ddc97", emissiveIntensity: 0.55, roughness: 0.4 }),
-      );
+      const screen = new THREE.Mesh(assets!.screenGeo, assets!.screenMat);
       screen.position.set(0, 0.76, 0);
       screen.rotation.x = -0.22;
       screen.castShadow = true;
@@ -449,6 +472,7 @@ export class WorldScene {
       this.shells.set(pane.id, group);
       this.scene.add(group);
     }
+    return true;
   }
 
   /** 광장 순번과 집터 안 순번을 매긴다 — 먼저 끝난 에이전트가 광장 앞자리에 선다. */
@@ -726,10 +750,7 @@ export class WorldScene {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects(
-      [...this.actors.values()].map((a) => a.hit),
-      false,
-    );
+    const hits = this.raycaster.intersectObjects(this.hitList, false);
     return (hits[0]?.object.userData.actorId as string | undefined) ?? null;
   }
 
@@ -890,7 +911,7 @@ export class WorldScene {
       if (this.camera.position.distanceTo(this.flight.position) < 0.03) this.flight = null;
     } else if (this.flight) {
       const k = 1 - Math.exp(-flown * 4.2);
-      const offset = this.camera.position.clone().sub(this.controls.target);
+      const offset = this.probe.copy(this.camera.position).sub(this.controls.target);
       const distance = offset.length() + (this.flight.distance - offset.length()) * k;
       this.controls.target.lerp(this.flight.target, k);
       this.camera.position.copy(this.controls.target).addScaledVector(offset.normalize(), distance);
@@ -935,7 +956,7 @@ export class WorldScene {
     const cameraMoved = !this.lastCamera.equals(this.camera.matrixWorld);
     if (cameraMoved || this.walking || this.labelsDirty > 0 || this.labels.dirty) {
       // 자세한 모습으로 돌아가려고 기다리는 이름표가 있으면 다음 프레임에도 본다.
-      if (this.labels.update(this.camera, now)) this.labelsDirty = Math.max(this.labelsDirty, 1);
+      if (this.labels.update(this.camera, now, this.ambient)) this.labelsDirty = Math.max(this.labelsDirty, 1);
       else if (this.labelsDirty > 0) this.labelsDirty -= 1;
       this.lastCamera.copy(this.camera.matrixWorld);
     }

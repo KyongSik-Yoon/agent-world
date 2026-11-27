@@ -123,6 +123,7 @@ export class Hud {
   private statusFilter: AgentStatus | null = null;
   private query = "";
   private readonly rows = new Map<string, HTMLButtonElement>();
+  private readonly groupHeads = new Map<AgentStatus, { el: HTMLDivElement; label: Text }>();
   private readonly chips = document.getElementById("chips")!;
   private readonly list = document.getElementById("roster-list")!;
   private readonly detail = document.getElementById("detail")!;
@@ -205,9 +206,9 @@ export class Hud {
   }
 
   setConnection(state: "live" | "logs" | "down", text: string, why = ""): void {
-    this.conn.dataset.state = state;
-    this.conn.textContent = text;
-    this.conn.title = why;
+    if (this.conn.dataset.state !== state) this.conn.dataset.state = state;
+    if (this.conn.textContent !== text) this.conn.textContent = text;
+    if (this.conn.title !== why) this.conn.title = why;
   }
 
   select(id: string | null): void {
@@ -240,10 +241,13 @@ export class Hud {
     this.renderRoster();
     this.panel.render(this.snapshot, this.selectedId);
     const waiting = this.attention().length;
-    this.nextCount.textContent = String(waiting);
-    this.nextBtn.dataset.hot = String(waiting > 0);
+    const waitingText = String(waiting);
+    if (this.nextCount.textContent !== waitingText) this.nextCount.textContent = waitingText;
+    const hot = String(waiting > 0);
+    if (this.nextBtn.dataset.hot !== hot) this.nextBtn.dataset.hot = hot;
     const name = this.snapshot.session ? `Agent World — ${this.snapshot.session}` : "Agent World";
-    document.title = waiting > 0 ? `(${waiting}) ${name}` : name;
+    const title = waiting > 0 ? `(${waiting}) ${name}` : name;
+    if (document.title !== title) document.title = title;
   }
 
   /** 상태 칩. 한 번 만들어 두고 수와 눌림만 고친다 — 스냅샷마다 새로 만들면 누르는 도중의 단추가 발밑에서 바뀐다. */
@@ -276,9 +280,12 @@ export class Hud {
     }
     for (const [status, { chip, count }] of this.chipEls) {
       const n = agents.filter((a) => (a.status === "unknown" ? "idle" : a.status) === status).length;
-      if (count.textContent !== String(n)) count.textContent = String(n);
-      chip.setAttribute("aria-pressed", String(this.statusFilter === status));
-      chip.dataset.zero = String(n === 0);
+      const nText = String(n);
+      if (count.textContent !== nText) count.textContent = nText;
+      const pressed = String(this.statusFilter === status);
+      if (chip.getAttribute("aria-pressed") !== pressed) chip.setAttribute("aria-pressed", pressed);
+      const zero = String(n === 0);
+      if (chip.dataset.zero !== zero) chip.dataset.zero = zero;
     }
   }
 
@@ -291,9 +298,17 @@ export class Hud {
         .filter((a) => a.status === status)
         .sort((a, b) => (status === "working" ? a.workspaceNumber - b.workspaceNumber : b.statusSince - a.statusSince) || a.id.localeCompare(b.id));
       if (group.length === 0) continue;
-      const head = h("div", { class: "group-head" }, h("i"), `${STATUS_LABEL[status]} ${group.length}`);
-      head.style.setProperty("--c", STATUS_VAR[status]);
-      children.push(head);
+      let head = this.groupHeads.get(status);
+      if (!head) {
+        const label = document.createTextNode("");
+        const el = h("div", { class: "group-head" }, h("i"), label);
+        el.style.setProperty("--c", STATUS_VAR[status]);
+        head = { el, label };
+        this.groupHeads.set(status, head);
+      }
+      const heading = `${STATUS_LABEL[status]} ${group.length}`;
+      if (head.label.data !== heading) head.label.data = heading;
+      children.push(head.el);
       for (const a of group) {
         alive.add(a.id);
         children.push(this.row(a));
@@ -315,10 +330,14 @@ export class Hud {
       children.push(h("div", { class: "empty" }, why));
     }
     // 순서가 그대로면 DOM 을 건드리지 않는다 — 누르려던 행이 발밑에서 바뀌지 않게.
-    const current = [...this.list.childNodes];
-    if (current.length !== children.length || current.some((n, i) => n !== children[i] && !(n instanceof HTMLDivElement && n.isEqualNode(children[i]!)))) {
-      this.list.replaceChildren(...children);
+    const cur = this.list.childNodes;
+    let same = cur.length === children.length;
+    for (let i = 0; same && i < cur.length; i += 1) {
+      const a = cur[i]!;
+      const b = children[i]!;
+      if (a !== b && !(a instanceof HTMLDivElement && a.isEqualNode(b))) same = false;
     }
+    if (!same) this.list.replaceChildren(...children);
   }
 
   private row(a: AgentView): HTMLButtonElement {
