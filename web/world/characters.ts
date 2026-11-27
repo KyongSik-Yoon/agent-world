@@ -6,6 +6,7 @@
 // 그 밖의 벤더는 브랜드 마크를 얼굴에 띄운 로봇이 된다.
 import * as THREE from "three";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 import { brandFor, brandKey, claudeTier, type Brand, type ClaudeTier, type Look } from "../brands.ts";
 
@@ -31,10 +32,14 @@ class Paint {
   private readonly entries: Array<{ mat: THREE.MeshStandardMaterial; base: THREE.Color }> = [];
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly textures: THREE.Texture[] = [];
+  /** 마지막으로 가라앉힌 정도 — 나중에 만든 재질(차림을 바꿀 때 생기는 것)도 같은 빛깔로 시작하게. */
+  private amount = 0;
 
   mat(color: string, opts: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
     const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.78, metalness: 0.02, flatShading: true, ...opts });
-    this.entries.push({ mat, base: mat.color.clone() });
+    const base = mat.color.clone();
+    this.entries.push({ mat, base });
+    if (this.amount) mat.color.copy(base).lerp(DIM_TARGET, this.amount * 0.62);
     return mat;
   }
 
@@ -49,6 +54,7 @@ class Paint {
   }
 
   dim(amount: number): void {
+    this.amount = amount;
     for (const { mat, base } of this.entries) mat.color.copy(base).lerp(DIM_TARGET, amount * 0.62);
   }
 
@@ -116,30 +122,27 @@ function clawd(seed: number): Rig {
 
   const eyes = new THREE.Group();
   eyes.position.set(0, 0.505, BODY_D / 2 + 0.012);
+  const plain = new THREE.Group();
+  eyes.add(plain);
   // Code Mode 의 얼굴: 로고(logos.ts 의 CLAWD_CODE)처럼 눈높이에 어두운 띠를 두르고 그 앞에 `>` 와 `_` 를 밝힌다.
   // 띠는 몸을 한 바퀴 돌아, 뒤돌아 있거나 멀리서 내려다볼 때도 구분된다. 글자는 눈과 한 묶음이라 같이 깜빡인다.
-  const visor = box(paint, BODY_W + 0.03, 0.39, BODY_D + 0.03, paint.mat("#15171E", { roughness: 0.5 }));
-  visor.castShadow = false;
-  visor.position.y = 0.495;
-  visor.visible = false;
-  body.add(visor);
-  const glyphMat = paint.mat("#7DF5C0", { roughness: 0.4, emissive: "#7DF5C0", emissiveIntensity: 0.55 });
-  const prompt = new THREE.Group();
-  prompt.position.set(0, -0.01, 0.012);
-  prompt.visible = false;
-  for (const side of [-1, 1]) {
-    const stroke = box(paint, 0.22, 0.09, 0.04, glyphMat);
-    stroke.castShadow = false;
-    stroke.position.set(-0.33, side * 0.055, 0);
-    stroke.rotation.z = side * -0.524;
-    prompt.add(stroke);
-  }
-  const underscore = box(paint, 0.29, 0.11, 0.04, glyphMat);
-  underscore.castShadow = false;
-  underscore.position.set(0.315, -0.095, 0);
-  prompt.add(underscore);
-  const plain = new THREE.Group();
-  eyes.add(plain, prompt);
+  // Code Mode 주민에게만 만든다. `>` 두 획과 `_` 는 한 덩어리로 합쳐 한 번에 그린다 — 띠와 글자 둘이 눈 넷을 대신해 그리기가 오히려 준다.
+  let face: { visor: THREE.Mesh; prompt: THREE.Mesh } | undefined;
+  const faceOf = (): { visor: THREE.Mesh; prompt: THREE.Mesh } => {
+    if (face) return face;
+    const visor = box(paint, BODY_W + 0.03, 0.39, BODY_D + 0.03, paint.mat("#15171E", { roughness: 0.5 }));
+    visor.castShadow = false;
+    visor.position.y = 0.495;
+    body.add(visor);
+    const strokes = [-1, 1].map((side) => new THREE.BoxGeometry(0.22, 0.09, 0.04).rotateZ(side * -0.524).translate(-0.33, side * 0.055, 0));
+    const merged = mergeGeometries([...strokes, new THREE.BoxGeometry(0.29, 0.11, 0.04).translate(0.315, -0.095, 0)]);
+    for (const g of strokes) g.dispose();
+    const prompt = new THREE.Mesh(paint.geo(merged!), paint.mat("#7DF5C0", { roughness: 0.4, emissive: "#7DF5C0", emissiveIntensity: 0.55 }));
+    prompt.position.set(0, -0.01, 0.012);
+    eyes.add(prompt);
+    face = { visor, prompt };
+    return face;
+  };
   for (const side of [-1, 1]) {
     const eye = box(paint, 0.14, 0.23, 0.04, eyeMat);
     eye.castShadow = false;
@@ -177,15 +180,14 @@ function clawd(seed: number): Rig {
     const R = 0.2;
     const r = 0.06;
     const shape = new THREE.Shape([[0, R], [r, r], [R, 0], [r, -r], [0, -R], [-r, -r], [-R, 0], [-r, r]].map(([x, y]) => new THREE.Vector2(x, y)));
-    const geo = paint.geo(new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: false }));
-    geo.translate(0, 0, -0.025);
-    const star = (mat: THREE.Material, size: number, x: number, y: number): THREE.Group => {
-      const made = new THREE.Group();
-      for (const turn of [0, Math.PI / 2]) {
-        const blade = new THREE.Mesh(geo, mat);
-        blade.rotation.y = turn;
-        made.add(blade);
-      }
+    // 엇갈린 두 장은 한 덩어리로 합쳐 별 하나를 한 번에 그린다.
+    const blade = new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: false }).translate(0, 0, -0.025);
+    const crossed = blade.clone().rotateY(Math.PI / 2);
+    const geo = paint.geo(mergeGeometries([blade, crossed])!);
+    blade.dispose();
+    crossed.dispose();
+    const star = (mat: THREE.Material, size: number, x: number, y: number): THREE.Mesh => {
+      const made = new THREE.Mesh(geo, mat);
       made.scale.setScalar(size);
       made.position.set(x, y, 0);
       return made;
@@ -273,7 +275,8 @@ function clawd(seed: number): Rig {
     setLook(look) {
       const code = look.codeMode === true;
       plain.visible = !code;
-      prompt.visible = visor.visible = code;
+      if (code) faceOf().visor.visible = faceOf().prompt.visible = true;
+      else if (face) face.visor.visible = face.prompt.visible = false;
       const tier = claudeTier(look.model);
       const build = BUILD[tier ?? "opus"];
       tempo = build.tempo;
