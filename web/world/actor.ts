@@ -237,9 +237,11 @@ export class Actor {
 
     if (statusChanged) this.nextWanderAt = 0;
     this.syncFollowers();
-    // 따라다니는 서브에이전트도 같은 세션의 것이라 같은 얼굴을 한다.
-    this.rig.setCodeMode?.(view.codeMode === true);
-    for (const f of this.followers) f.rig.setCodeMode?.(view.codeMode === true);
+    // 차림(Code Mode, 모델)은 로그에서 알게 되고 도중에 바뀌기도 한다. 키가 달라진 만큼 이름표도 옮긴다.
+    this.rig.setLook?.(view);
+    this.anchor.position.y = this.rig.height;
+    // 따라다니는 서브에이전트는 Code Mode 얼굴만 따라 한다 — 모델은 부모와 다를 수 있다.
+    for (const f of this.followers) f.rig.setLook?.({ vendor: view.vendor, codeMode: view.codeMode });
   }
 
   /** 올리거나 골랐을 때, 그리고 막 끝난 직후에는 긴 말풍선을, 그 밖에는 짧은 것을 보인다. */

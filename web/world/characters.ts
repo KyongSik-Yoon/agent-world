@@ -7,20 +7,20 @@
 import * as THREE from "three";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 
-import { brandFor, brandKey, type Brand } from "../brands.ts";
+import { brandFor, brandKey, claudeTier, type Brand, type ClaudeTier, type Look } from "../brands.ts";
 
 export type Pose = "walk" | "work" | "idle" | "sleep" | "cheer" | "alert";
 
 export interface Rig {
   /** 원점이 발밑(지면)인 그룹. */
   group: THREE.Group;
-  /** 이름표를 띄울 높이. */
+  /** 이름표를 띄울 높이. 차림(setLook)에 따라 달라진다. */
   height: number;
   animate(pose: Pose, t: number): void;
   /** 0(원래 색)…1(가라앉은 색). 쉬는 에이전트를 물러나 보이게 한다. */
   setDim(amount: number): void;
-  /** Code Mode 로 뜬 세션의 얼굴로 바꾼다(Clawd 만 — 눈 자리에 `>_`). */
-  setCodeMode?(on: boolean): void;
+  /** 그 주민의 차림으로 바꾼다(Clawd 만): Code Mode 면 얼굴에 띠와 `>_`, 모델 계열마다 머리 위에 얹는 것. */
+  setLook?(look: Look): void;
   dispose(): void;
 }
 
@@ -160,11 +160,57 @@ function clawd(seed: number): Rig {
     return leg;
   });
 
-  return {
+  // 모델 계열은 체급과 빠르기로 가른다(타일 로고 logos.ts 와 같은 규칙): 작고 재빠른 haiku, 조금 작은 sonnet, 기본 크기의 opus,
+  // 가장 크고 느긋한 fable. fable 은 머리 위에 금빛 반짝임이 돈다 — 쓰게 될 때 만든다.
+  const BUILD: Record<ClaudeTier, { scale: number; tempo: number }> = {
+    haiku: { scale: 0.68, tempo: 1.35 },
+    sonnet: { scale: 0.8, tempo: 1.12 },
+    opus: { scale: 1, tempo: 1 },
+    fable: { scale: 1.15, tempo: 0.88 },
+  };
+  const SPARK_Y = BODY_H + 0.34;
+  let tempo = 1;
+  let spark: THREE.Group | undefined;
+  const sparkOf = (): THREE.Group => {
+    if (spark) return spark;
+    // 타일 로고의 네 갈래 별 둘(큰 것과 곁의 작은 것). 납작한 별 두 장을 엇갈려 세워, 돌아도 어느 쪽에서나 별로 보인다.
+    const R = 0.2;
+    const r = 0.06;
+    const shape = new THREE.Shape([[0, R], [r, r], [R, 0], [r, -r], [0, -R], [-r, -r], [-R, 0], [-r, r]].map(([x, y]) => new THREE.Vector2(x, y)));
+    const geo = paint.geo(new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: false }));
+    geo.translate(0, 0, -0.025);
+    const star = (mat: THREE.Material, size: number, x: number, y: number): THREE.Group => {
+      const made = new THREE.Group();
+      for (const turn of [0, Math.PI / 2]) {
+        const blade = new THREE.Mesh(geo, mat);
+        blade.rotation.y = turn;
+        made.add(blade);
+      }
+      made.scale.setScalar(size);
+      made.position.set(x, y, 0);
+      return made;
+    };
+    spark = new THREE.Group();
+    spark.add(
+      star(paint.mat("#FFD766", { roughness: 0.35, emissive: "#FFC93C", emissiveIntensity: 0.6 }), 1, 0, 0),
+      star(paint.mat("#FFE9A6", { roughness: 0.35, emissive: "#FFD766", emissiveIntensity: 0.6 }), 0.42, 0.33, 0.1),
+    );
+    spark.position.y = SPARK_Y;
+    body.add(spark);
+    return spark;
+  };
+  const BASE_HEIGHT = LEG_H + BODY_H + 0.12;
+
+  const rig: Rig = {
     group,
-    height: LEG_H + BODY_H + 0.12,
+    height: BASE_HEIGHT,
     animate(pose, t) {
-      const tt = t + seed;
+      const tt = t * tempo + seed;
+      if (spark?.visible) {
+        spark.children[0]!.rotation.y = t * 1.6;
+        spark.children[1]!.rotation.y = -t * 2.3;
+        spark.position.y = SPARK_Y + Math.sin(t * 2.2 + seed) * 0.03;
+      }
       let bob = 0;
       let lift = 0;
       let tilt = 0;
@@ -224,12 +270,21 @@ function clawd(seed: number): Rig {
       });
     },
     setDim: (a) => paint.dim(a),
-    setCodeMode(on) {
-      plain.visible = !on;
-      prompt.visible = visor.visible = on;
+    setLook(look) {
+      const code = look.codeMode === true;
+      plain.visible = !code;
+      prompt.visible = visor.visible = code;
+      const tier = claudeTier(look.model);
+      const build = BUILD[tier ?? "opus"];
+      tempo = build.tempo;
+      root.scale.setScalar(build.scale);
+      if (tier === "fable") sparkOf().visible = true;
+      else if (spark) spark.visible = false;
+      rig.height = (BASE_HEIGHT + (tier === "fable" ? 0.5 : 0)) * build.scale;
     },
     dispose: () => paint.dispose(),
   };
+  return rig;
 }
 
 // ── Antigravity ──────────────────────────────────────────────────────────────────────────────────

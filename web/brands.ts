@@ -111,10 +111,33 @@ export function brandFor(vendor: string): Brand {
   return BRANDS[brandKey(vendor)] ?? { ...FALLBACK, name: vendor || FALLBACK.name };
 }
 
-/** 브랜드 타일을 SVG 요소로 만든다(로스터 행, 상세 패널 머리). working 이면 직접 만든 로고가 움직인다. codeMode 면 Clawd 가 `>_` 얼굴을 한다. */
-export function brandTile(vendor: string, size: number, working = false, codeMode = false): Element {
-  const key = brandKey(vendor);
-  if (hasLogo(key)) return logoTile(codeMode && key === "claude" ? "claude-code" : key, size, working);
+/** Claude 의 모델 계열 — 캐릭터의 체급을 가른다: 작고 빠른 haiku, 조금 작은 sonnet, 기본 크기의 opus, 가장 크고 반짝이는 fable. */
+export type ClaudeTier = "fable" | "opus" | "sonnet" | "haiku";
+export function claudeTier(model: string | undefined): ClaudeTier | undefined {
+  const m = /fable|mythos|opus|sonnet|haiku/.exec(model?.toLowerCase() ?? "")?.[0];
+  return m === "mythos" ? "fable" : (m as ClaudeTier | undefined);
+}
+
+/** 캐릭터의 차림을 가르는 것: Code Mode 로 떴는지, 어느 모델인지. AgentView 를 그대로 넘기면 된다. */
+export interface Look {
+  vendor: string;
+  codeMode?: boolean;
+  model?: string;
+}
+
+/** 그 차림의 타일 열쇠(logos.ts). 차림이 바뀌었는지도 이것으로 견준다. */
+export function tileLook(a: Look): string {
+  const key = brandKey(a.vendor);
+  if (key !== "claude") return key;
+  const tier = claudeTier(a.model);
+  // opus 는 모르는 모델과 같은 기본 모습이다.
+  return `claude${a.codeMode ? "-code" : ""}${tier && tier !== "opus" ? `+${tier}` : ""}`;
+}
+
+/** 브랜드 타일을 SVG 요소로 만든다(로스터 행, 상세 패널 머리). working 이면 직접 만든 로고가 움직인다. look 을 주면 그 주민의 차림을 한다. */
+export function brandTile(vendor: string, size: number, working = false, look?: Look): Element {
+  const key = look ? tileLook(look) : brandKey(vendor);
+  if (hasLogo(key)) return logoTile(key, size, working);
   const brand = brandFor(vendor);
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");

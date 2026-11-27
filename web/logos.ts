@@ -70,6 +70,25 @@ const CLAWD_CODE = CLAWD.replace(
   </g>`,
 );
 
+// 모델 계열은 체급으로 가른다 — 작고 빠른 haiku, 조금 작은 sonnet, 지금 크기의 opus(모르는 모델도), 가장 높은 fable.
+// 타일은 더 키울 수 없어 fable 은 opus 크기에 머리 위 금빛 반짝임을 띄운다. 섬의 캐릭터(world/characters.ts)도 같은 규칙이다.
+const CLAWD_SCALE: Record<string, number> = { haiku: 0.68, sonnet: 0.8 };
+// 몸과 같이 뜨도록 logo-clawd-float 안에 넣는다. 몸이 가장 떴을 때(-1.4)에도 타일 위(y 3.5)로 거의 잘리지 않는 높이다.
+const CLAWD_SPARK = `<path d="M21 4.9L21.9 6.8L23.8 7.7L21.9 8.6L21 10.5L20.1 8.6L18.2 7.7L20.1 6.8Z" fill="#FFD766"/><path d="M27.6 4.6L28.1 5.7L29.2 6.2L28.1 6.7L27.6 7.8L27.1 6.7L26 6.2L27.1 5.7Z" fill="#FFE9A6"/>`;
+
+/** 차림을 입힌 Clawd. 열쇠는 `claude`, `claude-code`, 그 뒤에 `+fable` 같은 모델 계열(brands.ts 의 tileLook). */
+function clawd(key: string): string {
+  const [base, tier] = key.split("+");
+  let body = base === "claude-code" ? CLAWD_CODE : CLAWD;
+  if (tier === "fable") {
+    const end = body.lastIndexOf("</g>");
+    body = `${body.slice(0, end)}${CLAWD_SPARK}${body.slice(end)}`;
+  }
+  // 발밑(21, 31)을 붙든 채 줄인다 — 작은 모델도 같은 바닥에 선다.
+  const scale = tier ? CLAWD_SCALE[tier] : undefined;
+  return scale ? `<g transform="translate(21 31) scale(${scale}) translate(-21 -31)">${body}</g>` : body;
+}
+
 const AGY_FILL = `<path d="${AGY_ARCH}" fill="#4285F4"/><path d="${AGY_ARCH}" fill="url(#lg-agy-green)"/><path d="${AGY_ARCH}" fill="url(#lg-agy-yellow)"/><path d="${AGY_ARCH}" fill="url(#lg-agy-violet)"/><path d="${AGY_ARCH}" fill="url(#lg-agy-red)"/>`;
 const AGY = `
 <g class="logo-agy-halo" opacity="0.48" filter="url(#lg-agy-glow)">${AGY_FILL}</g>
@@ -124,7 +143,6 @@ const MOTION: Record<string, string> = {
 @keyframes sheen{0%{transform:translateX(0)}48%,100%{transform:translateX(244px)}}
 @keyframes mote{0%{transform:translateY(4px);opacity:0}30%{opacity:.85}100%{transform:translateY(-24px);opacity:0}}`,
 };
-MOTION["claude-code"] = MOTION.claude!;
 // perf-ok-end
 
 interface Logo {
@@ -134,13 +152,21 @@ interface Logo {
   /** 한 바퀴의 길이(초)와 그것을 나눈 칸 수 — 한 칸이 240ms. */
   seconds: number;
   frames: number;
+  /** 한 바퀴의 움직임(MOTION 의 열쇠). */
+  motion: string;
 }
 
-const LOGOS: Record<string, Logo> = {
-  claude: { viewBox: "2 3.5 38 38", body: CLAWD, seconds: 3.84, frames: 16 },
-  "claude-code": { viewBox: "2 3.5 38 38", body: CLAWD_CODE, seconds: 3.84, frames: 16 },
-  agy: { viewBox: "2 4 108 108", body: AGY, seconds: 3.6, frames: 15 },
-};
+const LOGOS = new Map<string, Logo>([["agy", { viewBox: "2 4 108 108", body: AGY, seconds: 3.6, frames: 15, motion: "agy" }]]);
+
+/** 그 열쇠의 로고. Clawd 는 차림(Code Mode, 모델 계열)마다 따로 만들어 둔다 — 띠도 차림마다 따로 굽는다. */
+function logoOf(key: string): Logo | undefined {
+  let logo = LOGOS.get(key);
+  if (!logo && /^claude(-code)?(\+\w+)?$/.test(key)) {
+    logo = { viewBox: "2 3.5 38 38", body: clawd(key), seconds: 3.84, frames: 16, motion: "claude" };
+    LOGOS.set(key, logo);
+  }
+  return logo;
+}
 
 /** 띠의 한 칸 크기(px). 가장 큰 타일(46px)을 2배 밀도로 그릴 만큼. */
 const FRAME_PX = 92;
@@ -164,12 +190,12 @@ function ensureDefs(): void {
 
 /** 직접 만든 로고가 있는 벤더인가. */
 export function hasLogo(key: string): boolean {
-  return key in LOGOS;
+  return logoOf(key) !== undefined;
 }
 
 /** 한 바퀴를 칸칸이 그려 가로로 이어 붙인 띠를 만든다. 그리지 못하면 null — 그때는 멈춘 그림으로 남는다. */
 async function bake(key: string): Promise<string | null> {
-  const logo = LOGOS[key]!;
+  const logo = logoOf(key)!;
   try {
     const canvas = document.createElement("canvas");
     canvas.width = FRAME_PX * logo.frames;
@@ -177,7 +203,7 @@ async function bake(key: string): Promise<string | null> {
     const ctx = canvas.getContext("2d")!;
     for (let i = 0; i < logo.frames; i += 1) {
       const t = ((i / logo.frames) * logo.seconds).toFixed(4);
-      const frame = `<svg xmlns="${NS}" viewBox="${logo.viewBox}" width="${FRAME_PX}" height="${FRAME_PX}" style="--t:-${t}s"><defs>${DEFS}</defs><style>${MOTION[key]}</style>${logo.body}</svg>`;
+      const frame = `<svg xmlns="${NS}" viewBox="${logo.viewBox}" width="${FRAME_PX}" height="${FRAME_PX}" style="--t:-${t}s"><defs>${DEFS}</defs><style>${MOTION[logo.motion]}</style>${logo.body}</svg>`;
       const img = new Image();
       img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(frame)}`;
       await img.decode();
@@ -211,8 +237,9 @@ function play(tile: HTMLElement, key: string, url: string): void {
   const strip = document.createElement("span");
   strip.className = "logo-strip";
   strip.style.backgroundImage = `url(${url})`;
-  strip.dataset.frames = String(LOGOS[key]!.frames);
-  strip.style.width = `${LOGOS[key]!.frames * 100}%`;
+  const frames = logoOf(key)!.frames;
+  strip.dataset.frames = String(frames);
+  strip.style.width = `${frames * 100}%`;
   place(strip);
   tile.append(strip);
 }
@@ -223,9 +250,9 @@ export function logoTile(key: string, size: number, active: boolean): HTMLElemen
   let proto = protos.get(key);
   if (!proto) {
     proto = document.createElementNS(NS, "svg");
-    proto.setAttribute("viewBox", LOGOS[key]!.viewBox);
+    proto.setAttribute("viewBox", logoOf(key)!.viewBox);
     proto.setAttribute("aria-hidden", "true");
-    proto.innerHTML = LOGOS[key]!.body;
+    proto.innerHTML = logoOf(key)!.body;
     protos.set(key, proto);
   }
   const tile = document.createElement("span");

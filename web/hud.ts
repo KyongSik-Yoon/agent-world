@@ -1,6 +1,6 @@
 // 장면 위에 얹는 화면: 상태 칩, 에이전트 목록, 고른 에이전트의 상태 창, 알림.
 import type { AgentStatus, AgentView, WorldSnapshot } from "../shared/types.ts";
-import { brandFor, brandTile } from "./brands.ts";
+import { brandFor, brandTile, tileLook } from "./brands.ts";
 import { setLogoActive } from "./logos.ts";
 import { type Action, DetailPanel, workspaceKey } from "./detail.ts";
 import { STATUS_VAR, h } from "./dom.ts";
@@ -325,7 +325,8 @@ export class Hud {
     let row = this.rows.get(a.id);
     if (!row) {
       row = h("button", { class: "row", type: "button" });
-      row.append(brandTile(a.vendor, 26, false, a.codeMode), h("span", { class: "title" }), h("span", { class: "age" }), h("span", { class: "sub" }));
+      row.dataset.look = tileLook(a);
+      row.append(brandTile(a.vendor, 26, false, a), h("span", { class: "title" }), h("span", { class: "age" }), h("span", { class: "sub" }));
       const id = a.id;
       row.addEventListener("click", () => this.callbacks.onSelect(id));
       // 손가락에는 올려놓기가 없다. 목록을 밀려고 댄 손가락이 그 주민의 이름표를 펴 하던 일이 월드에 비치지 않게 한다.
@@ -333,11 +334,11 @@ export class Hud {
       row.addEventListener("pointerleave", (e) => e.pointerType !== "touch" && this.callbacks.onHover(null));
       this.rows.set(a.id, row);
     }
-    // Code Mode 인지는 첫 지시 뒤 로그에서 알게 된다 — 그때 타일을 바꿔 단다.
-    const code = a.codeMode === true;
-    if ((row.dataset.code === "1") !== code) {
-      row.dataset.code = code ? "1" : "";
-      row.firstElementChild!.replaceWith(brandTile(a.vendor, 26, false, code));
+    // 차림(Code Mode, 모델)은 첫 지시 뒤 로그에서 알게 되고 도중에 바뀌기도 한다 — 그때 타일을 바꿔 단다.
+    const look = tileLook(a);
+    if (row.dataset.look !== look) {
+      row.dataset.look = look;
+      row.firstElementChild!.replaceWith(brandTile(a.vendor, 26, false, a));
     }
     row.dataset.status = a.status;
     row.classList.toggle("selected", a.id === this.selectedId);
