@@ -93,6 +93,8 @@ export interface AgentView {
   model?: string;
   effort?: string;
   permissionMode?: string;
+  /** Code Mode(실험 기능)로 뜬 Claude Code 세션이다 — 로그에서 읽는다. 캐릭터가 다른 얼굴을 한다. */
+  codeMode?: boolean;
   harnessVersion?: string;
   branch?: string;
   /** 마지막 요청의 컨텍스트 크기(입력+캐시 토큰). */

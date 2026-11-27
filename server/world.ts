@@ -223,6 +223,7 @@ export class World {
     view.effort = s.effort;
     if (harness.vendor === "agy" && s.model) ({ model: view.model, effort: view.effort } = splitAgyModel(s.model));
     view.permissionMode = s.permissionMode;
+    if (s.codeMode) view.codeMode = true;
     view.harnessVersion = s.harnessVersion;
     view.branch = s.branch;
     view.contextTokens = s.contextTokens;

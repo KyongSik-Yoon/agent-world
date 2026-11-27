@@ -111,9 +111,10 @@ export function brandFor(vendor: string): Brand {
   return BRANDS[brandKey(vendor)] ?? { ...FALLBACK, name: vendor || FALLBACK.name };
 }
 
-/** 브랜드 타일을 SVG 요소로 만든다(로스터 행, 상세 패널 머리). working 이면 직접 만든 로고가 움직인다. */
-export function brandTile(vendor: string, size: number, working = false): Element {
-  if (hasLogo(brandKey(vendor))) return logoTile(brandKey(vendor), size, working);
+/** 브랜드 타일을 SVG 요소로 만든다(로스터 행, 상세 패널 머리). working 이면 직접 만든 로고가 움직인다. codeMode 면 Clawd 가 `>_` 얼굴을 한다. */
+export function brandTile(vendor: string, size: number, working = false, codeMode = false): Element {
+  const key = brandKey(vendor);
+  if (hasLogo(key)) return logoTile(codeMode && key === "claude" ? "claude-code" : key, size, working);
   const brand = brandFor(vendor);
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");

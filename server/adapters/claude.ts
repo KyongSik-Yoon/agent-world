@@ -36,7 +36,7 @@ function root(): string {
 // `{"type":"…"` 로 시작하는 행은 대화가 아니라 부기 행이다. 그중 쓸 것만 파싱한다 —
 // api-request-blob 같은 행은 수십~수백 KB 라서 JSON 으로 푸는 것 자체가 낭비다.
 const BOOKKEEPING = '{"type":"';
-const WANTED_BOOKKEEPING = ['{"type":"ai-title"', '{"type":"last-prompt"', '{"type":"permission-mode"', '{"type":"queue-operation"'];
+const WANTED_BOOKKEEPING = ['{"type":"ai-title"', '{"type":"last-prompt"', '{"type":"permission-mode"', '{"type":"repl-mode"', '{"type":"queue-operation"'];
 
 /** 사용자 행의 텍스트에서 하네스가 끼워 넣은 꼬리표를 걷어낸다. 사람이 친 말이 아니면 빈 문자열. */
 function userText(raw: string): string {
@@ -290,6 +290,10 @@ export const claudeReader: LogReader<LogSummary> = {
         break;
       case "permission-mode":
         s.permissionMode = str(row.permissionMode) ?? s.permissionMode;
+        break;
+      case "repl-mode":
+        // Code Mode(실험 기능)로 뜬 세션만 이 행을 남긴다 — 평범한 세션의 로그에는 없다. 턴마다 다시 적히므로 마지막 것을 따른다.
+        s.codeMode = row.replMode === true;
         break;
       case "queue-operation": {
         // 일하는 중에 보낸 지시는 줄에 선다. 받은 그 순간 남는 것은 이 행뿐이다 — 턴 사이에 끼워 넣어지면(absorbed_mid_turn)

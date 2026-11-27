@@ -19,6 +19,8 @@ export interface Rig {
   animate(pose: Pose, t: number): void;
   /** 0(원래 색)…1(가라앉은 색). 쉬는 에이전트를 물러나 보이게 한다. */
   setDim(amount: number): void;
+  /** Code Mode 로 뜬 세션의 얼굴로 바꾼다(Clawd 만 — 눈 자리에 `>_`). */
+  setCodeMode?(on: boolean): void;
   dispose(): void;
 }
 
@@ -114,6 +116,30 @@ function clawd(seed: number): Rig {
 
   const eyes = new THREE.Group();
   eyes.position.set(0, 0.505, BODY_D / 2 + 0.012);
+  // Code Mode 의 얼굴: 로고(logos.ts 의 CLAWD_CODE)처럼 눈높이에 어두운 띠를 두르고 그 앞에 `>` 와 `_` 를 밝힌다.
+  // 띠는 몸을 한 바퀴 돌아, 뒤돌아 있거나 멀리서 내려다볼 때도 구분된다. 글자는 눈과 한 묶음이라 같이 깜빡인다.
+  const visor = box(paint, BODY_W + 0.03, 0.39, BODY_D + 0.03, paint.mat("#15171E", { roughness: 0.5 }));
+  visor.castShadow = false;
+  visor.position.y = 0.495;
+  visor.visible = false;
+  body.add(visor);
+  const glyphMat = paint.mat("#7DF5C0", { roughness: 0.4, emissive: "#7DF5C0", emissiveIntensity: 0.55 });
+  const prompt = new THREE.Group();
+  prompt.position.set(0, -0.01, 0.012);
+  prompt.visible = false;
+  for (const side of [-1, 1]) {
+    const stroke = box(paint, 0.22, 0.09, 0.04, glyphMat);
+    stroke.castShadow = false;
+    stroke.position.set(-0.33, side * 0.055, 0);
+    stroke.rotation.z = side * -0.524;
+    prompt.add(stroke);
+  }
+  const underscore = box(paint, 0.29, 0.11, 0.04, glyphMat);
+  underscore.castShadow = false;
+  underscore.position.set(0.315, -0.095, 0);
+  prompt.add(underscore);
+  const plain = new THREE.Group();
+  eyes.add(plain, prompt);
   for (const side of [-1, 1]) {
     const eye = box(paint, 0.14, 0.23, 0.04, eyeMat);
     eye.castShadow = false;
@@ -121,7 +147,7 @@ function clawd(seed: number): Rig {
     const glint = box(paint, 0.05, 0.05, 0.02, glintMat);
     glint.castShadow = false;
     glint.position.set(side * 0.39 - 0.035, 0.07, 0.025);
-    eyes.add(eye, glint);
+    plain.add(eye, glint);
   }
   body.add(eyes);
 
@@ -198,6 +224,10 @@ function clawd(seed: number): Rig {
       });
     },
     setDim: (a) => paint.dim(a),
+    setCodeMode(on) {
+      plain.visible = !on;
+      prompt.visible = visor.visible = on;
+    },
     dispose: () => paint.dispose(),
   };
 }

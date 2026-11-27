@@ -58,6 +58,18 @@ const CLAWD = `
   </g>
 </g>`;
 
+// Code Mode(실험 기능)로 뜬 Clawd: 얼굴에 어두운 터미널 띠를 두르고 눈 자리에 프롬프트 `>_` 를 밝힌다 — 도구를 하나씩 부르는
+// 대신 REPL 에 코드를 쓰는 세션이다. 표정만 바꾸면 목록 크기(26px)와 섬에서 구분이 안 되어, 색(어두운 띠 + 민트)으로 가른다.
+// 글자는 눈과 같은 묶음(logo-clawd-eyes)이라 곁눈질과 깜빡임을 그대로 한다 — 곁눈질(±1.7)에도 띠 밖으로 나가지 않는 자리다.
+const CLAWD_CODE = CLAWD.replace(
+  /<g class="logo-clawd-eyes">[\s\S]*?<\/g>/,
+  `<rect x="8" y="13.2" width="26" height="7.8" fill="#15171E"/><rect x="8" y="13.2" width="26" height="0.8" fill="#3B4150"/><rect x="8" y="20.2" width="26" height="0.8" fill="#07080B"/>
+  <g class="logo-clawd-eyes">
+    <path d="M12.6 14.9L16.2 17.1L12.6 19.3" fill="none" stroke="#7DF5C0" stroke-width="1.8" stroke-linecap="square"/>
+    <rect x="24.4" y="17.9" width="5.8" height="2.2" fill="#7DF5C0"/>
+  </g>`,
+);
+
 const AGY_FILL = `<path d="${AGY_ARCH}" fill="#4285F4"/><path d="${AGY_ARCH}" fill="url(#lg-agy-green)"/><path d="${AGY_ARCH}" fill="url(#lg-agy-yellow)"/><path d="${AGY_ARCH}" fill="url(#lg-agy-violet)"/><path d="${AGY_ARCH}" fill="url(#lg-agy-red)"/>`;
 const AGY = `
 <g class="logo-agy-halo" opacity="0.48" filter="url(#lg-agy-glow)">${AGY_FILL}</g>
@@ -112,6 +124,7 @@ const MOTION: Record<string, string> = {
 @keyframes sheen{0%{transform:translateX(0)}48%,100%{transform:translateX(244px)}}
 @keyframes mote{0%{transform:translateY(4px);opacity:0}30%{opacity:.85}100%{transform:translateY(-24px);opacity:0}}`,
 };
+MOTION["claude-code"] = MOTION.claude!;
 // perf-ok-end
 
 interface Logo {
@@ -125,6 +138,7 @@ interface Logo {
 
 const LOGOS: Record<string, Logo> = {
   claude: { viewBox: "2 3.5 38 38", body: CLAWD, seconds: 3.84, frames: 16 },
+  "claude-code": { viewBox: "2 3.5 38 38", body: CLAWD_CODE, seconds: 3.84, frames: 16 },
   agy: { viewBox: "2 4 108 108", body: AGY, seconds: 3.6, frames: 15 },
 };
 

@@ -17,6 +17,8 @@ export interface LogSummary {
   model?: string;
   effort?: string;
   permissionMode?: string;
+  /** Code Mode(실험 기능)로 뜬 세션인가(Claude Code). */
+  codeMode?: boolean;
   harnessVersion?: string;
   branch?: string;
   cwd?: string;

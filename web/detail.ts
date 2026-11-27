@@ -880,9 +880,9 @@ export class DetailPanel {
     const where = a.workspaceNumber ? a.workspaceLabel : t("{name} (herdr 밖)", { name: a.workspaceLabel });
     const working = a.status === "working";
     const tile = this.setHead(
-      `agent:${a.id}:${a.vendor}`,
+      `agent:${a.id}:${a.vendor}:${a.codeMode ? "code" : ""}`,
       () => {
-        const made = brandTile(a.vendor, 36, working);
+        const made = brandTile(a.vendor, 36, working, a.codeMode);
         const harness = brandFor(a.vendor).name;
         made.setAttribute("role", "img");
         made.setAttribute("aria-label", harness);
@@ -1447,14 +1447,14 @@ export class DetailPanel {
         const section = h("section", { class: "tab" }, head);
         for (const p of panes.filter((x) => x.tabId === tab.id)) {
           const a = p.agentId ? agents.find((x) => x.id === p.agentId) : undefined;
-          if (a) section.append(row(brandTile(a.vendor, 26, a.status === "working"), a.title, `${a.seen ? t("확인함") : STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
+          if (a) section.append(row(brandTile(a.vendor, 26, a.status === "working", a.codeMode), a.title, `${a.seen ? t("확인함") : STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
           else section.append(row(h("span", { class: "shell-tile" }, ">_"), p.label || p.title || t("터미널"), t("셸 · {where}", { where: shortPath(p.cwd) }), p.id));
         }
         parts.push(section);
       }
     } else {
       const section = h("section", {}, h("h3", {}, t("세션")));
-      for (const a of agents) section.append(row(brandTile(a.vendor, 26, a.status === "working"), a.title, `${STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
+      for (const a of agents) section.append(row(brandTile(a.vendor, 26, a.status === "working", a.codeMode), a.title, `${STATUS_LABEL[a.status]} · ${statusAge(a)}`, a.id, a.status));
       parts.push(section);
     }
     this.setBody(...parts);
