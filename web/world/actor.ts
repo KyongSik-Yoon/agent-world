@@ -22,6 +22,7 @@ export const PICK_LAYER = 1;
 const WALK_SPEED = 1.9;
 const RUN_SPEED = 5.2;
 const PILLAR_HEIGHT = 6.5;
+const ORIGIN = new THREE.Vector3();
 
 let beam: THREE.CanvasTexture | undefined;
 let sharedActorGeos: { hitGeo: THREE.BoxGeometry; hitMat: THREE.MeshBasicMaterial; ringGeo: THREE.RingGeometry; pillarGeo: THREE.CylinderGeometry } | undefined;
@@ -138,6 +139,10 @@ export class Actor {
   private bubbleFull = false;
   private inTransit = false;
   private isMoving = false;
+  /** 직전 프레임의 목표 자리 캐시 — 배치·상태·순번이 같으면 매 프레임 Vector3 를 새로 잡지 않는다. */
+  private goalLayout: Layout | undefined;
+  private goalKey = "";
+  private goalSpot: Spot | undefined;
 
   constructor(view: AgentView, onSelect: (id: string) => void, onHover: (id: string | null) => void) {
     this.view = view;
@@ -306,27 +311,32 @@ export class Actor {
   /** 지금 상태에서 가 있어야 할 자리. */
   private goal(layout: Layout, t: number): Spot {
     const plot = layout.plots.get(this.view.workspaceId);
-    const center = new THREE.Vector3();
-    if (!plot) return { pos: plazaSlot(20 + this.placement.plaza), look: center };
-    switch (this.view.status) {
+    const status = this.view.status;
+    if (plot && status === "working" && t >= this.nextWanderAt) {
+      const spots = workSpots(plot);
+      // 같은 집터에서 여럿이 일하면 서로 다른 일터에서 시작해 돌아가며 옮긴다.
+      this.spotIndex = (this.spotIndex + 1 + Math.floor(hash(`${this.view.id}${Math.floor(t)}`) * 2)) % spots.length;
+      this.nextWanderAt = t + 7 + hash(`${this.view.id}w${Math.floor(t)}`) * 9;
+    }
+    const key = `${this.view.workspaceId}|${status}|${this.placement.plaza}|${this.placement.inPlot}|${this.spotIndex}`;
+    if (this.goalSpot && this.goalLayout === layout && this.goalKey === key) return this.goalSpot;
+    this.goalLayout = layout;
+    this.goalKey = key;
+    if (!plot) return (this.goalSpot = { pos: plazaSlot(20 + this.placement.plaza), look: ORIGIN });
+    switch (status) {
       case "done":
-        return { pos: plazaSlot(this.placement.plaza), look: center };
+        return (this.goalSpot = { pos: plazaSlot(this.placement.plaza), look: ORIGIN });
       case "blocked":
-        return { pos: gateSpot(plot, this.placement.inPlot), look: center };
+        return (this.goalSpot = { pos: gateSpot(plot, this.placement.inPlot), look: ORIGIN });
       case "working": {
         const spots = workSpots(plot);
-        if (t >= this.nextWanderAt) {
-          // 같은 집터에서 여럿이 일하면 서로 다른 일터에서 시작해 돌아가며 옮긴다.
-          this.spotIndex = (this.spotIndex + 1 + Math.floor(hash(`${this.view.id}${Math.floor(t)}`) * 2)) % spots.length;
-          this.nextWanderAt = t + 7 + hash(`${this.view.id}w${Math.floor(t)}`) * 9;
-        }
         const spot = spots[(this.spotIndex + this.placement.inPlot) % spots.length]!;
         // 일터보다 일꾼이 많으면 같은 일터의 옆자리에 선다.
         const extra = Math.floor(this.placement.inPlot / spots.length);
-        return extra === 0 ? spot : { pos: spot.pos.clone().addScaledVector(plot.side, extra * 1.35 * plot.scale), look: spot.look };
+        return (this.goalSpot = extra === 0 ? spot : { pos: spot.pos.clone().addScaledVector(plot.side, extra * 1.35 * plot.scale), look: spot.look });
       }
       default:
-        return { pos: restSpot(plot, this.placement.inPlot), look: center };
+        return (this.goalSpot = { pos: restSpot(plot, this.placement.inPlot), look: ORIGIN });
     }
   }
 
@@ -392,12 +402,14 @@ export class Actor {
     this.ring.rotation.z = t * 0.6;
     if (this.pillar.visible) this.pillarMat.opacity = this.muted ? 0.04 : (status === "blocked" ? 0.3 : 0.2) + pulse * 0.1;
 
-    this.followers.forEach((f, i) => {
-      const a = t * 1.3 + (i / Math.max(1, this.followers.length)) * Math.PI * 2;
+    const nFollowers = this.followers.length;
+    for (let i = 0; i < nFollowers; i += 1) {
+      const f = this.followers[i]!;
+      const a = t * 1.3 + (i / nFollowers) * Math.PI * 2;
       f.rig.group.position.set(Math.cos(a) * 1.25, 0, Math.sin(a) * 1.25);
       f.rig.group.rotation.y = -a;
       f.rig.animate("walk", t + i);
-    });
+    }
 
     this.syncBubble();
     this.far = camera.position.distanceTo(pos) > FAR_DISTANCE;

@@ -126,17 +126,30 @@ export interface Spot {
   look: THREE.Vector3;
 }
 
+const workSpotsCache = new WeakMap<Plot, readonly Spot[]>();
+const PLAZA_RINGS = [
+  { r: 3.9, count: 8 },
+  { r: 6.0, count: 12 },
+  { r: 8.6, count: 18 },
+] as const;
+
 /**
  * 마당의 일터들: 작업대, 텃밭, 문 앞, 마당 한가운데. 일하는 에이전트는 이 사이를 오간다.
  * 좌표는 environment.ts 가 놓는 소품의 자리와 맞춰져 있다(집터 안에서 x = 가로, z = -바깥쪽).
+ * Plot 은 배치가 바뀌기 전까지 불변이므로 한 번 계산해 두고 재사용한다.
  */
-export function workSpots(plot: Plot): Spot[] {
-  return [
-    { pos: at(plot, -0.25, -1.7), look: at(plot, -0.25, -2.55) },
-    { pos: at(plot, -1.3, 1.25), look: at(plot, -1.3, 2.3) },
-    { pos: at(plot, 0.85, -0.55), look: at(plot, 2.7, -0.55) },
-    { pos: at(plot, -1.9, 0.2), look: at(plot, -6, 0.2) },
-  ];
+export function workSpots(plot: Plot): readonly Spot[] {
+  let cached = workSpotsCache.get(plot);
+  if (!cached) {
+    cached = [
+      { pos: at(plot, -0.25, -1.7), look: at(plot, -0.25, -2.55) },
+      { pos: at(plot, -1.3, 1.25), look: at(plot, -1.3, 2.3) },
+      { pos: at(plot, 0.85, -0.55), look: at(plot, 2.7, -0.55) },
+      { pos: at(plot, -1.9, 0.2), look: at(plot, -6, 0.2) },
+    ];
+    workSpotsCache.set(plot, cached);
+  }
+  return cached;
 }
 
 /** 집 옆 쉼터. 같은 집터의 k 번째 대기 에이전트 자리 — 집 양옆으로 번갈아 앉는다. */
@@ -157,13 +170,8 @@ export function gateSpot(plot: Plot, k: number): THREE.Vector3 {
 
 /** 광장의 k 번째 자리. 안쪽 고리가 차면 바깥 고리로 넘어간다. */
 export function plazaSlot(k: number): THREE.Vector3 {
-  const rings = [
-    { r: 3.9, count: 8 },
-    { r: 6.0, count: 12 },
-    { r: 8.6, count: 18 },
-  ];
   let i = k;
-  for (const ring of rings) {
+  for (const ring of PLAZA_RINGS) {
     if (i < ring.count) {
       const a = Math.PI / 2 + (i % 2 === 0 ? 1 : -1) * Math.ceil(i / 2) * ((Math.PI * 2) / ring.count);
       return new THREE.Vector3(Math.cos(a) * ring.r, 0, Math.sin(a) * ring.r);

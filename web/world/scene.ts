@@ -103,6 +103,8 @@ export class WorldScene {
   private readonly controls: OrbitControls;
   private readonly env: Environment;
   private readonly actors = new Map<string, Actor>();
+  /** 매 프레임 [...this.actors.values()] 배열을 새로 만들지 않기 위한 사본(추가·제거 때만 갱신). */
+  private actorList: Actor[] = [];
   private readonly raycaster = new THREE.Raycaster();
   /** 고른 캐릭터까지 시야가 트였는지 보는 광선. */
   private readonly sight = new THREE.Raycaster();
@@ -387,6 +389,7 @@ export class WorldScene {
       this.scene.add(created.group);
     }
     for (const id of [...this.actors.keys()]) if (!seen.has(id)) this.removeActor(id);
+    this.actorList = [...this.actors.values()];
 
     this.syncShells(snapshot);
     this.place(snapshot.agents);
@@ -849,7 +852,7 @@ export class WorldScene {
     const dt = Math.min(this.clock.getDelta(), MAX_STEP_S);
     const t = this.clock.elapsedTime;
 
-    const actors = [...this.actors.values()];
+    const actors = this.actorList;
     let walking = false;
     for (const actor of actors) {
       actor.update(t, dt, this.layout, this.camera);

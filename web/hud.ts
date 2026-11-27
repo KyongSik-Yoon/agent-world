@@ -340,17 +340,20 @@ export class Hud {
       row.dataset.look = look;
       row.firstElementChild!.replaceWith(brandTile(a.vendor, 26, false, a));
     }
-    row.dataset.status = a.status;
+    if (row.dataset.status !== a.status) row.dataset.status = a.status;
     row.classList.toggle("selected", a.id === this.selectedId);
     row.classList.toggle("hovered", a.id === this.hoveredId);
     const [tile, title, age, sub] = row.children as unknown as [Element, HTMLElement, HTMLElement, HTMLElement];
     setLogoActive(tile, a.status === "working");
-    title.textContent = a.title;
-    age.textContent = statusAge(a);
+    if (title.textContent !== a.title) title.textContent = a.title;
+    const ageText = statusAge(a);
+    if (age.textContent !== ageText) age.textContent = ageText;
     const where = a.workspaceNumber ? `${a.workspaceNumber} · ${a.workspaceLabel}` : a.workspaceLabel;
     const doing = a.status === "working" || a.status === "blocked" ? bubbleText(a) : null;
-    sub.textContent = doing ? `${where} — ${doing}` : where;
-    row.title = `${a.title}\n${where}`;
+    const subText = doing ? `${where} — ${doing}` : where;
+    if (sub.textContent !== subText) sub.textContent = subText;
+    const tip = `${a.title}\n${where}`;
+    if (row.title !== tip) row.title = tip;
     return row;
   }
 
