@@ -30,8 +30,6 @@ const DIM_TARGET = new THREE.Color("#7f8696");
 /** 재질을 만들어 주고, 원래 색을 기억했다가 한꺼번에 가라앉히거나 되돌린다. */
 class Paint {
   private readonly entries: Array<{ mat: THREE.MeshStandardMaterial; base: THREE.Color }> = [];
-  private readonly geometries: THREE.BufferGeometry[] = [];
-  private readonly textures: THREE.Texture[] = [];
   /** 마지막으로 가라앉힌 정도 — 나중에 만든 재질(차림을 바꿀 때 생기는 것)도 같은 빛깔로 시작하게. */
   private amount = 0;
 
@@ -43,16 +41,6 @@ class Paint {
     return mat;
   }
 
-  geo<T extends THREE.BufferGeometry>(g: T): T {
-    this.geometries.push(g);
-    return g;
-  }
-
-  tex<T extends THREE.Texture>(t: T): T {
-    this.textures.push(t);
-    return t;
-  }
-
   dim(amount: number): void {
     this.amount = amount;
     for (const { mat, base } of this.entries) mat.color.copy(base).lerp(DIM_TARGET, amount * 0.62);
@@ -60,15 +48,7 @@ class Paint {
 
   dispose(): void {
     for (const { mat } of this.entries) mat.dispose();
-    for (const g of this.geometries) g.dispose();
-    for (const t of this.textures) t.dispose();
   }
-}
-
-function box(paint: Paint, w: number, h: number, d: number, mat: THREE.Material): THREE.Mesh {
-  const mesh = new THREE.Mesh(paint.geo(new THREE.BoxGeometry(w, h, d)), mat);
-  mesh.castShadow = true;
-  return mesh;
 }
 
 /** 깜빡임: 대부분 1, 몇 초에 한 번 잠깐 0 에 가깝게. */
@@ -81,16 +61,86 @@ function blink(t: number, offset: number): number {
 // 상태줄 로고의 42×42 격자: 몸통 x8..34 y11..27, 팔 y19..23, 다리 y27..31, 눈 y14.6..19.2.
 // 20px = 1 단위로 옮긴다.
 
+const CLAWD_LEG_H = 0.27;
+const CLAWD_BODY_W = 1.3;
+const CLAWD_BODY_H = 0.8;
+const CLAWD_BODY_D = 0.86;
+const CLAWD_LEG_X = [-0.5875, -0.3875, 0.3875, 0.5875] as const;
+
+interface ClawdGeos {
+  torso: THREE.BufferGeometry;
+  cap: THREE.BufferGeometry;
+  arm: THREE.BufferGeometry;
+  legA: THREE.BufferGeometry;
+  legB: THREE.BufferGeometry;
+  eyes: THREE.BufferGeometry;
+  glints: THREE.BufferGeometry;
+  visor?: THREE.BufferGeometry;
+  prompt?: THREE.BufferGeometry;
+  spark?: THREE.BufferGeometry;
+}
+
+let clawdGeosCache: ClawdGeos | undefined;
+
+/** 여러 임시 지오메트리를 하나로 합치고 원본을 정리한다. 모든 같은 종 캐릭터가 공유해 장당 그리기 호출과 버퍼를 아낀다. */
+function mergeOwned(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const merged = mergeGeometries(parts)!;
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+function clawdGeos(): ClawdGeos {
+  if (clawdGeosCache) return clawdGeosCache;
+  // 다리 1·3 과 2·4 는 걷기·웅크리기 높이·비율이 항상 같아 쌍마다 한 덩어리로 합쳐 그린다.
+  const pair = (indices: readonly [number, number], z: number): THREE.BufferGeometry =>
+    mergeOwned(indices.map((idx) => new THREE.BoxGeometry(0.13, CLAWD_LEG_H + 0.04, 0.13).translate(CLAWD_LEG_X[idx]!, 0, z)));
+  clawdGeosCache = {
+    torso: new THREE.BoxGeometry(CLAWD_BODY_W, CLAWD_BODY_H, CLAWD_BODY_D),
+    cap: new THREE.BoxGeometry(CLAWD_BODY_W - 0.14, 0.05, CLAWD_BODY_D - 0.14),
+    arm: new THREE.BoxGeometry(0.22, 0.2, 0.32),
+    legA: pair([0, 2], 0.2),
+    legB: pair([1, 3], -0.2),
+    eyes: mergeOwned([-1, 1].map((side) => new THREE.BoxGeometry(0.14, 0.23, 0.04).translate(side * 0.39, 0, 0))),
+    glints: mergeOwned([-1, 1].map((side) => new THREE.BoxGeometry(0.05, 0.05, 0.02).translate(side * 0.39 - 0.035, 0.07, 0.025))),
+  };
+  return clawdGeosCache;
+}
+
+function clawdFaceGeos(): { visor: THREE.BufferGeometry; prompt: THREE.BufferGeometry } {
+  const g = clawdGeos();
+  if (!g.visor) g.visor = new THREE.BoxGeometry(CLAWD_BODY_W + 0.03, 0.39, CLAWD_BODY_D + 0.03);
+  if (!g.prompt) {
+    const strokes = [-1, 1].map((side) => new THREE.BoxGeometry(0.22, 0.09, 0.04).rotateZ(side * -0.524).translate(-0.33, side * 0.055, 0));
+    g.prompt = mergeOwned([...strokes, new THREE.BoxGeometry(0.29, 0.11, 0.04).translate(0.315, -0.095, 0)]);
+  }
+  return { visor: g.visor, prompt: g.prompt };
+}
+
+function clawdSparkGeo(): THREE.BufferGeometry {
+  const g = clawdGeos();
+  if (g.spark) return g.spark;
+  // 타일 로고의 네 갈래 별 둘(큰 것과 곁의 작은 것). 납작한 별 두 장을 엇갈려 세워, 돌아도 어느 쪽에서나 별로 보인다.
+  const R = 0.2;
+  const r = 0.06;
+  const shape = new THREE.Shape([[0, R], [r, r], [R, 0], [r, -r], [0, -R], [-r, -r], [-R, 0], [-r, r]].map(([x, y]) => new THREE.Vector2(x, y)));
+  // 엇갈린 두 장은 한 덩어리로 합쳐 별 하나를 한 번에 그린다.
+  const blade = new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: false }).translate(0, 0, -0.025);
+  const crossed = blade.clone().rotateY(Math.PI / 2);
+  g.spark = mergeOwned([blade, crossed]);
+  return g.spark;
+}
+
 function clawd(seed: number): Rig {
   const paint = new Paint();
+  const geos = clawdGeos();
   const group = new THREE.Group();
   const root = new THREE.Group();
   group.add(root);
 
-  const LEG_H = 0.27;
-  const BODY_W = 1.3;
-  const BODY_H = 0.8;
-  const BODY_D = 0.86;
+  const LEG_H = CLAWD_LEG_H;
+  const BODY_W = CLAWD_BODY_W;
+  const BODY_H = CLAWD_BODY_H;
+  const BODY_D = CLAWD_BODY_D;
 
   const bodyMat = paint.mat("#D77757");
   const armMat = paint.mat("#C4603F");
@@ -102,11 +152,13 @@ function clawd(seed: number): Rig {
   body.position.y = LEG_H;
   root.add(body);
 
-  const torso = box(paint, BODY_W, BODY_H, BODY_D, bodyMat);
+  const torso = new THREE.Mesh(geos.torso, bodyMat);
+  torso.castShadow = true;
   torso.position.y = BODY_H / 2;
   body.add(torso);
   // 윗면의 밝은 베벨 띠 — 로고의 하이라이트 면.
-  const cap = box(paint, BODY_W - 0.14, 0.05, BODY_D - 0.14, paint.mat("#F09676"));
+  const cap = new THREE.Mesh(geos.cap, paint.mat("#F09676"));
+  cap.castShadow = true;
   cap.position.y = BODY_H + 0.012;
   body.add(cap);
 
@@ -114,7 +166,8 @@ function clawd(seed: number): Rig {
   for (const side of [-1, 1]) {
     const arm = new THREE.Group();
     arm.position.set(side * (BODY_W / 2 + 0.09), 0.3, 0);
-    const mesh = box(paint, 0.22, 0.2, 0.32, armMat);
+    const mesh = new THREE.Mesh(geos.arm, armMat);
+    mesh.castShadow = true;
     arm.add(mesh);
     body.add(arm);
     arms.push(arm);
@@ -130,38 +183,29 @@ function clawd(seed: number): Rig {
   let face: { visor: THREE.Mesh; prompt: THREE.Mesh } | undefined;
   const faceOf = (): { visor: THREE.Mesh; prompt: THREE.Mesh } => {
     if (face) return face;
-    const visor = box(paint, BODY_W + 0.03, 0.39, BODY_D + 0.03, paint.mat("#15171E", { roughness: 0.5 }));
-    visor.castShadow = false;
+    const fg = clawdFaceGeos();
+    const visor = new THREE.Mesh(fg.visor, paint.mat("#15171E", { roughness: 0.5 }));
     visor.position.y = 0.495;
     body.add(visor);
-    const strokes = [-1, 1].map((side) => new THREE.BoxGeometry(0.22, 0.09, 0.04).rotateZ(side * -0.524).translate(-0.33, side * 0.055, 0));
-    const merged = mergeGeometries([...strokes, new THREE.BoxGeometry(0.29, 0.11, 0.04).translate(0.315, -0.095, 0)]);
-    for (const g of strokes) g.dispose();
-    const prompt = new THREE.Mesh(paint.geo(merged!), paint.mat("#7DF5C0", { roughness: 0.4, emissive: "#7DF5C0", emissiveIntensity: 0.55 }));
+    const prompt = new THREE.Mesh(fg.prompt, paint.mat("#7DF5C0", { roughness: 0.4, emissive: "#7DF5C0", emissiveIntensity: 0.55 }));
     prompt.position.set(0, -0.01, 0.012);
     eyes.add(prompt);
     face = { visor, prompt };
     return face;
   };
-  for (const side of [-1, 1]) {
-    const eye = box(paint, 0.14, 0.23, 0.04, eyeMat);
-    eye.castShadow = false;
-    eye.position.x = side * 0.39;
-    const glint = box(paint, 0.05, 0.05, 0.02, glintMat);
-    glint.castShadow = false;
-    glint.position.set(side * 0.39 - 0.035, 0.07, 0.025);
-    plain.add(eye, glint);
-  }
+  const eyeMesh = new THREE.Mesh(geos.eyes, eyeMat);
+  const glintMesh = new THREE.Mesh(geos.glints, glintMat);
+  plain.add(eyeMesh, glintMesh);
   body.add(eyes);
 
-  // 다리 4개: 로고와 같은 x 위치에, 앞뒤로 엇갈려 선다. 1·3 과 2·4 가 번갈아 걷는다.
-  const legX = [-0.5875, -0.3875, 0.3875, 0.5875];
-  const legs = legX.map((x, i) => {
-    const leg = box(paint, 0.13, LEG_H + 0.04, 0.13, legMat);
-    leg.position.set(x, LEG_H / 2, i % 2 === 0 ? 0.2 : -0.2);
-    root.add(leg);
-    return leg;
-  });
+  // 다리 4개(1·3 과 2·4 쌍으로 병합): 로고와 같은 x 위치에 앞뒤로 엇갈려 서서 번갈아 걷는다.
+  const legA = new THREE.Mesh(geos.legA, legMat);
+  legA.castShadow = true;
+  legA.position.y = LEG_H / 2;
+  const legB = new THREE.Mesh(geos.legB, legMat);
+  legB.castShadow = true;
+  legB.position.y = LEG_H / 2;
+  root.add(legA, legB);
 
   // 모델 계열은 체급과 빠르기로 가른다(타일 로고 logos.ts 와 같은 규칙): 작고 재빠른 haiku, 조금 작은 sonnet, 기본 크기의 opus,
   // 가장 크고 느긋한 fable. fable 은 머리 위에 금빛 반짝임이 돈다 — 쓰게 될 때 만든다.
@@ -176,16 +220,7 @@ function clawd(seed: number): Rig {
   let spark: THREE.Group | undefined;
   const sparkOf = (): THREE.Group => {
     if (spark) return spark;
-    // 타일 로고의 네 갈래 별 둘(큰 것과 곁의 작은 것). 납작한 별 두 장을 엇갈려 세워, 돌아도 어느 쪽에서나 별로 보인다.
-    const R = 0.2;
-    const r = 0.06;
-    const shape = new THREE.Shape([[0, R], [r, r], [R, 0], [r, -r], [0, -R], [-r, -r], [-R, 0], [-r, r]].map(([x, y]) => new THREE.Vector2(x, y)));
-    // 엇갈린 두 장은 한 덩어리로 합쳐 별 하나를 한 번에 그린다.
-    const blade = new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: false }).translate(0, 0, -0.025);
-    const crossed = blade.clone().rotateY(Math.PI / 2);
-    const geo = paint.geo(mergeGeometries([blade, crossed])!);
-    blade.dispose();
-    crossed.dispose();
+    const geo = clawdSparkGeo();
     const star = (mat: THREE.Material, size: number, x: number, y: number): THREE.Mesh => {
       const made = new THREE.Mesh(geo, mat);
       made.scale.setScalar(size);
@@ -266,10 +301,11 @@ function clawd(seed: number): Rig {
       arms[1]!.rotation.x = armR;
       arms[0]!.position.y = arms[1]!.position.y = 0.3 + armY;
       eyes.scale.y = eyeY;
-      legs.forEach((leg, i) => {
-        leg.scale.y = 1 - crouch * 0.6;
-        leg.position.y = (LEG_H / 2) * (1 - crouch * 0.6) + (i % 2 === 0 ? stepA : stepB);
-      });
+      const legScale = 1 - crouch * 0.6;
+      const legBaseY = (LEG_H / 2) * legScale;
+      legA.scale.y = legB.scale.y = legScale;
+      legA.position.y = legBaseY + stepA;
+      legB.position.y = legBaseY + stepB;
     },
     setDim: (a) => paint.dim(a),
     setLook(look) {
@@ -345,8 +381,22 @@ function agyPoint(x: number, y: number, z: number): THREE.Vector3 {
   return new THREE.Vector3((x - 56) * AGY_SCALE, (96 - y) * AGY_SCALE, z * AGY_SCALE);
 }
 
+let agyPartGeosCache: { eyes: THREE.BufferGeometry; pupils: THREE.BufferGeometry; mote: THREE.BufferGeometry } | undefined;
+
+function agyPartGeos(): { eyes: THREE.BufferGeometry; pupils: THREE.BufferGeometry; mote: THREE.BufferGeometry } {
+  if (agyPartGeosCache) return agyPartGeosCache;
+  const xs = [49.5, 62.5];
+  agyPartGeosCache = {
+    eyes: mergeOwned(xs.map((x) => { const at = agyPoint(x, 37, 11.2); return new THREE.SphereGeometry(0.062, 12, 10).translate(at.x, at.y, at.z); })),
+    pupils: mergeOwned(xs.map((x) => { const at = agyPoint(x, 37, 11.2); return new THREE.SphereGeometry(0.034, 10, 8).translate(at.x, at.y, at.z + 0.04); })),
+    mote: new THREE.SphereGeometry(0.045, 8, 6),
+  };
+  return agyPartGeosCache;
+}
+
 function antigravity(seed: number): Rig {
   const paint = new Paint();
+  const partGeos = agyPartGeos();
   const group = new THREE.Group();
   const root = new THREE.Group();
   group.add(root);
@@ -358,23 +408,13 @@ function antigravity(seed: number): Rig {
   const eyeMat = paint.mat("#FFFFFF", { roughness: 0.3, flatShading: false });
   const pupilMat = paint.mat("#16233F", { roughness: 0.3, flatShading: false });
   const eyes = new THREE.Group();
-  const eyeGeo = paint.geo(new THREE.SphereGeometry(0.062, 12, 10));
-  const pupilGeo = paint.geo(new THREE.SphereGeometry(0.034, 10, 8));
-  for (const x of [49.5, 62.5]) {
-    const at = agyPoint(x, 37, 11.2);
-    const eye = new THREE.Mesh(eyeGeo, eyeMat);
-    eye.position.copy(at);
-    const pupil = new THREE.Mesh(pupilGeo, pupilMat);
-    pupil.position.copy(at).add(new THREE.Vector3(0, 0, 0.04));
-    eyes.add(eye, pupil);
-  }
+  eyes.add(new THREE.Mesh(partGeos.eyes, eyeMat), new THREE.Mesh(partGeos.pupils, pupilMat));
   root.add(eyes);
 
   // 반중력 광입자: 아치 아래에서 떠오르며 사라진다.
   const moteMat = paint.mat("#8AB4F8", { emissive: "#669DF6", emissiveIntensity: 1.4, flatShading: false });
-  const moteGeo = paint.geo(new THREE.SphereGeometry(0.045, 8, 6));
   const motes = [0, 1, 2].map((i) => {
-    const mote = new THREE.Mesh(moteGeo, moteMat);
+    const mote = new THREE.Mesh(partGeos.mote, moteMat);
     mote.userData.phase = i / 3;
     mote.userData.x = (i - 1) * 0.16;
     group.add(mote);
@@ -469,9 +509,47 @@ function faceTexture(brand: Brand): THREE.CanvasTexture {
   return tex;
 }
 
+const robotFaceMats = new Map<string, THREE.MeshBasicMaterial>();
+interface RobotGeos {
+  leg: THREE.BufferGeometry;
+  torso: THREE.BufferGeometry;
+  skull: THREE.BufferGeometry;
+  face: THREE.BufferGeometry;
+  antenna: THREE.BufferGeometry;
+  bulb: THREE.BufferGeometry;
+  arm: THREE.BufferGeometry;
+}
+let robotGeosCache: RobotGeos | undefined;
+const ROBOT_LEG_H = 0.22;
+
+function robotGeos(): RobotGeos {
+  if (robotGeosCache) return robotGeosCache;
+  robotGeosCache = {
+    leg: new THREE.BoxGeometry(0.16, ROBOT_LEG_H + 0.04, 0.18),
+    torso: new THREE.BoxGeometry(0.66, 0.42, 0.5),
+    skull: new THREE.BoxGeometry(0.96, 0.7, 0.72),
+    face: new THREE.PlaneGeometry(0.6, 0.6),
+    antenna: new THREE.BoxGeometry(0.04, 0.2, 0.04),
+    bulb: new THREE.SphereGeometry(0.07, 10, 8),
+    arm: new THREE.BoxGeometry(0.14, 0.34, 0.16),
+  };
+  return robotGeosCache;
+}
+
+function robotFaceMat(vendor: string, brand: Brand): THREE.MeshBasicMaterial {
+  const key = brandKey(vendor);
+  let mat = robotFaceMats.get(key);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ map: faceTexture(brand) });
+    robotFaceMats.set(key, mat);
+  }
+  return mat;
+}
+
 function robot(vendor: string, seed: number): Rig {
   const brand = brandFor(vendor);
   const paint = new Paint();
+  const geos = robotGeos();
   const group = new THREE.Group();
   const root = new THREE.Group();
   group.add(root);
@@ -486,47 +564,49 @@ function robot(vendor: string, seed: number): Rig {
   const shellHex = `#${shell.getHexString()}`;
   const accent = brand.accent ?? "#C9D1E3";
 
-  const LEG_H = 0.22;
+  const LEG_H = ROBOT_LEG_H;
   const shellMat = paint.mat(shellHex, { roughness: 0.55 });
   const jointMat = paint.mat("#3A4052");
   const accentMat = paint.mat(accent, { emissive: accent, emissiveIntensity: 0.9 });
 
-  const legs = [-0.2, 0.2].map((x) => {
-    const leg = box(paint, 0.16, LEG_H + 0.04, 0.18, jointMat);
-    leg.position.set(x, LEG_H / 2, 0);
-    root.add(leg);
-    return leg;
-  });
+  const legL = new THREE.Mesh(geos.leg, jointMat);
+  legL.castShadow = true;
+  legL.position.set(-0.2, LEG_H / 2, 0);
+  const legR = new THREE.Mesh(geos.leg, jointMat);
+  legR.castShadow = true;
+  legR.position.set(0.2, LEG_H / 2, 0);
+  root.add(legL, legR);
 
   const body = new THREE.Group();
   body.position.y = LEG_H;
   root.add(body);
-  const torso = box(paint, 0.66, 0.42, 0.5, shellMat);
+  const torso = new THREE.Mesh(geos.torso, shellMat);
+  torso.castShadow = true;
   torso.position.y = 0.21;
   body.add(torso);
 
   const head = new THREE.Group();
   head.position.y = 0.46;
   body.add(head);
-  const skull = box(paint, 0.96, 0.7, 0.72, shellMat);
+  const skull = new THREE.Mesh(geos.skull, shellMat);
+  skull.castShadow = true;
   skull.position.y = 0.35;
   head.add(skull);
-  const face = new THREE.Mesh(
-    paint.geo(new THREE.PlaneGeometry(0.6, 0.6)),
-    new THREE.MeshBasicMaterial({ map: paint.tex(faceTexture(brand)) }),
-  );
+  const face = new THREE.Mesh(geos.face, robotFaceMat(vendor, brand));
   face.position.set(0, 0.35, 0.365);
   head.add(face);
-  const antenna = box(paint, 0.04, 0.2, 0.04, jointMat);
+  const antenna = new THREE.Mesh(geos.antenna, jointMat);
+  antenna.castShadow = true;
   antenna.position.y = 0.8;
-  const bulb = new THREE.Mesh(paint.geo(new THREE.SphereGeometry(0.07, 10, 8)), accentMat);
+  const bulb = new THREE.Mesh(geos.bulb, accentMat);
   bulb.position.y = 0.94;
   head.add(antenna, bulb);
 
   const arms = [-1, 1].map((side) => {
     const arm = new THREE.Group();
     arm.position.set(side * 0.42, 0.34, 0);
-    const mesh = box(paint, 0.14, 0.34, 0.16, jointMat);
+    const mesh = new THREE.Mesh(geos.arm, jointMat);
+    mesh.castShadow = true;
     mesh.position.y = -0.13;
     arm.add(mesh);
     body.add(arm);
@@ -585,10 +665,11 @@ function robot(vendor: string, seed: number): Rig {
       arms[0]!.rotation.set(armL, 0, -armRoll);
       arms[1]!.rotation.set(armR, 0, armRoll);
       accentMat.emissiveIntensity = glow;
-      legs.forEach((leg, i) => {
-        leg.scale.y = 1 - crouch * 0.6;
-        leg.position.y = (LEG_H / 2) * (1 - crouch * 0.6) + (i === 0 ? stepA : stepB);
-      });
+      const legScale = 1 - crouch * 0.6;
+      const legBaseY = (LEG_H / 2) * legScale;
+      legL.scale.y = legR.scale.y = legScale;
+      legL.position.y = legBaseY + stepA;
+      legR.position.y = legBaseY + stepB;
     },
     setDim: (a) => paint.dim(a),
     dispose: () => paint.dispose(),

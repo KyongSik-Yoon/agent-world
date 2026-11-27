@@ -24,6 +24,16 @@ const RUN_SPEED = 5.2;
 const PILLAR_HEIGHT = 6.5;
 
 let beam: THREE.CanvasTexture | undefined;
+let sharedActorGeos: { hitGeo: THREE.BoxGeometry; hitMat: THREE.MeshBasicMaterial; ringGeo: THREE.RingGeometry; pillarGeo: THREE.CylinderGeometry } | undefined;
+
+function actorGeos() {
+  return (sharedActorGeos ??= {
+    hitGeo: new THREE.BoxGeometry(1.7, 2.0, 1.4),
+    hitMat: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }),
+    ringGeo: new THREE.RingGeometry(0.78, 0.95, 40),
+    pillarGeo: new THREE.CylinderGeometry(0.5, 0.78, PILLAR_HEIGHT, 24, 1, true),
+  });
+}
 
 /** 빛기둥의 세로 농도: 바닥에서 부드럽게 차올라 캐릭터 키 언저리에서 가장 짙고, 위로 갈수록 사라진다. */
 function beamTexture(): THREE.CanvasTexture {
@@ -139,10 +149,8 @@ export class Actor {
     this.group.add(this.rig.group);
 
     // 클릭을 받는 넉넉한 투명 상자 — 가느다란 다리나 아치 사이를 눌러도 잡힌다.
-    this.hit = new THREE.Mesh(
-      new THREE.BoxGeometry(1.7, 2.0, 1.4),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }),
-    );
+    const geos = actorGeos();
+    this.hit = new THREE.Mesh(geos.hitGeo, geos.hitMat);
     this.hit.position.y = 1.0;
     this.hit.userData.actorId = view.id;
     // 고르기 전용 층에 둔다. 카메라는 이 층을 그리지 않는다 — 보이지 않는 상자를 배우마다 한 번씩 더 그리지 않게.
@@ -150,7 +158,7 @@ export class Actor {
     this.group.add(this.hit);
 
     this.ringMat = new THREE.MeshBasicMaterial({ color: STATUS_COLOR[view.status], transparent: true, opacity: 0.85, depthWrite: false });
-    this.ring = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.95, 40), this.ringMat);
+    this.ring = new THREE.Mesh(geos.ringGeo, this.ringMat);
     this.ring.rotation.x = -Math.PI / 2;
     this.ring.position.y = 0.16;
     this.group.add(this.ring);
@@ -166,7 +174,7 @@ export class Actor {
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
     });
-    this.pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.78, PILLAR_HEIGHT, 24, 1, true), this.pillarMat);
+    this.pillar = new THREE.Mesh(geos.pillarGeo, this.pillarMat);
     this.pillar.position.y = PILLAR_HEIGHT / 2 + 0.05;
     this.pillar.renderOrder = 2;
     this.group.add(this.pillar);
@@ -426,11 +434,7 @@ export class Actor {
     labels.detach(this.tag);
     this.rig.dispose();
     for (const f of this.followers) f.rig.dispose();
-    this.hit.geometry.dispose();
-    (this.hit.material as THREE.Material).dispose();
-    this.ring.geometry.dispose();
     this.ringMat.dispose();
-    this.pillar.geometry.dispose();
     this.pillarMat.dispose();
   }
 }
