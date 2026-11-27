@@ -57,6 +57,18 @@ bun run perf --only 끌기,고르기   # 그 시나리오만(기록은 남기지
 
 **오류(무대가 안 열림, 캔버스가 아님 등)** — 화면 구조가 바뀌어 시나리오가 못 따라간 것이다. 시나리오를 고친다. 검사를 끄지 않는다.
 
+**장면·출력이 정상인데 렌더러/워커 스레드 CPU 가 높을 때 (Oilpan·V8 GC 추적)** — 그리기 호출·DOM 변경·래스터가 그대로인데 유휴 CPU 만 뛰면, 이름 없는 작업 스레드(`ThreadPoolForegroundWorker`)의 V8+Oilpan(`cppgc`) 통합 Major GC 를 의심한다(2026-11-27 `0.7.40→0.7.41` 사례).
+
+- 무거운 추적(JS 프로파일러, 전체 카테고리 trace)은 타이밍을 밀어 차이를 덮는다. 먼저 CDP `Performance.getMetrics` 의 `Documents`·`Nodes`·`JSHeapUsedSize` 로 문서·노드 잔류를 비교한다.
+- 추적은 `v8,v8.gc,blink.gc`·`toplevel` 처럼 가벼운 카테고리만 켜고, 스레드 이름으로 거르지 말고 `ThreadPool_RunTask` 를 올린 자리(`src_func`)별로 묶는다(`CppgcPlatformAdapter::PostJob`, `ConcurrentMarking`, `IncrementalMarkingJob`, `cppgc::Sweeper`). 스레드 이름으로 걸러 내면 이름 없는 V8/Oilpan 작업 스레드 일을 놓친다.
+- **다중 `data:image/svg+xml` 디코딩 금지 (`web/logos.ts`)**: `data:` SVG 를 칸마다 따로 디코딩하면 Blink `MemoryCache` 가 칸 수만큼 `SVGImage` `Document` 를 Oilpan 힙에 붙들어 둔다(5종 79칸 → `Documents 91→80`, `Nodes 12,637`). 한 띠의 모든 칸을 중첩 `<svg x="…" style="--t:-…s">` 한 장으로 묶어 `blob:` URL 로 1회 디코딩한 뒤 즉시 `img.src = ""` 와 `URL.revokeObjectURL` 로 해제해야 문서 잔류와 지연 Major GC 가 사라진다(피크 `Documents 160→12`, GC 후 `14→1`, 휴대폰 유휴 CPU `5.6% → 3.9%`).
+
+## 비용을 줄일 때 지키는 원칙
+
+- **지오메트리·불변 재질 공유와 락스텝 병합**: 같은 종 캐릭터(`web/world/characters.ts`)와 셸 단말기(`web/world/scene.ts`)의 지오메트리·불변 재질은 모듈 수준에서 공유하고, 항상 같이 움직이는 파츠(Clawd 다리 쌍·눈, AGY 눈·동공)는 `mergeGeometries` 로 합쳐 그리기 호출을 줄인다(`429 → 363/장`). 단, 캐릭터별 `Paint.dim` 보간이나 그림자 해상도(`2048×2048`)처럼 겉모습을 바꾸는 타협은 하지 않는다.
+- **안 보이거나 변하지 않은 DOM 은 건드리지 않는다**: 휴대폰에서 접힌 목록 서랍(`#roster`) 안의 로고 띠는 `transform` 쓰기를 건너뛰고 열릴 때 맞춘다(`web/logos.ts` 의 `setRosterVisible`·`activeStrips`). 스냅샷(SSE 패치)이 와도 문패(`environment.ts` 의 `labelSign`), 로스터 그룹 헤더·칩·행(`hud.ts`), 에이전트 이름표(`actor.ts`)는 값이 바뀐 항목만 쓰고, 이름표 변화가 없으면 `labelsDirty` 를 올리지 않는다.
+- **매 프레임 핫 경로 무할당**: `workSpots(plot)`(`WeakMap`), `actorList`·`hitList`, 배우별 `goalSpot` 을 캐시하고, `labels.ts` 의 `update()` 는 재사용 버퍼와 평탄 좌표 배열로 `Rect` 튜플·정렬 클로저 할당을 없앤다. 걷는 배우가 없을 때는 그림자 지도를 `SHADOW_MS`(65ms) 간격으로만 갱신한다.
+
 ## 비용을 비교할 때의 함정
 
 - **헤드리스 한 번 잰 값은 ±30% 흔들린다.** `--compare` 로 번갈아 여러 회 재서 가운데 값만 믿는다. 부하 평균이 높으면(다른 세션의 시험) 결과가 2배까지 흔들린다. `/proc/loadavg` 를 같이 본다.
@@ -73,6 +85,8 @@ bun run perf --only 끌기,고르기   # 그 시나리오만(기록은 남기지
   (크롬을 코어당 한 스레드로 묶어도 느린 상태가 그대로다), 걷는 주민의 그림자(그림자 그리는 장의 비율이 같다).
   그러니 `끌기` 의 main ms/장이 1.4~1.5배로 뛰면 회귀로 읽기 전에 표의 겹침% 부터 본다 — 겹침이 같은 회차끼리만 비교한다.
 - **JS 프로파일러(100µs 표본)는 끄는 동안 three.js 가 두 배 느린 것처럼 보이게 했다.** 껐더니 같았다. 장당 시간은 `Performance.getMetrics` 의 `TaskDuration` 이나 rAF 콜백 시간으로 재고, 프로파일은 어디인지 찾을 때만 쓴다.
+- **따로 잰 값(`alone`)과 연달아 잰 값(`seq`·새 탭)이 다르면 Major GC 시점 이동을 의심한다(2026-11-27 사례).** 첫 로드(콜드)는 로딩이 느려 초기 Major GC 가 유휴 측정 창(`t=6..14s`) 앞에서 끝나 숨고, HTTP/코드 캐시가 데워진 두 번째 로드(`seq`·새 탭)는 로딩이 빨라져 같은 GC 가 측정 창 안으로 밀려 들어온다. "따로 재면 같은데 이어 재면 +1.5~2%p 높다"는 신호가 나오면 캐시 효과와 `Documents`·`Nodes` 잔류부터 확인한다.
+- **핫 경로를 감싼 탐침 래퍼는 힙 증가율을 왜곡한다.** `WebGL2RenderingContext.prototype.drawElements` 를 `fn.apply(this, arguments)` 로 감싸 세면 그 래퍼 자체가 초당 ~1MB 의 힙 증가와 GC 를 만든다. 힙 증가율이나 GC 비용을 잴 때는 래퍼 없는 페이지에서 `Performance.getMetrics` 로 교차 확인한다.
 - **헤드리스는 60Hz 다.** "장면 < 화면 박자"일 때만 드러나는 회귀는 `?perf-skip=1` 로 드러낸다. 배율 2·큰 창에서는 GPU 가 화면을 읽어 오는 비용(SwapBuffers)으로 포화돼 차이가 묻힌다. 배율 1·1600×1000 으로 잰다.
 - **끌기를 시작한 자리가 캔버스인지 확인한다**(`elementFromPoint`). 이름표 위를 누르면 카메라가 안 돌아 "회귀"로 잘못 읽는다.
 - 프로세스를 끌 때 `pkill -f <문자열>` 을 쓰지 않는다. 그 문자열을 담은 내 셸도 죽는다. 포트로 pid 를 찾아 끈다.
