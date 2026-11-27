@@ -40,6 +40,11 @@ interface Sample {
   /** 렌더러·GPU 프로세스 CPU(코어의 %). */
   renderer: number;
   gpu: number;
+  /**
+   * 화면 출력이 장면 프레임과 겹친 비율(%). 화면이 한 박자 늦게 나가면 GPU 프로세스의 화면 내보내기가 다음 장면 프레임과 겹쳐,
+   * 같은 일을 하는데도 main ms/장이 1.4~1.5배로 는다(헤드리스 크롬의 상태이지 코드의 비용이 아니다 — 스킬의 "끌기 가 두 값을 오가는 까닭").
+   */
+  overlap: number;
 }
 
 interface Scenario {
@@ -279,6 +284,20 @@ class Page {
       if (e.name === "Display::DrawAndSwap" && e.ph === "X") swaps++;
       else if (e.name === "UpdateLayoutTree" && names.get(`${e.pid}:${e.tid}`) === "CrRendererMain" && e.args?.elementCount) styleEls += e.args.elementCount;
     }
+    // 장면 프레임(일을 한 rAF)마다, 그 뒤의 화면 출력이 프레임이 끝난 뒤 다음 프레임 전에 시작했는지 본다.
+    const sceneFrames = events.filter((e) => e.name === "FireAnimationFrame" && e.ph === "X" && e.dur > 1500 && names.get(`${e.pid}:${e.tid}`) === "CrRendererMain").sort((a, b) => a.ts - b.ts);
+    const outs = events.filter((e) => e.name === "Display::DrawAndSwap" && e.ph === "X").sort((a, b) => a.ts - b.ts);
+    let counted = 0;
+    let overlapped = 0;
+    for (let i = 0, j = 0; i < outs.length; i++) {
+      const at = outs[i].ts;
+      while (j + 1 < sceneFrames.length && sceneFrames[j + 1].ts <= at) j++;
+      const frame = sceneFrames[j];
+      const next = sceneFrames[j + 1];
+      if (!frame || frame.ts > at || !next) continue;
+      counted++;
+      if (at < frame.ts + frame.dur || at > next.ts - 2000) overlapped++;
+    }
     return {
       scene: (r1 - r0) / dt,
       out: swaps / dt,
@@ -286,6 +305,7 @@ class Page {
       styleEls: styleEls / renders,
       renderer: ((c1.renderer - c0.renderer) / dt) * 100,
       gpu: ((c1.gpu - c0.gpu) / dt) * 100,
+      overlap: counted ? (overlapped / counted) * 100 : 0,
     };
   }
 }
@@ -516,7 +536,7 @@ async function main(): Promise<number> {
   }
   cdp.close();
 
-  console.log(`\n${"시나리오".padEnd(14)}${"장면/s".padStart(8)}${"출력/s".padStart(8)}${"main ms/장".padStart(12)}${"스타일/장".padStart(10)}${"렌더러%".padStart(9)}${"GPU%".padStart(7)}`);
+  console.log(`\n${"시나리오".padEnd(14)}${"장면/s".padStart(8)}${"출력/s".padStart(8)}${"main ms/장".padStart(12)}${"스타일/장".padStart(10)}${"렌더러%".padStart(9)}${"GPU%".padStart(7)}${"겹침%".padStart(8)}`);
   let failed = 0;
   for (const s of scenarios) {
     const xs = mine.get(s.name)!;
@@ -527,15 +547,20 @@ async function main(): Promise<number> {
     const row = (label: string, list: Sample[]) => {
       if (!list.length) return `${label.padEnd(14)}(잰 값 없음)`;
       const m = (k: keyof Sample) => median(list.map((x) => x[k]));
-      return `${label.padEnd(14)}${m("scene").toFixed(1).padStart(8)}${m("out").toFixed(1).padStart(8)}${m("mainMs").toFixed(2).padStart(12)}${m("styleEls").toFixed(0).padStart(10)}${m("renderer").toFixed(0).padStart(9)}${m("gpu").toFixed(0).padStart(7)}`;
+      return `${label.padEnd(14)}${m("scene").toFixed(1).padStart(8)}${m("out").toFixed(1).padStart(8)}${m("mainMs").toFixed(2).padStart(12)}${m("styleEls").toFixed(0).padStart(10)}${m("renderer").toFixed(0).padStart(9)}${m("gpu").toFixed(0).padStart(7)}${m("overlap").toFixed(0).padStart(8)}`;
     };
     console.log(`${fail ? "✗" : "✓"} ${row(s.name, ok)}`);
     if (compareRef) {
       const base = (results.get("기준")!.get(s.name) ?? []).filter((x): x is Sample => !(x instanceof Error));
       console.log(`  ${row("  기준", base)}`);
       if (base.length && ok.length) {
+        // 화면 출력이 프레임과 겹친 상태가 두 판에서 다르면 비용 차이는 코드가 아니라 그 상태의 것이다.
+        const lap = [median(base.map((x) => x.overlap)), median(ok.map((x) => x.overlap))] as const;
+        const mixed = Math.abs(lap[0] - lap[1]) > 30;
+        if (mixed) console.log(`  ℹ 두 판의 프레임 상태가 다르다(겹침 기준 ${lap[0].toFixed(0)}% · 이번 ${lap[1].toFixed(0)}%) — 이 줄의 비용 차이는 믿지 않는다. 다시 잰다.`);
         const warn: string[] = [];
         for (const [k, name] of [["mainMs", "main ms/장"], ["renderer", "렌더러"], ["gpu", "GPU"], ["out", "출력"]] as const) {
+          if (mixed) break;
           const a = median(base.map((x) => x[k]));
           const b = median(ok.map((x) => x[k]));
           if (a > 0 && b > a * 1.15 && b - a > (k === "mainMs" ? 0.3 : 2)) warn.push(`${name} +${(((b - a) / a) * 100).toFixed(0)}%`);
