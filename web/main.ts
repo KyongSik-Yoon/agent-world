@@ -11,6 +11,7 @@ import { Hud } from "./hud.ts";
 import { lang, localizeStatic, t, setLang } from "./i18n.ts";
 import { acceptKey, key, withKey } from "./key.ts";
 import { setSolo } from "./beat.ts";
+import { setRosterVisible } from "./logos.ts";
 import { swipeToClose } from "./sheet.ts";
 import { PlanReader } from "./plan.ts";
 import { askForInput, askOnFirstTouch, reportPresence } from "./presence.ts";
@@ -690,6 +691,7 @@ function setRoster(open: boolean, still = false): void {
   rosterEl.toggleAttribute("data-still", open && still);
   document.body.dataset.roster = open ? "open" : "closed";
   if (chipsEl.hasAttribute("aria-expanded")) chipsEl.setAttribute("aria-expanded", String(open));
+  setRosterVisible(!phoneLayout.matches || open);
   syncBack();
 }
 const toggleRoster = (): void => setRoster(document.body.dataset.roster !== "open");
@@ -749,11 +751,13 @@ function syncChipsRole(): void {
     chipsEl.tabIndex = 0;
     chipsEl.setAttribute("aria-label", t("에이전트 목록"));
     chipsEl.setAttribute("aria-expanded", String(document.body.dataset.roster === "open"));
+    setRosterVisible(document.body.dataset.roster === "open");
   } else {
     chipsEl.setAttribute("role", "group");
     chipsEl.removeAttribute("tabindex");
     chipsEl.setAttribute("aria-label", t("상태별 에이전트 수"));
     chipsEl.removeAttribute("aria-expanded");
+    setRosterVisible(true);
   }
 }
 phoneLayout.addEventListener("change", syncChipsRole);

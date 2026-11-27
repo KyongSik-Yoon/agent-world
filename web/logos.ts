@@ -231,6 +231,12 @@ async function bake(key: string): Promise<string | null> {
 
 /** 지금 몇 번째 칸인가. 모든 로고가 같이 넘어간다. */
 let step = 0;
+/** 문서에 붙은 활성 띠들 — 매 박자 querySelectorAll 로 전체 DOM 을 훑지 않는다. */
+const activeStrips = new Set<HTMLElement>();
+/** 목록 서랍(#roster)이 화면에 보이는지. 휴대폰에서 서랍이 닫혀 있는 동안은 안의 띠 transform 을 건드리지 않는다. */
+let rosterVisible = true;
+let rosterEl: HTMLElement | null = null;
+let detailEl: HTMLElement | null = null;
 
 /** 띠를 지금의 칸에 놓는다. */
 function place(strip: HTMLElement): void {
@@ -238,10 +244,35 @@ function place(strip: HTMLElement): void {
   strip.style.transform = `translateX(${-((step % frames) / frames) * 100}%)`;
 }
 
+/** 목록 서랍이 열리고 닫힐 때 알린다. 열리면 쉬던 동안 밀린 칸을 바로 맞춘다. */
+export function setRosterVisible(visible: boolean): void {
+  if (visible === rosterVisible) return;
+  rosterVisible = visible;
+  if (!visible) return;
+  for (const strip of activeStrips) {
+    if (!strip.isConnected) {
+      activeStrips.delete(strip);
+      continue;
+    }
+    place(strip);
+  }
+}
+
 /** 모든 로고를 한 칸 넘긴다. 장면이 그리는 프레임 안에서 불린다(beat.ts). */
 export function stepLogos(): void {
   step += 1;
-  for (const strip of document.querySelectorAll<HTMLElement>(".logo-strip")) place(strip);
+  if (activeStrips.size === 0) return;
+  detailEl ??= document.getElementById("detail");
+  if (!rosterVisible && (!detailEl || detailEl.hidden)) return;
+  const hiddenRoster = rosterVisible ? null : (rosterEl ??= document.getElementById("roster"));
+  for (const strip of activeStrips) {
+    if (!strip.isConnected) {
+      activeStrips.delete(strip);
+      continue;
+    }
+    if (hiddenRoster?.contains(strip)) continue;
+    place(strip);
+  }
 }
 
 /** 움직이는 띠를 타일에 얹는다. 칸은 다른 로고와 같이 센다 — 새로 만든 타일이 처음부터 다시 시작하지 않고 이어서 움직인다. */
@@ -255,6 +286,7 @@ function play(tile: HTMLElement, key: string, url: string): void {
   strip.style.width = `${frames * 100}%`;
   place(strip);
   tile.append(strip);
+  activeStrips.add(strip);
 }
 
 /** 타일 자리에 놓을 로고. active 면 움직인다. */
@@ -284,7 +316,11 @@ export function setLogoActive(tile: Element, active: boolean): void {
   if (on === tile.hasAttribute("data-active")) return;
   tile.toggleAttribute("data-active", on);
   if (!on) {
-    tile.querySelector(".logo-strip")?.remove();
+    const existing = tile.querySelector<HTMLElement>(".logo-strip");
+    if (existing) {
+      activeStrips.delete(existing);
+      existing.remove();
+    }
     return;
   }
   const key = tile.dataset.logo!;
