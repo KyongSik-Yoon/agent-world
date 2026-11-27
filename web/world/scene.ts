@@ -92,8 +92,8 @@ const STAGE_MIN = 21;
 /** 고른 것이 "이미 보인다"고 칠 때 빈 자리의 가장자리에서 떨어져 있어야 하는 거리(px)와 위쪽 막대 아래의 여유. */
 const FREE_MARGIN = 56;
 const FREE_TOP = 120;
-/** 걷는 캐릭터가 없을 때 그림자 지도를 다시 그리는 간격. */
-const SHADOW_MS = 20;
+/** 걷는 캐릭터가 없을 때 그림자 지도를 다시 그리는 간격(제자리 몸짓·수정 회전은 초당 ~15회면 충분하다). */
+const SHADOW_MS = 65;
 
 export class WorldScene {
   private readonly renderer: THREE.WebGLRenderer;
