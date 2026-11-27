@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
-import { brandFor, brandKey, claudeTier, type Brand, type ClaudeTier, type Look } from "../brands.ts";
+import { agyLook, brandFor, brandKey, claudeTier, type AgyTier, type Brand, type ClaudeTier, type Look } from "../brands.ts";
 
 export type Pose = "walk" | "work" | "idle" | "sleep" | "cheer" | "alert";
 
@@ -20,7 +20,7 @@ export interface Rig {
   animate(pose: Pose, t: number): void;
   /** 0(원래 색)…1(가라앉은 색). 쉬는 에이전트를 물러나 보이게 한다. */
   setDim(amount: number): void;
-  /** 그 주민의 차림으로 바꾼다(Clawd 만): Code Mode 면 얼굴에 띠와 `>_`, 모델 계열마다 머리 위에 얹는 것. */
+  /** 그 주민의 차림으로 바꾼다(Clawd·AGY): Code Mode 얼굴, 모델 계열 체급·색감·장식. */
   setLook?(look: Look): void;
   dispose(): void;
 }
@@ -39,6 +39,14 @@ class Paint {
     this.entries.push({ mat, base });
     if (this.amount) mat.color.copy(base).lerp(DIM_TARGET, this.amount * 0.62);
     return mat;
+  }
+
+  /** 이미 만든 재질의 원래 색을 바꾼다 — 차림(모델)이 바뀌어도 쉬는 상태 흐림(dim)이 새 색 기준으로 이어지게 한다. */
+  recolor(mat: THREE.MeshStandardMaterial, color: string): void {
+    const entry = this.entries.find((e) => e.mat === mat);
+    if (!entry) return;
+    entry.base.set(color);
+    mat.color.copy(entry.base).lerp(DIM_TARGET, this.amount * 0.62);
   }
 
   dim(amount: number): void {
@@ -331,49 +339,181 @@ function clawd(seed: number): Rig {
 const AGY_ARCH_PATH =
   "M89.6992 93.695C94.3659 97.195 101.366 94.8617 94.9492 88.445C75.6992 69.7783 79.7825 18.445 55.8659 18.445C31.9492 18.445 36.0325 69.7783 16.7825 88.445C9.78251 95.445 17.3658 97.195 22.0325 93.695C40.1159 81.445 38.9492 59.8617 55.8659 59.8617C72.7825 59.8617 71.6159 81.445 89.6992 93.695Z";
 
-// 로고의 색 겹: 파란 바탕 위에 방사형 그라디언트 넷(SVG 좌표, 반지름, 중심 불투명도).
-const AGY_BASE = new THREE.Color("#4285F4");
-const AGY_BLOBS: Array<{ x: number; y: number; r: number; color: THREE.Color; alpha: number }> = [
-  { x: 31, y: 71, r: 28, color: new THREE.Color("#34A853"), alpha: 0.95 },
-  { x: 37, y: 50, r: 27, color: new THREE.Color("#FBBC04"), alpha: 1 },
-  { x: 74, y: 48, r: 30, color: new THREE.Color("#9358F7"), alpha: 0.85 },
-  { x: 56, y: 24, r: 38, color: new THREE.Color("#EA4335"), alpha: 1 },
-];
+interface AgyBlob {
+  x: number;
+  y: number;
+  r: number;
+  color: THREE.Color;
+  alpha: number;
+}
+
+interface AgyTheme {
+  scale: number;
+  tempo: number;
+  moteCount: number;
+  base: THREE.Color;
+  blobs: readonly AgyBlob[];
+  mote: string;
+  moteEmissive: string;
+  ringColor: string;
+  roughness: number;
+  metalness: number;
+  emissive: string;
+  emissiveIntensity: number;
+}
+
+type AgyThemeKey = "default" | AgyTier;
+
+const blob = (x: number, y: number, r: number, hex: string, alpha: number): AgyBlob => ({ x, y, r, color: new THREE.Color(hex), alpha });
+
+// Gemini 4 원소 체급(빠름→깊음: flash < hydrogen < argon < neon < carbon)과 기본 Google 4색 아치.
+// 타일 로고(logos.ts)와 같은 색감·체급·장식 규칙을 쓴다.
+const AGY_THEMES: Record<AgyThemeKey, AgyTheme> = {
+  default: {
+    scale: 1,
+    tempo: 1,
+    moteCount: 3,
+    base: new THREE.Color("#4285F4"),
+    blobs: [
+      blob(31, 71, 28, "#34A853", 0.95),
+      blob(37, 50, 27, "#FBBC04", 1),
+      blob(74, 48, 30, "#9358F7", 0.85),
+      blob(56, 24, 38, "#EA4335", 1),
+    ],
+    mote: "#8AB4F8",
+    moteEmissive: "#669DF6",
+    ringColor: "#FFD766",
+    roughness: 0.34,
+    metalness: 0.08,
+    emissive: "#000000",
+    emissiveIntensity: 0,
+  },
+  flash: {
+    scale: 0.68,
+    tempo: 1.38,
+    moteCount: 2,
+    base: new THREE.Color("#F59E0B"),
+    blobs: [blob(31, 71, 30, "#FDE047", 0.96), blob(56, 24, 36, "#FB7185", 0.85), blob(76, 58, 30, "#38BDF8", 0.84)],
+    mote: "#FDE047",
+    moteEmissive: "#F59E0B",
+    ringColor: "#FDE047",
+    roughness: 0.34,
+    metalness: 0.08,
+    emissive: "#000000",
+    emissiveIntensity: 0,
+  },
+  hydrogen: {
+    scale: 0.78,
+    tempo: 1.22,
+    moteCount: 2,
+    base: new THREE.Color("#38BDF8"),
+    blobs: [blob(56, 24, 42, "#F0F9FF", 0.96), blob(32, 66, 32, "#67E8F9", 0.94), blob(76, 56, 30, "#93C5FD", 0.85)],
+    mote: "#CFFAFE",
+    moteEmissive: "#22D3EE",
+    ringColor: "#67E8F9",
+    roughness: 0.32,
+    metalness: 0.08,
+    emissive: "#000000",
+    emissiveIntensity: 0,
+  },
+  argon: {
+    scale: 0.9,
+    tempo: 1.08,
+    moteCount: 3,
+    base: new THREE.Color("#5B5CF6"),
+    blobs: [blob(32, 68, 30, "#818CF8", 0.95), blob(56, 24, 38, "#C084FC", 0.92), blob(74, 54, 30, "#60A5FA", 0.88)],
+    mote: "#C4B5FD",
+    moteEmissive: "#8B5CF6",
+    ringColor: "#C4B5FD",
+    roughness: 0.34,
+    metalness: 0.08,
+    emissive: "#000000",
+    emissiveIntensity: 0,
+  },
+  neon: {
+    scale: 1,
+    tempo: 1,
+    moteCount: 3,
+    base: new THREE.Color("#2563EB"),
+    blobs: [blob(30, 70, 32, "#22D3EE", 0.98), blob(56, 24, 38, "#F43F5E", 0.92), blob(76, 46, 32, "#D946EF", 0.92)],
+    mote: "#38BDF8",
+    moteEmissive: "#E879F9",
+    ringColor: "#38BDF8",
+    roughness: 0.32,
+    metalness: 0.1,
+    emissive: "#000000",
+    emissiveIntensity: 0,
+  },
+  // 최상위 심층 추론(Fable 대응): 밤 배경(#161B33)에서도 윤곽이 또렷하도록 실버-슬레이트 광택 + 상단 앰버 골드.
+  carbon: {
+    scale: 1.15,
+    tempo: 0.86,
+    moteCount: 3,
+    base: new THREE.Color("#56637A"),
+    blobs: [
+      blob(30, 72, 34, "#7B8CA8", 0.92),
+      blob(74, 64, 30, "#3B4659", 0.85),
+      blob(56, 23, 42, "#F59E0B", 0.96),
+      blob(56, 16, 22, "#FDE68A", 0.88),
+    ],
+    mote: "#FDE68A",
+    moteEmissive: "#F59E0B",
+    ringColor: "#FFD766",
+    roughness: 0.24,
+    metalness: 0.28,
+    emissive: "#2B2418",
+    emissiveIntensity: 0.35,
+  },
+};
+
 const AGY_SCALE = 1.25 / 78;
+const AGY_ORBIT_R = 0.75;
 
-let agyArch: THREE.BufferGeometry | undefined;
+let agyBaseArch: THREE.BufferGeometry | undefined;
+const agyArchGeos = new Map<AgyThemeKey, THREE.BufferGeometry>();
 
-/** 아치 경로를 압출하고 정점마다 로고의 색을 칠한다. 모든 AGY 캐릭터가 한 지오메트리를 같이 쓴다. */
-function agyGeometry(): THREE.BufferGeometry {
-  if (agyArch) return agyArch;
-  const svg = new SVGLoader().parse(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${AGY_ARCH_PATH}"/></svg>`);
-  const shapes = svg.paths.flatMap((p) => SVGLoader.createShapes(p));
-  const geo = new THREE.ExtrudeGeometry(shapes, {
-    depth: 15,
-    bevelEnabled: true,
-    bevelThickness: 3.2,
-    bevelSize: 2.6,
-    bevelSegments: 3,
-    curveSegments: 18,
-  });
+/** 아치 압출을 앱 수명 동안 한 번만 만들고, 원소별 정점 색 지오메트리는 처음 쓸 때만 복제해 공유한다. */
+function agyGeometry(key: AgyThemeKey = "default"): THREE.BufferGeometry {
+  const hit = agyArchGeos.get(key);
+  if (hit) return hit;
+  if (!agyBaseArch) {
+    const svg = new SVGLoader().parse(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${AGY_ARCH_PATH}"/></svg>`);
+    const shapes = svg.paths.flatMap((p) => SVGLoader.createShapes(p));
+    const base = new THREE.ExtrudeGeometry(shapes, {
+      depth: 15,
+      bevelEnabled: true,
+      bevelThickness: 3.2,
+      bevelSize: 2.6,
+      bevelSegments: 3,
+      curveSegments: 18,
+    });
+    // SVG 는 y 가 아래로 자란다 — x 축으로 반 바퀴 돌려 세우고(면 방향이 뒤집히지 않는다) 발밑을 원점에 맞춘다.
+    base.translate(-56, -96, -7.5);
+    base.rotateX(Math.PI);
+    base.scale(AGY_SCALE, AGY_SCALE, AGY_SCALE);
+    base.computeVertexNormals();
+    agyBaseArch = base;
+  }
+  const geo = agyBaseArch.clone();
+  const theme = AGY_THEMES[key];
   const pos = geo.getAttribute("position");
   const colors = new Float32Array(pos.count * 3);
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i += 1) {
-    c.copy(AGY_BASE);
-    for (const blob of AGY_BLOBS) {
-      const d = Math.hypot(pos.getX(i) - blob.x, pos.getY(i) - blob.y) / blob.r;
-      if (d < 1) c.lerp(blob.color, blob.alpha * (1 - d) ** 0.85);
+    // 변환된 3D 좌표를 SVG 원좌표로 되돌려 방사형 그라디언트 거리를 잰다.
+    const sx = pos.getX(i) / AGY_SCALE + 56;
+    const sy = 96 - pos.getY(i) / AGY_SCALE;
+    c.copy(theme.base);
+    for (const b of theme.blobs) {
+      const d = Math.hypot(sx - b.x, sy - b.y) / b.r;
+      if (d < 1) c.lerp(b.color, b.alpha * (1 - d) ** 0.85);
     }
-    colors.set([c.r, c.g, c.b], i * 3);
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
   }
   geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  // SVG 는 y 가 아래로 자란다 — x 축으로 반 바퀴 돌려 세우고(면 방향이 뒤집히지 않는다) 발밑을 원점에 맞춘다.
-  geo.translate(-56, -96, -7.5);
-  geo.rotateX(Math.PI);
-  geo.scale(AGY_SCALE, AGY_SCALE, AGY_SCALE);
-  geo.computeVertexNormals();
-  agyArch = geo;
+  agyArchGeos.set(key, geo);
   return geo;
 }
 
@@ -381,9 +521,16 @@ function agyPoint(x: number, y: number, z: number): THREE.Vector3 {
   return new THREE.Vector3((x - 56) * AGY_SCALE, (96 - y) * AGY_SCALE, z * AGY_SCALE);
 }
 
-let agyPartGeosCache: { eyes: THREE.BufferGeometry; pupils: THREE.BufferGeometry; mote: THREE.BufferGeometry } | undefined;
+interface AgyPartGeos {
+  eyes: THREE.BufferGeometry;
+  pupils: THREE.BufferGeometry;
+  mote: THREE.BufferGeometry;
+  orbitRing?: THREE.BufferGeometry;
+  orbitSat?: THREE.BufferGeometry;
+}
+let agyPartGeosCache: AgyPartGeos | undefined;
 
-function agyPartGeos(): { eyes: THREE.BufferGeometry; pupils: THREE.BufferGeometry; mote: THREE.BufferGeometry } {
+function agyPartGeos(): AgyPartGeos {
   if (agyPartGeosCache) return agyPartGeosCache;
   const xs = [49.5, 62.5];
   agyPartGeosCache = {
@@ -394,6 +541,13 @@ function agyPartGeos(): { eyes: THREE.BufferGeometry; pupils: THREE.BufferGeomet
   return agyPartGeosCache;
 }
 
+function agyOrbitGeos(): { ring: THREE.BufferGeometry; sat: THREE.BufferGeometry } {
+  const g = agyPartGeos();
+  if (!g.orbitRing) g.orbitRing = new THREE.TorusGeometry(AGY_ORBIT_R, 0.036, 8, 36);
+  if (!g.orbitSat) g.orbitSat = new THREE.OctahedronGeometry(0.085, 0);
+  return { ring: g.orbitRing, sat: g.orbitSat };
+}
+
 function antigravity(seed: number): Rig {
   const paint = new Paint();
   const partGeos = agyPartGeos();
@@ -401,7 +555,8 @@ function antigravity(seed: number): Rig {
   const root = new THREE.Group();
   group.add(root);
 
-  const arch = new THREE.Mesh(agyGeometry(), paint.mat("#FFFFFF", { vertexColors: true, flatShading: false, roughness: 0.34, metalness: 0.08 }));
+  const archMat = paint.mat("#FFFFFF", { vertexColors: true, flatShading: false, roughness: 0.34, metalness: 0.08 });
+  const arch = new THREE.Mesh(agyGeometry("default"), archMat);
   arch.castShadow = true;
   root.add(arch);
 
@@ -421,11 +576,67 @@ function antigravity(seed: number): Rig {
     return mote;
   });
 
-  return {
+  // Carbon 최상위 체급의 금빛 쌍별과 Orchestrator 사선 궤도 고리 — 해당 모델 주민에게만 지연 생성해 일반 AGY 드로우콜을 늘리지 않는다.
+  const SPARK_Y = 1.44;
+  let scale = 1;
+  let tempo = 1;
+  let moteCount = 3;
+  let dimAmount = 0;
+  let baseEmissive = 0;
+  let lastLookKey = "";
+  let spark: THREE.Group | undefined;
+  const sparkOf = (): THREE.Group => {
+    if (spark) return spark;
+    const geo = clawdSparkGeo();
+    const star = (mat: THREE.Material, size: number, x: number, y: number): THREE.Mesh => {
+      const made = new THREE.Mesh(geo, mat);
+      made.scale.setScalar(size);
+      made.position.set(x, y, 0);
+      return made;
+    };
+    spark = new THREE.Group();
+    spark.add(
+      star(paint.mat("#FFD766", { roughness: 0.3, emissive: "#FFC93C", emissiveIntensity: 0.68 }), 1, 0, 0),
+      star(paint.mat("#FFF0B3", { roughness: 0.3, emissive: "#FFD766", emissiveIntensity: 0.72 }), 0.46, 0.32, 0.1),
+    );
+    spark.position.y = SPARK_Y;
+    root.add(spark);
+    return spark;
+  };
+
+  let orbit: { group: THREE.Group; ringMat: THREE.MeshStandardMaterial; sat: THREE.Mesh; satMat: THREE.MeshStandardMaterial } | undefined;
+  const orbitOf = () => {
+    if (orbit) return orbit;
+    const og = agyOrbitGeos();
+    const oGroup = new THREE.Group();
+    oGroup.position.set(0, 0.66, 0);
+    oGroup.rotation.set(Math.PI / 2 - 0.34, 0, 0.24);
+    const ringMat = paint.mat("#FFD766", { emissive: "#FFD766", emissiveIntensity: 0.65, roughness: 0.26, metalness: 0.28, flatShading: false });
+    oGroup.add(new THREE.Mesh(og.ring, ringMat));
+    const satMat = paint.mat("#FFFFFF", { emissive: "#FFD766", emissiveIntensity: 1.1, roughness: 0.2 });
+    const sat = new THREE.Mesh(og.sat, satMat);
+    oGroup.add(sat);
+    root.add(oGroup);
+    orbit = { group: oGroup, ringMat, sat, satMat };
+    return orbit;
+  };
+
+  const rig: Rig = {
     group,
     height: 1.25 + 0.42,
     animate(pose, t) {
-      const tt = t + seed;
+      const tt = t * tempo + seed;
+      if (spark?.visible) {
+        spark.children[0]!.rotation.y = t * 1.6;
+        spark.children[1]!.rotation.y = -t * 2.3;
+        spark.position.y = SPARK_Y + Math.sin(t * 2.2 + seed) * 0.035;
+      }
+      if (orbit?.group.visible) {
+        const orbitSpeed = pose === "sleep" ? 0.25 : pose === "work" ? 2.3 : pose === "cheer" ? 3.2 : 1.05;
+        const a = t * orbitSpeed + seed;
+        orbit.sat.position.set(Math.cos(a) * AGY_ORBIT_R, Math.sin(a) * AGY_ORBIT_R, 0);
+        orbit.sat.rotation.y = t * 2;
+      }
       let hover = 0.2 + Math.sin(tt * 1.75) * 0.06;
       let pitch = 0;
       let roll = 0;
@@ -459,20 +670,69 @@ function antigravity(seed: number): Rig {
       root.position.y = hover;
       root.rotation.set(pitch, yaw, roll);
       eyes.scale.y = eyeY;
-      for (const mote of motes) {
-        if (moteSpeed === 0) {
+      for (let i = 0; i < motes.length; i += 1) {
+        const mote = motes[i]!;
+        if (moteSpeed === 0 || i >= moteCount) {
           mote.visible = false;
           continue;
         }
         mote.visible = true;
         const life = (tt * moteSpeed * 0.5 + (mote.userData.phase as number)) % 1;
-        mote.position.set(mote.userData.x as number, life * 0.55, 0);
-        mote.scale.setScalar(Math.sin(life * Math.PI));
+        mote.position.set(mote.userData.x as number, life * 0.55 * scale, 0);
+        mote.scale.setScalar(Math.sin(life * Math.PI) * scale);
       }
     },
-    setDim: (a) => paint.dim(a),
+    setDim(a) {
+      dimAmount = a;
+      paint.dim(a);
+      if (baseEmissive > 0) archMat.emissiveIntensity = baseEmissive * (1 - a * 0.7);
+    },
+    setLook(look) {
+      const { tier, orchestrator } = agyLook(look.model);
+      const tierKey: AgyThemeKey = tier ?? "default";
+      const key = `${tierKey}|${orchestrator ? 1 : 0}`;
+      if (key === lastLookKey) return;
+      lastLookKey = key;
+
+      const theme = AGY_THEMES[tierKey];
+      arch.geometry = agyGeometry(tierKey);
+      archMat.roughness = theme.roughness;
+      archMat.metalness = theme.metalness;
+      archMat.emissive.set(theme.emissive);
+      baseEmissive = theme.emissiveIntensity;
+      archMat.emissiveIntensity = baseEmissive * (1 - dimAmount * 0.7);
+
+      paint.recolor(moteMat, theme.mote);
+      moteMat.emissive.set(theme.moteEmissive);
+      moteCount = theme.moteCount;
+      for (let i = 0; i < motes.length; i += 1) {
+        motes[i]!.userData.x = moteCount === 2 ? (i === 0 ? -0.14 : 0.14) : (i - 1) * 0.16;
+        motes[i]!.userData.phase = i / moteCount;
+      }
+
+      scale = theme.scale;
+      tempo = theme.tempo;
+      root.scale.setScalar(scale);
+
+      const isCarbon = tier === "carbon";
+      if (isCarbon) sparkOf().visible = true;
+      else if (spark) spark.visible = false;
+
+      if (orchestrator) {
+        const o = orbitOf();
+        o.group.visible = true;
+        paint.recolor(o.ringMat, theme.ringColor);
+        o.ringMat.emissive.set(theme.ringColor);
+        o.satMat.emissive.set(theme.ringColor);
+      } else if (orbit) {
+        orbit.group.visible = false;
+      }
+
+      rig.height = (1.25 + (isCarbon ? 0.48 : 0)) * scale + 0.42;
+    },
     dispose: () => paint.dispose(),
   };
+  return rig;
 }
 
 // ── 그 밖의 벤더: 브랜드 마크를 얼굴에 띄운 로봇 ───────────────────────────────────────────────────

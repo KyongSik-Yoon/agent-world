@@ -118,6 +118,22 @@ export function claudeTier(model: string | undefined): ClaudeTier | undefined {
   return m === "mythos" ? "fable" : (m as ClaudeTier | undefined);
 }
 
+/**
+ * Antigravity(Gemini 4) 모델 계열 — 원소 체급(빠름→깊음: flash < hydrogen < argon < neon < carbon)과 Orchestrator 여부.
+ * 원소 이름이 없는 Orchestrator(`gemini-pro-orchestrator`)는 Carbon 기반이다.
+ */
+export type AgyTier = "flash" | "hydrogen" | "argon" | "neon" | "carbon";
+export interface AgyLook {
+  tier?: AgyTier;
+  orchestrator: boolean;
+}
+export function agyLook(model: string | undefined): AgyLook {
+  const m = model?.toLowerCase() ?? "";
+  const orchestrator = m.includes("orchestrator");
+  const found = /carbon|neon|argon|hydrogen|flash/.exec(m)?.[0] as AgyTier | undefined;
+  return { tier: found ?? (orchestrator ? "carbon" : undefined), orchestrator };
+}
+
 /** 캐릭터의 차림을 가르는 것: Code Mode 로 떴는지, 어느 모델인지. AgentView 를 그대로 넘기면 된다. */
 export interface Look {
   vendor: string;
@@ -128,10 +144,16 @@ export interface Look {
 /** 그 차림의 타일 열쇠(logos.ts). 차림이 바뀌었는지도 이것으로 견준다. */
 export function tileLook(a: Look): string {
   const key = brandKey(a.vendor);
-  if (key !== "claude") return key;
-  const tier = claudeTier(a.model);
-  // opus 는 모르는 모델과 같은 기본 모습이다.
-  return `claude${a.codeMode ? "-code" : ""}${tier && tier !== "opus" ? `+${tier}` : ""}`;
+  if (key === "claude") {
+    const tier = claudeTier(a.model);
+    // opus 는 모르는 모델과 같은 기본 모습이다.
+    return `claude${a.codeMode ? "-code" : ""}${tier && tier !== "opus" ? `+${tier}` : ""}`;
+  }
+  if (key === "agy") {
+    const { tier, orchestrator } = agyLook(a.model);
+    return `agy${orchestrator ? "-orch" : ""}${tier ? `+${tier}` : ""}`;
+  }
+  return key;
 }
 
 /** 브랜드 타일을 SVG 요소로 만든다(로스터 행, 상세 패널 머리). working 이면 직접 만든 로고가 움직인다. look 을 주면 그 주민의 차림을 한다. */

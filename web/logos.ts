@@ -25,6 +25,22 @@ const DEFS = `
 <radialGradient id="lg-agy-yellow" cx="37" cy="50" r="27" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#FBBC04"/><stop offset="50%" stop-color="#FBBC04" stop-opacity="0.68"/><stop offset="100%" stop-color="#FBBC04" stop-opacity="0"/></radialGradient>
 <radialGradient id="lg-agy-green" cx="31" cy="71" r="28" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#34A853" stop-opacity="0.95"/><stop offset="55%" stop-color="#34A853" stop-opacity="0.5"/><stop offset="100%" stop-color="#34A853" stop-opacity="0"/></radialGradient>
 <radialGradient id="lg-agy-violet" cx="74" cy="48" r="30" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#9358F7" stop-opacity="0.85"/><stop offset="55%" stop-color="#7B61FF" stop-opacity="0.4"/><stop offset="100%" stop-color="#4285F4" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-flash-0" cx="31" cy="71" r="30" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#FDE047" stop-opacity="0.96"/><stop offset="52%" stop-color="#FDE047" stop-opacity="0.53"/><stop offset="100%" stop-color="#FDE047" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-flash-1" cx="56" cy="24" r="36" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#FB7185" stop-opacity="0.85"/><stop offset="52%" stop-color="#FB7185" stop-opacity="0.47"/><stop offset="100%" stop-color="#FB7185" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-flash-2" cx="76" cy="58" r="30" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#38BDF8" stop-opacity="0.84"/><stop offset="52%" stop-color="#38BDF8" stop-opacity="0.46"/><stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-hydrogen-0" cx="56" cy="24" r="42" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#F0F9FF" stop-opacity="0.96"/><stop offset="52%" stop-color="#F0F9FF" stop-opacity="0.53"/><stop offset="100%" stop-color="#F0F9FF" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-hydrogen-1" cx="32" cy="66" r="32" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#67E8F9" stop-opacity="0.94"/><stop offset="52%" stop-color="#67E8F9" stop-opacity="0.52"/><stop offset="100%" stop-color="#67E8F9" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-hydrogen-2" cx="76" cy="56" r="30" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#93C5FD" stop-opacity="0.85"/><stop offset="52%" stop-color="#93C5FD" stop-opacity="0.47"/><stop offset="100%" stop-color="#93C5FD" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-argon-0" cx="32" cy="68" r="30" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#818CF8" stop-opacity="0.95"/><stop offset="52%" stop-color="#818CF8" stop-opacity="0.52"/><stop offset="100%" stop-color="#818CF8" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-argon-1" cx="56" cy="24" r="38" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#C084FC" stop-opacity="0.92"/><stop offset="52%" stop-color="#C084FC" stop-opacity="0.51"/><stop offset="100%" stop-color="#C084FC" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-argon-2" cx="74" cy="54" r="30" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#60A5FA" stop-opacity="0.88"/><stop offset="52%" stop-color="#60A5FA" stop-opacity="0.48"/><stop offset="100%" stop-color="#60A5FA" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-neon-0" cx="30" cy="70" r="32" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#22D3EE" stop-opacity="0.98"/><stop offset="52%" stop-color="#22D3EE" stop-opacity="0.54"/><stop offset="100%" stop-color="#22D3EE" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-neon-1" cx="56" cy="24" r="38" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#F43F5E" stop-opacity="0.92"/><stop offset="52%" stop-color="#F43F5E" stop-opacity="0.51"/><stop offset="100%" stop-color="#F43F5E" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-neon-2" cx="76" cy="46" r="32" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#D946EF" stop-opacity="0.92"/><stop offset="52%" stop-color="#D946EF" stop-opacity="0.51"/><stop offset="100%" stop-color="#D946EF" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-carbon-0" cx="30" cy="72" r="34" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#7B8CA8" stop-opacity="0.92"/><stop offset="52%" stop-color="#7B8CA8" stop-opacity="0.51"/><stop offset="100%" stop-color="#7B8CA8" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-carbon-1" cx="74" cy="64" r="30" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#3B4659" stop-opacity="0.85"/><stop offset="52%" stop-color="#3B4659" stop-opacity="0.47"/><stop offset="100%" stop-color="#3B4659" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-carbon-2" cx="56" cy="23" r="42" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#F59E0B" stop-opacity="0.96"/><stop offset="52%" stop-color="#F59E0B" stop-opacity="0.53"/><stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/></radialGradient>
+<radialGradient id="lg-agy-carbon-3" cx="56" cy="16" r="22" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#FDE68A" stop-opacity="0.88"/><stop offset="52%" stop-color="#FDE68A" stop-opacity="0.48"/><stop offset="100%" stop-color="#FDE68A" stop-opacity="0"/></radialGradient>
 <linearGradient id="lg-agy-sheen" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="32%" stop-color="#FFFFFF" stop-opacity="0.16"/><stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.82"/><stop offset="68%" stop-color="#D2E3FC" stop-opacity="0.22"/><stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>
 <radialGradient id="lg-agy-glint" cx="0.5" cy="0.5" r="0.5"><stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.68"/><stop offset="42%" stop-color="#FFF8E1" stop-opacity="0.28"/><stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient>`;
 
@@ -89,19 +105,112 @@ function clawd(key: string): string {
   return scale ? `<g transform="translate(21 31) scale(${scale}) translate(-21 -31)">${body}</g>` : body;
 }
 
-const AGY_FILL = `<path d="${AGY_ARCH}" fill="#4285F4"/><path d="${AGY_ARCH}" fill="url(#lg-agy-green)"/><path d="${AGY_ARCH}" fill="url(#lg-agy-yellow)"/><path d="${AGY_ARCH}" fill="url(#lg-agy-violet)"/><path d="${AGY_ARCH}" fill="url(#lg-agy-red)"/>`;
-const AGY = `
-<g class="logo-agy-halo" opacity="0.48" filter="url(#lg-agy-glow)">${AGY_FILL}</g>
-<circle class="logo-agy-mote-a" opacity="0" cx="50" cy="90" r="2.6" fill="#669DF6"/><circle class="logo-agy-mote-b" opacity="0" cx="62" cy="92" r="2.1" fill="#8AB4F8"/>
-<g class="logo-agy-levitate">
+interface AgyTileTheme {
+  base: string;
+  grads: readonly string[];
+  moteA: string;
+  moteB: string;
+  stroke: string;
+  strokeOpacity: number;
+  ring: string;
+  scale?: number;
+}
+
+// Gemini 4 원소 체급(빠름→깊음: flash < hydrogen < argon < neon < carbon)과 기본 Google 4색 아치.
+// 섬의 캐릭터(world/characters.ts)와 같은 색감·체급·장식 규칙을 쓴다.
+const AGY_THEMES: Record<string, AgyTileTheme> = {
+  default: {
+    base: "#4285F4",
+    grads: ["lg-agy-green", "lg-agy-yellow", "lg-agy-violet", "lg-agy-red"],
+    moteA: "#669DF6",
+    moteB: "#8AB4F8",
+    stroke: "#FFFFFF",
+    strokeOpacity: 0.28,
+    ring: "#FFD766",
+  },
+  flash: {
+    base: "#F59E0B",
+    grads: ["lg-agy-flash-0", "lg-agy-flash-1", "lg-agy-flash-2"],
+    moteA: "#FDE047",
+    moteB: "#F59E0B",
+    stroke: "#FFFFFF",
+    strokeOpacity: 0.34,
+    ring: "#FDE047",
+    scale: 0.68,
+  },
+  hydrogen: {
+    base: "#38BDF8",
+    grads: ["lg-agy-hydrogen-0", "lg-agy-hydrogen-1", "lg-agy-hydrogen-2"],
+    moteA: "#CFFAFE",
+    moteB: "#67E8F9",
+    stroke: "#FFFFFF",
+    strokeOpacity: 0.34,
+    ring: "#67E8F9",
+    scale: 0.78,
+  },
+  argon: {
+    base: "#5B5CF6",
+    grads: ["lg-agy-argon-0", "lg-agy-argon-1", "lg-agy-argon-2"],
+    moteA: "#C4B5FD",
+    moteB: "#8B5CF6",
+    stroke: "#FFFFFF",
+    strokeOpacity: 0.32,
+    ring: "#C4B5FD",
+    scale: 0.9,
+  },
+  neon: {
+    base: "#2563EB",
+    grads: ["lg-agy-neon-0", "lg-agy-neon-1", "lg-agy-neon-2"],
+    moteA: "#38BDF8",
+    moteB: "#E879F9",
+    stroke: "#FFFFFF",
+    strokeOpacity: 0.32,
+    ring: "#38BDF8",
+  },
+  carbon: {
+    base: "#56637A",
+    grads: ["lg-agy-carbon-0", "lg-agy-carbon-1", "lg-agy-carbon-2", "lg-agy-carbon-3"],
+    moteA: "#FDE68A",
+    moteB: "#F59E0B",
+    stroke: "#FDE68A",
+    strokeOpacity: 0.42,
+    ring: "#FFD766",
+  },
+};
+
+// Carbon 최상위 체급의 금빛 쌍별. 아치와 함께 뜨도록 logo-agy-levitate 안에 넣는다.
+const AGY_SPARK = `<path d="M56 2.5L59.4 10.6L67.5 14L59.4 17.4L56 25.5L52.6 17.4L44.5 14L52.6 10.6Z" fill="#FFD766" stroke="#0F172A" stroke-opacity="0.24" stroke-width="1"/><path d="M77 6.5L79 11.2L83.7 13.2L79 15.2L77 19.9L75 15.2L70.3 13.2L75 11.2Z" fill="#FFF0B3" stroke="#0F172A" stroke-opacity="0.22" stroke-width="0.9"/>`;
+
+function agyOrbit(color: string): string {
+  return `<ellipse cx="56" cy="60" rx="46" ry="15" transform="rotate(-18 56 60)" fill="none" stroke="${color}" stroke-width="4.8" stroke-linecap="round" opacity="0.92"/><circle cx="95" cy="46" r="5" fill="#FFFFFF" stroke="${color}" stroke-width="2"/>`;
+}
+
+/** 차림을 입힌 Antigravity 아치. 열쇠는 `agy`, `agy-orch`, 그 뒤에 `+carbon` 같은 원소 계열(brands.ts 의 tileLook). */
+function agyLogo(key: string): { viewBox: string; body: string } {
+  const [base, tier] = key.split("+");
+  const orchestrator = base === "agy-orch";
+  const theme = (tier && AGY_THEMES[tier]) || AGY_THEMES.default!;
+  const hasSpark = tier === "carbon";
+  const haloFill = `<path d="${AGY_ARCH}" fill="${theme.base}"/>${theme.grads.map((id) => `<path d="${AGY_ARCH}" fill="url(#${id})"/>`).join("")}`;
+  const rects = `<rect width="112" height="112" fill="${theme.base}"/>${theme.grads.map((id) => `<rect width="112" height="112" fill="url(#${id})"/>`).join("")}`;
+  const archCore = `
   <g clip-path="url(#lg-agy-clip)">
-    <rect width="112" height="112" fill="#4285F4"/><rect width="112" height="112" fill="url(#lg-agy-green)"/><rect width="112" height="112" fill="url(#lg-agy-yellow)"/>
-    <rect width="112" height="112" fill="url(#lg-agy-violet)"/><rect width="112" height="112" fill="url(#lg-agy-red)"/>
+    ${rects}
     <circle class="logo-agy-glint" opacity="0.32" cx="56" cy="40" r="28" fill="url(#lg-agy-glint)"/>
     <g transform="rotate(-24 56 56)"><rect class="logo-agy-sheen" opacity="0" x="-92" y="-28" width="52" height="168" fill="url(#lg-agy-sheen)"/></g>
   </g>
-  <path d="${AGY_ARCH}" fill="none" stroke="#FFFFFF" stroke-opacity="0.28" stroke-width="2.4"/>
-</g>`;
+  <path d="${AGY_ARCH}" fill="none" stroke="${theme.stroke}" stroke-opacity="${theme.strokeOpacity}" stroke-width="2.4"/>`;
+  const archMoved = hasSpark ? `<g transform="translate(0 6)">${archCore}</g>` : archCore;
+  const haloMoved = hasSpark ? ` transform="translate(0 6)"` : "";
+  const extras = `${hasSpark ? AGY_SPARK : ""}${orchestrator ? agyOrbit(theme.ring) : ""}`;
+  let body = `
+<g class="logo-agy-halo" opacity="0.48" filter="url(#lg-agy-glow)"${haloMoved}>${haloFill}</g>
+<circle class="logo-agy-mote-a" opacity="0" cx="50" cy="90" r="2.6" fill="${theme.moteA}"/><circle class="logo-agy-mote-b" opacity="0" cx="62" cy="92" r="2.1" fill="${theme.moteB}"/>
+<g class="logo-agy-levitate">${archMoved}${extras}</g>`;
+  // 발밑(56, 96)을 붙든 채 줄인다 — 작은 모델(flash·hydrogen·argon)도 같은 바닥에 선다.
+  if (theme.scale) body = `<g transform="translate(56 96) scale(${theme.scale}) translate(-56 -96)">${body}</g>`;
+  return { viewBox: hasSpark ? "2 0 108 112" : "2 4 108 108", body };
+}
 
 /**
  * 한 바퀴의 움직임. 원본의 박자를 한 바퀴 길이에 맞췄다(Clawd 는 걸음 네 번 = 3.84초, 아치는 3.6초).
@@ -156,13 +265,18 @@ interface Logo {
   motion: string;
 }
 
-const LOGOS = new Map<string, Logo>([["agy", { viewBox: "2 4 108 108", body: AGY, seconds: 3.6, frames: 15, motion: "agy" }]]);
+const LOGOS = new Map<string, Logo>();
 
-/** 그 열쇠의 로고. Clawd 는 차림(Code Mode, 모델 계열)마다 따로 만들어 둔다 — 띠도 차림마다 따로 굽는다. */
+/** 그 열쇠의 로고. Clawd 와 AGY 는 차림(Code Mode·Orchestrator·모델 계열)마다 실제로 쓸 때만 만들어 둔다 — 띠도 차림마다 지연 굽기한다. */
 function logoOf(key: string): Logo | undefined {
   let logo = LOGOS.get(key);
-  if (!logo && /^claude(-code)?(\+\w+)?$/.test(key)) {
+  if (logo) return logo;
+  if (/^claude(-code)?(\+\w+)?$/.test(key)) {
     logo = { viewBox: "2 3.5 38 38", body: clawd(key), seconds: 3.84, frames: 16, motion: "claude" };
+    LOGOS.set(key, logo);
+  } else if (/^agy(-orch)?(\+\w+)?$/.test(key)) {
+    const built = agyLogo(key);
+    logo = { viewBox: built.viewBox, body: built.body, seconds: 3.6, frames: 15, motion: "agy" };
     LOGOS.set(key, logo);
   }
   return logo;
