@@ -189,7 +189,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000001"
+   },
+   "perf_log": {
+    "model": "claude-fable-5-2",
+    "codeMode": false,
+    "prompt": "API 응답 캐시 정리"
+   }
   },
   {
    "pane_id": "w1:p2",
@@ -246,7 +255,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000002"
+   },
+   "perf_log": {
+    "model": "claude-opus-5-5",
+    "codeMode": true,
+    "prompt": "배포 스크립트 손보기"
+   }
   },
   {
    "pane_id": "w2:p2",
@@ -265,7 +283,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000003"
+   },
+   "perf_log": {
+    "model": "claude-sonnet-5-5",
+    "codeMode": false,
+    "prompt": "문서 목차 다듬기"
+   }
   },
   {
    "pane_id": "w2:p9",
@@ -311,7 +338,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000004"
+   },
+   "perf_log": {
+    "model": "claude-haiku-5-5",
+    "codeMode": false,
+    "prompt": "알림 묶음 보내기"
+   }
   },
   {
    "pane_id": "w4:p2",
@@ -368,7 +404,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000005"
+   },
+   "perf_log": {
+    "model": "claude-fable-5-2",
+    "codeMode": true,
+    "prompt": "타입 오류 정리"
+   }
   },
   {
    "pane_id": "w6:p1",
@@ -387,7 +432,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000006"
+   },
+   "perf_log": {
+    "model": "claude-opus-5-5",
+    "codeMode": false,
+    "prompt": "CI 캐시 설정"
+   }
   },
   {
    "pane_id": "w6:p2",
@@ -433,7 +487,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000007"
+   },
+   "perf_log": {
+    "model": "claude-sonnet-5-5",
+    "codeMode": false,
+    "prompt": "API 응답 캐시 정리"
+   }
   },
   {
    "pane_id": "w7:p2",
@@ -490,7 +553,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000008"
+   },
+   "perf_log": {
+    "model": "claude-haiku-5-5",
+    "codeMode": true,
+    "prompt": "배포 스크립트 손보기"
+   }
   },
   {
    "pane_id": "w8:p2",
@@ -509,7 +581,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000009"
+   },
+   "perf_log": {
+    "model": "claude-fable-5-2",
+    "codeMode": false,
+    "prompt": "문서 목차 다듬기"
+   }
   },
   {
    "pane_id": "w9:p1",
@@ -547,7 +628,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000010"
+   },
+   "perf_log": {
+    "model": "claude-opus-5-5",
+    "codeMode": false,
+    "prompt": "알림 묶음 보내기"
+   }
   },
   {
    "pane_id": "w10:p2",
@@ -612,7 +702,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000011"
+   },
+   "perf_log": {
+    "model": "claude-sonnet-5-5",
+    "codeMode": true,
+    "prompt": "타입 오류 정리"
+   }
   },
   {
    "pane_id": "w14:p9",
@@ -641,7 +740,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000001"
+   },
+   "perf_log": {
+    "model": "claude-fable-5-2",
+    "codeMode": false,
+    "prompt": "API 응답 캐시 정리"
+   }
   },
   {
    "pane_id": "w1:p2",
@@ -698,7 +806,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000002"
+   },
+   "perf_log": {
+    "model": "claude-opus-5-5",
+    "codeMode": true,
+    "prompt": "배포 스크립트 손보기"
+   }
   },
   {
    "pane_id": "w2:p2",
@@ -717,7 +834,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000003"
+   },
+   "perf_log": {
+    "model": "claude-sonnet-5-5",
+    "codeMode": false,
+    "prompt": "문서 목차 다듬기"
+   }
   },
   {
    "pane_id": "w3:p1",
@@ -755,7 +881,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000004"
+   },
+   "perf_log": {
+    "model": "claude-haiku-5-5",
+    "codeMode": false,
+    "prompt": "알림 묶음 보내기"
+   }
   },
   {
    "pane_id": "w4:p2",
@@ -812,7 +947,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000005"
+   },
+   "perf_log": {
+    "model": "claude-fable-5-2",
+    "codeMode": true,
+    "prompt": "타입 오류 정리"
+   }
   },
   {
    "pane_id": "w6:p1",
@@ -831,7 +975,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000006"
+   },
+   "perf_log": {
+    "model": "claude-opus-5-5",
+    "codeMode": false,
+    "prompt": "CI 캐시 설정"
+   }
   },
   {
    "pane_id": "w6:p2",
@@ -869,7 +1022,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000007"
+   },
+   "perf_log": {
+    "model": "claude-sonnet-5-5",
+    "codeMode": false,
+    "prompt": "API 응답 캐시 정리"
+   }
   },
   {
    "pane_id": "w7:p2",
@@ -926,7 +1088,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000008"
+   },
+   "perf_log": {
+    "model": "claude-haiku-5-5",
+    "codeMode": true,
+    "prompt": "배포 스크립트 손보기"
+   }
   },
   {
    "pane_id": "w8:p2",
@@ -945,7 +1116,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000009"
+   },
+   "perf_log": {
+    "model": "claude-fable-5-2",
+    "codeMode": false,
+    "prompt": "문서 목차 다듬기"
+   }
   },
   {
    "pane_id": "w9:p1",
@@ -983,7 +1163,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000010"
+   },
+   "perf_log": {
+    "model": "claude-opus-5-5",
+    "codeMode": false,
+    "prompt": "알림 묶음 보내기"
+   }
   },
   {
    "pane_id": "w10:p2",
@@ -1040,7 +1229,16 @@
     "  \u001b[38;5;3m✻\u001b[0m 생각하는 중… {t}s",
     "",
     "> "
-   ]
+   ],
+   "agent_session": {
+    "kind": "id",
+    "value": "00000000-0000-4000-8000-000000000011"
+   },
+   "perf_log": {
+    "model": "claude-sonnet-5-5",
+    "codeMode": true,
+    "prompt": "타입 오류 정리"
+   }
   }
  ]
 }

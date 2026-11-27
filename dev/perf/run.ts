@@ -393,10 +393,32 @@ function flipSide(i: number): void {
   writeFileSync(side.file, JSON.stringify(state));
 }
 
+/**
+ * 시나리오의 Claude 주민(perf_log)마다 가상 세션 로그를 쓴다 — 모델(체급)과 Code Mode(얼굴 띠)가 섞인 캐릭터를 그린 채로 재게 한다.
+ * 실제 로그와 같은 모양의 행 몇 줄뿐이다(지시 한 줄, 응답 한 줄, Code Mode 면 repl-mode 행).
+ */
+function writeClaudeLogs(configDir: string): void {
+  const scenario = JSON.parse(readFileSync(join(ROOT, "dev/perf/scenario.json"), "utf8")) as { agents: Array<{ cwd: string; agent_session?: { value: string }; perf_log?: { model: string; codeMode: boolean; prompt: string } }> };
+  const dir = join(configDir, "projects", "-home-dev-perf");
+  mkdirSync(dir, { recursive: true });
+  const at = new Date(Date.now() - 60_000).toISOString();
+  for (const a of scenario.agents) {
+    if (!a.agent_session || !a.perf_log) continue;
+    const id = a.agent_session.value;
+    const { model, codeMode, prompt } = a.perf_log;
+    const rows: object[] = [];
+    if (codeMode) rows.push({ type: "repl-mode", replMode: true, sessionId: id });
+    rows.push({ parentUuid: null, isSidechain: false, type: "user", message: { role: "user", content: prompt }, uuid: `${id}-u`, timestamp: at, cwd: a.cwd, sessionId: id, promptId: `${id}-p` });
+    rows.push({ parentUuid: `${id}-u`, isSidechain: false, type: "assistant", message: { role: "assistant", model, content: [{ type: "text", text: "파일을 읽고 고치는 중입니다." }], usage: { input_tokens: 1200, cache_read_input_tokens: 30000, output_tokens: 40 } }, uuid: `${id}-a`, timestamp: at, cwd: a.cwd, sessionId: id });
+    writeFileSync(join(dir, `${id}.jsonl`), `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`);
+  }
+}
+
 async function startServer(dir: string, label: string, socket: string, extra: Record<string, string> = {}): Promise<string> {
   const port = freePort();
   const home = join(tmp, label);
   for (const sub of ["state", "config", "claude", "codex", "agy"]) mkdirSync(join(home, sub), { recursive: true });
+  writeClaudeLogs(join(home, "claude"));
   const log = join(home, "server.log");
   children.push(
     Bun.spawn(["bun", "server/index.ts"], {
