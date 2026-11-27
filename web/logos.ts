@@ -193,7 +193,12 @@ export function hasLogo(key: string): boolean {
   return logoOf(key) !== undefined;
 }
 
-/** 한 바퀴를 칸칸이 그려 가로로 이어 붙인 띠를 만든다. 그리지 못하면 null — 그때는 멈춘 그림으로 남는다. */
+/**
+ * 한 바퀴를 칸칸이 그려 가로로 이어 붙인 띠를 만든다. 그리지 못하면 null — 그때는 멈춘 그림으로 남는다.
+ * 칸마다 data: SVG 를 따로 디코드하면 Blink 가 칸 수만큼(차림 5종이면 79개) SVG 문서를 만들어 MemoryCache 에
+ * 붙들어 두고, Oilpan(cppgc) + V8 Major GC 가 뒤따라 CPU 를 쓴다. 한 띠의 모든 칸을 중첩 <svg> 한 장으로 묶어
+ * blob URL 로 디코드한 뒤 즉시 해제해 SVG 문서를 띠당 1개로 줄이고 캐시 잔류를 없앤다.
+ */
 async function bake(key: string): Promise<string | null> {
   const logo = logoOf(key)!;
   try {
@@ -201,13 +206,21 @@ async function bake(key: string): Promise<string | null> {
     canvas.width = FRAME_PX * logo.frames;
     canvas.height = FRAME_PX;
     const ctx = canvas.getContext("2d")!;
+    let cells = "";
     for (let i = 0; i < logo.frames; i += 1) {
       const t = ((i / logo.frames) * logo.seconds).toFixed(4);
-      const frame = `<svg xmlns="${NS}" viewBox="${logo.viewBox}" width="${FRAME_PX}" height="${FRAME_PX}" style="--t:-${t}s"><defs>${DEFS}</defs><style>${MOTION[logo.motion]}</style>${logo.body}</svg>`;
+      cells += `<svg x="${i * FRAME_PX}" y="0" width="${FRAME_PX}" height="${FRAME_PX}" viewBox="${logo.viewBox}" style="--t:-${t}s">${logo.body}</svg>`;
+    }
+    const sheet = `<svg xmlns="${NS}" width="${canvas.width}" height="${FRAME_PX}"><defs>${DEFS}</defs><style>${MOTION[logo.motion]}</style>${cells}</svg>`;
+    const svgUrl = URL.createObjectURL(new Blob([sheet], { type: "image/svg+xml;charset=utf-8" }));
+    try {
       const img = new Image();
-      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(frame)}`;
+      img.src = svgUrl;
       await img.decode();
-      ctx.drawImage(img, i * FRAME_PX, 0, FRAME_PX, FRAME_PX);
+      ctx.drawImage(img, 0, 0, canvas.width, FRAME_PX);
+      img.src = "";
+    } finally {
+      URL.revokeObjectURL(svgUrl);
     }
     const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done));
     return blob ? URL.createObjectURL(blob) : null;
