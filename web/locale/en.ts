@@ -426,6 +426,7 @@ export const en: Record<string, string> = {
   "{name} — 기기가 라이트/다크를 바꾸면 같이 바뀝니다.": "{name} — changes when the device switches between light and dark.",
   "처음 화면으로 — 위치·배율·각도 초기화 (H)": "Back to start — reset position, zoom and angle (H)",
   "이름·스페이스·모델 찾기 ( / )": "Search name, workspace, model ( / )",
+  "검색어 지우기": "Clear search",
   "에이전트 상태": "Agent status",
   "연결 중…": "Connecting…",
 

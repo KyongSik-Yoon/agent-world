@@ -47,7 +47,12 @@
 
     <aside id="roster" class="glass" aria-label="에이전트 목록">
       <div class="sheet-grip" aria-hidden="true"></div>
-      <input id="search" type="search" placeholder="이름·스페이스·모델 찾기 ( / )" autocomplete="off" spellcheck="false" />
+      <div class="search-wrap">
+        <input id="search" type="search" placeholder="이름·스페이스·모델 찾기 ( / )" autocomplete="off" spellcheck="false" />
+        <button id="search-clear" type="button" title="검색어 지우기" aria-label="검색어 지우기" hidden>
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
       <div id="roster-list"></div>
       <p id="app-version" class="roster-foot"></p>
     </aside>

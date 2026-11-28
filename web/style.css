@@ -758,17 +758,67 @@ kbd {
   display: none;
 }
 
-#search {
+.search-wrap {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
   margin: 10px 10px 6px;
-  padding: 7px 10px;
+}
+
+#search {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 36px 7px 10px;
   border: 1px solid var(--line);
   border-radius: 9px;
   background: var(--soft);
   outline: none;
 }
 
+/* 브라우저 기본 검색 지우기 × 는 작고 외곽선이 없어 누르기 어렵다 — #search-clear 로 대신한다. */
+#search::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 #search:focus {
   border-color: var(--accent);
+}
+
+#search-clear {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+#search-clear[hidden] {
+  display: none;
+}
+
+#search-clear .ico {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.3;
+}
+
+#search-clear:hover,
+#search-clear:active {
+  border-color: color-mix(in srgb, var(--ink) 32%, transparent);
+  background: var(--soft-2);
+  color: var(--ink);
 }
 
 /* 목록 맨 아래의 설치한 판. */
@@ -4193,6 +4243,29 @@ dialog.dlg .warn {
   .field select,
   .field textarea {
     font-size: 16px;
+  }
+
+  #search {
+    padding: 9px 44px 9px 12px;
+  }
+
+  #search-clear {
+    right: 5px;
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+  }
+
+  /* 시각 크기는 입력란 안에 맞추고, 터치 판정은 44×44px 로 넉넉하게 넓힌다. */
+  #search-clear::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
+
+  #search-clear .ico {
+    width: 16px;
+    height: 16px;
   }
 
   /* 펼친 목록도 닫힌 칸과 같은 글자 크기로, 줄은 손가락으로 집을 만큼 높게. */

@@ -131,6 +131,7 @@ export class Hud {
   private readonly nextCount = document.getElementById("next-count")!;
   private readonly nextBtn = document.getElementById("btn-next")!;
   private readonly search = document.getElementById("search") as HTMLInputElement;
+  private readonly searchClear = document.getElementById("search-clear") as HTMLButtonElement;
   private readonly toasts = document.getElementById("toasts")!;
   private readonly topbar = document.getElementById("topbar")!;
   private readonly roster = document.getElementById("roster")!;
@@ -144,9 +145,19 @@ export class Hud {
     }, document.getElementById("stage") ?? undefined);
     this.search.addEventListener("input", () => {
       this.query = this.search.value.trim();
+      this.syncSearchClear();
       this.applyFilter();
       this.renderRoster();
     });
+    this.searchClear.addEventListener("click", () => {
+      this.search.value = "";
+      this.query = "";
+      this.syncSearchClear();
+      this.applyFilter();
+      this.renderRoster();
+      this.search.focus();
+    });
+    this.syncSearchClear();
     // 시간 문구("3분 전")는 스냅샷이 오지 않아도 흘러야 한다.
     setInterval(() => this.render(), 15_000);
     // 알림이 떠 있는 동안 머리줄이나 옆 창의 자리가 바뀌면(창 폭, 상태 창 여닫기·폭 조절) 따라 옮긴다.
@@ -224,6 +235,10 @@ export class Hud {
   focusSearch(): void {
     this.search.focus();
     this.search.select();
+  }
+
+  private syncSearchClear(): void {
+    this.searchClear.hidden = this.search.value.length === 0;
   }
 
   private pass(a: AgentView): boolean {
